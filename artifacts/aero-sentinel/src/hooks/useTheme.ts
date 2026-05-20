@@ -19,8 +19,8 @@ export function useTheme() {
       root.classList.add("dark");
       root.classList.remove("light");
     } else {
-      root.classList.add("light");
       root.classList.remove("dark");
+      root.classList.add("light");
     }
     localStorage.setItem("aero-sentinel-theme", theme);
   }, [theme]);
