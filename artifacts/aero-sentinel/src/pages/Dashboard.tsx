@@ -1,6 +1,7 @@
 import { useGetAlertsSummary, getGetAlertsSummaryQueryKey, useGetRecentAlerts, getGetRecentAlertsQueryKey, useGetMonitorStatus, getGetMonitorStatusQueryKey } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { AlertBadge } from "@/components/AlertBadge";
+import { NavHeader } from "@/components/NavHeader";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Dashboard() {
@@ -16,34 +17,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div className={`w-2.5 h-2.5 rounded-full ${monitor?.running ? "bg-green-400 sentinel-pulse" : "bg-red-500"}`} />
-              <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">
-                {monitor?.running ? "SCANNING" : "OFFLINE"}
-              </span>
-            </div>
-            <span className="text-muted-foreground">|</span>
-            <h1 className="text-lg font-bold tracking-widest text-primary font-mono">AERO-SENTINEL</h1>
-            <span className="text-muted-foreground text-xs font-mono">v1.5</span>
-          </div>
-          <div className="flex items-center gap-6">
-            <nav className="flex items-center gap-4 text-sm">
-              <Link href="/" className="text-primary font-medium">OVERVIEW</Link>
-              <Link href="/alerts" className="text-muted-foreground hover:text-foreground transition-colors">ALERTS</Link>
-              <Link href="/airports" className="text-muted-foreground hover:text-foreground transition-colors">AIRPORTS</Link>
-            </nav>
-            {monitor?.lastScan && (
-              <span className="text-xs text-muted-foreground font-mono">
-                LAST SCAN {formatDistanceToNow(new Date(monitor.lastScan), { addSuffix: true })}
-              </span>
-            )}
-          </div>
-        </div>
-      </header>
+      <NavHeader monitorStatus={monitor} />
 
       <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
         {/* Summary Stats */}

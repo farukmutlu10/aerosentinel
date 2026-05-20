@@ -9,7 +9,16 @@ import {
 const router = Router();
 
 router.get("/alerts", async (req, res) => {
-  const parsed = ListAlertsQueryParams.safeParse(req.query);
+  const raw = req.query;
+  const coerced = {
+    ...raw,
+    acknowledged:
+      raw.acknowledged === "true" ? true :
+      raw.acknowledged === "false" ? false :
+      undefined,
+    limit: raw.limit ? Number(raw.limit) : undefined,
+  };
+  const parsed = ListAlertsQueryParams.safeParse(coerced);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid query params" });
   }
