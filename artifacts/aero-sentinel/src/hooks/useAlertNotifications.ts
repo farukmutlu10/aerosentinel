@@ -21,21 +21,18 @@ export function useAlertNotifications() {
     },
   });
 
-  // Request permission once on mount
+  // Sync permission state if it changed externally
   useEffect(() => {
     if (typeof Notification === "undefined") return;
-    if (Notification.permission === "default") {
-      Notification.requestPermission().then((p) => setPermission(p));
-    }
+    setPermission(Notification.permission);
   }, []);
 
-  // Watch for new alerts
+  // Watch for new alerts and fire notifications
   useEffect(() => {
     if (!recent?.length) return;
     if (permission !== "granted") return;
 
     if (!initialized.current) {
-      // On first load, seed seen IDs without firing notifications
       recent.forEach((a) => seenIds.current.add(a.id));
       initialized.current = true;
       return;
@@ -55,20 +52,23 @@ export function useAlertNotifications() {
           tag: `aero-alert-${alert.id}`,
           requireInteraction: true,
         });
-        n.onclick = () => {
-          window.focus();
-          n.close();
-        };
+        n.onclick = () => { window.focus(); n.close(); };
       } catch {
-        // Notification API unavailable
+        // unavailable
       }
     }
   }, [recent, permission]);
 
-  const requestPermission = async () => {
+  // Must be called directly from a user gesture (button click)
+  const requestPermission = () => {
     if (typeof Notification === "undefined") return;
-    const p = await Notification.requestPermission();
-    setPermission(p);
+    // Using callback form for broadest browser compat
+    Notification.requestPermission(function (p) {
+      setPermission(p);
+      if (p === "granted") {
+        initialized.current = false; // re-seed so we don't spam old alerts
+      }
+    });
   };
 
   return { permission, requestPermission };
