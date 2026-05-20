@@ -1,13 +1,12 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import {
-  useListAlerts,
-  getListAlertsQueryKey,
-  useAcknowledgeAlert,
-  getGetAlertsSummaryQueryKey,
-  getGetRecentAlertsQueryKey,
+  useListAlerts, getListAlertsQueryKey,
+  useAcknowledgeAlert, getGetAlertsSummaryQueryKey, getGetRecentAlertsQueryKey,
 } from "@workspace/api-client-react";
 import { NavHeader } from "@/components/NavHeader";
+import { Footer } from "@/components/Footer";
+import { useWatchlist } from "@/context/WatchlistContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertBadge } from "@/components/AlertBadge";
 import { formatDistanceToNow, format } from "date-fns";
@@ -18,8 +17,8 @@ export default function Alerts() {
   const [typeFilter, setTypeFilter] = useState<AlertType | undefined>(undefined);
   const [hideAcknowledged, setHideAcknowledged] = useState(false);
   const queryClient = useQueryClient();
+  const { isWatching, hasFilter } = useWatchlist();
 
-  // Fetch all alerts, filter client-side to avoid query param coercion issues
   const { data: allAlerts, isLoading } = useListAlerts(
     { limit: 200 },
     { query: { queryKey: getListAlertsQueryKey({ limit: 200 }), refetchInterval: 30_000 } }
@@ -29,8 +28,9 @@ export default function Alerts() {
     let list = allAlerts ?? [];
     if (typeFilter) list = list.filter((a) => a.type === typeFilter);
     if (hideAcknowledged) list = list.filter((a) => !a.acknowledged);
+    if (hasFilter) list = list.filter((a) => isWatching(a.icao));
     return list;
-  }, [allAlerts, typeFilter, hideAcknowledged]);
+  }, [allAlerts, typeFilter, hideAcknowledged, hasFilter, isWatching]);
 
   const { mutate: acknowledge, isPending } = useAcknowledgeAlert({
     mutation: {
@@ -50,10 +50,10 @@ export default function Alerts() {
   ];
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <NavHeader />
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
         <div className="flex items-center gap-4 mb-6 flex-wrap">
           <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-1">
             {filters.map((f) => (
@@ -82,6 +82,12 @@ export default function Alerts() {
             {hideAcknowledged ? "SHOWING UNACKNOWLEDGED ONLY" : "HIDE ACKNOWLEDGED"}
           </button>
 
+          {hasFilter && (
+            <Link href="/airports" className="text-xs text-sky-400 font-mono border border-sky-400/30 px-2 py-1.5 rounded hover:border-sky-400/60 transition-colors">
+              WATCHLIST ACTIVE
+            </Link>
+          )}
+
           <span className="text-xs text-muted-foreground font-mono ml-auto">
             {alerts.length} / {allAlerts?.length ?? 0} ALERTS
           </span>
@@ -103,11 +109,8 @@ export default function Alerts() {
               <div
                 key={alert.id}
                 className={`border rounded-lg px-4 py-4 transition-opacity ${alert.acknowledged ? "opacity-40" : ""} ${
-                  alert.type === "SPECI"
-                    ? "alert-speci"
-                    : alert.type === "TAF_AMD"
-                    ? "alert-taf-amd"
-                    : "alert-taf-cor"
+                  alert.type === "SPECI" ? "alert-speci" :
+                  alert.type === "TAF_AMD" ? "alert-taf-amd" : "alert-taf-cor"
                 }`}
               >
                 <div className="flex items-start justify-between gap-4">
@@ -117,10 +120,7 @@ export default function Alerts() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-2">
-                        <Link
-                          href={`/airports/${alert.icao}`}
-                          className="font-mono font-bold text-sm hover:underline"
-                        >
+                        <Link href={`/airports/${alert.icao}`} className="font-mono font-bold text-sm hover:underline">
                           {alert.icao}
                         </Link>
                         <span className="text-xs text-muted-foreground font-mono">
@@ -130,9 +130,7 @@ export default function Alerts() {
                           ({formatDistanceToNow(new Date(alert.detectedAt), { addSuffix: true })})
                         </span>
                         {alert.acknowledged && (
-                          <span className="text-xs bg-muted text-muted-foreground font-mono px-2 py-0.5 rounded">
-                            ACKNOWLEDGED
-                          </span>
+                          <span className="text-xs bg-muted text-muted-foreground font-mono px-2 py-0.5 rounded">ACKNOWLEDGED</span>
                         )}
                       </div>
                       <pre className="font-mono text-xs text-muted-foreground whitespace-pre-wrap break-all leading-relaxed">
@@ -140,7 +138,6 @@ export default function Alerts() {
                       </pre>
                     </div>
                   </div>
-
                   {!alert.acknowledged && (
                     <button
                       onClick={() => acknowledge({ id: alert.id })}
@@ -156,6 +153,8 @@ export default function Alerts() {
           </div>
         )}
       </main>
+
+      <Footer />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { NavHeader } from "@/components/NavHeader";
+import { Footer } from "@/components/Footer";
 import {
   useGetAirportTaf, getGetAirportTafQueryKey,
   useGetAirportMetar, getGetAirportMetarQueryKey,
@@ -37,11 +38,10 @@ export default function AirportDetail({ icao }: Props) {
   });
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <NavHeader />
 
-      <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* Breadcrumb + title */}
+      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8 space-y-8">
         <div>
           <Link href="/airports" className="text-xs text-muted-foreground hover:text-foreground font-mono transition-colors">
             &larr; AIRPORTS
@@ -50,13 +50,11 @@ export default function AirportDetail({ icao }: Props) {
           <p className="text-sm text-muted-foreground font-mono mt-1">Airport monitoring detail</p>
         </div>
 
-        {/* Current TAF + METAR */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <WeatherCard title="CURRENT TAF" isLoading={tafLoading} data={taf?.rawTaf} />
           <WeatherCard title="CURRENT METAR" isLoading={metarLoading} data={metar?.rawMetar} />
         </div>
 
-        {/* Alert history */}
         <section>
           <h3 className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-4">
             Alert History ({alerts?.length ?? 0})
@@ -79,8 +77,7 @@ export default function AirportDetail({ icao }: Props) {
                   key={alert.id}
                   className={`border rounded-lg px-4 py-3 transition-opacity ${alert.acknowledged ? "opacity-40" : ""} ${
                     alert.type === "SPECI" ? "alert-speci" :
-                    alert.type === "TAF_AMD" ? "alert-taf-amd" :
-                    "alert-taf-cor"
+                    alert.type === "TAF_AMD" ? "alert-taf-amd" : "alert-taf-cor"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-4">
@@ -119,6 +116,8 @@ export default function AirportDetail({ icao }: Props) {
           )}
         </section>
       </main>
+
+      <Footer />
     </div>
   );
 }
@@ -130,9 +129,7 @@ function WeatherCard({ title, isLoading, data }: { title: string; isLoading: boo
       {isLoading ? (
         <div className="h-16 animate-pulse bg-muted rounded" />
       ) : data ? (
-        <pre className="font-mono text-sm text-foreground whitespace-pre-wrap break-all leading-relaxed">
-          {data}
-        </pre>
+        <pre className="font-mono text-sm text-foreground whitespace-pre-wrap break-all leading-relaxed">{data}</pre>
       ) : (
         <p className="text-muted-foreground font-mono text-sm">No data yet — awaiting first scan</p>
       )}
