@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
+import { useThemeContext } from "@/App";
 import {
   useGetAirportTaf, getGetAirportTafQueryKey,
   useGetAirportMetar, getGetAirportMetarQueryKey,
@@ -15,6 +16,7 @@ interface Props { icao: string }
 
 export default function AirportDetail({ icao }: Props) {
   const queryClient = useQueryClient();
+  const { theme, toggleTheme } = useThemeContext();
 
   const { data: taf, isLoading: tafLoading } = useGetAirportTaf(icao, {
     query: { enabled: !!icao, queryKey: getGetAirportTafQueryKey(icao), refetchInterval: 60_000 },
@@ -39,7 +41,7 @@ export default function AirportDetail({ icao }: Props) {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <NavHeader />
+      <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8 space-y-8">
         <div>

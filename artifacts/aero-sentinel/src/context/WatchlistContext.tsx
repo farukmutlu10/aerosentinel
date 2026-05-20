@@ -2,8 +2,8 @@ import { createContext, useContext, useState, useCallback, type ReactNode } from
 
 interface WatchlistContextValue {
   watchedIcaos: string[];
-  rawInput: string;
-  setRawInput: (val: string) => void;
+  addIcao: (icao: string) => void;
+  removeIcao: (icao: string) => void;
   clearWatchlist: () => void;
   isWatching: (icao: string) => boolean;
   hasFilter: boolean;
@@ -11,29 +11,45 @@ interface WatchlistContextValue {
 
 const WatchlistContext = createContext<WatchlistContextValue | null>(null);
 
-function parseIcaos(raw: string): string[] {
-  return raw
-    .split(/[,\s]+/)
-    .map((s) => s.trim().toUpperCase())
-    .filter((s) => s.length >= 3);
+function load(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem("aero-sentinel-watchlist") ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+function save(list: string[]) {
+  localStorage.setItem("aero-sentinel-watchlist", JSON.stringify(list));
 }
 
 export function WatchlistProvider({ children }: { children: ReactNode }) {
-  const [rawInput, setRawInputState] = useState<string>(
-    () => localStorage.getItem("aero-sentinel-watchlist") ?? ""
-  );
+  const [watchedIcaos, setWatchedIcaos] = useState<string[]>(load);
 
-  const setRawInput = useCallback((val: string) => {
-    setRawInputState(val);
-    localStorage.setItem("aero-sentinel-watchlist", val);
+  const addIcao = useCallback((raw: string) => {
+    const icao = raw.trim().toUpperCase();
+    if (icao.length < 2) return;
+    setWatchedIcaos((prev) => {
+      if (prev.includes(icao)) return prev;
+      const next = [...prev, icao];
+      save(next);
+      return next;
+    });
+  }, []);
+
+  const removeIcao = useCallback((icao: string) => {
+    setWatchedIcaos((prev) => {
+      const next = prev.filter((x) => x !== icao);
+      save(next);
+      return next;
+    });
   }, []);
 
   const clearWatchlist = useCallback(() => {
-    setRawInputState("");
+    setWatchedIcaos([]);
     localStorage.removeItem("aero-sentinel-watchlist");
   }, []);
 
-  const watchedIcaos = parseIcaos(rawInput);
   const hasFilter = watchedIcaos.length > 0;
 
   const isWatching = useCallback(
@@ -42,7 +58,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <WatchlistContext.Provider value={{ watchedIcaos, rawInput, setRawInput, clearWatchlist, isWatching, hasFilter }}>
+    <WatchlistContext.Provider value={{ watchedIcaos, addIcao, removeIcao, clearWatchlist, isWatching, hasFilter }}>
       {children}
     </WatchlistContext.Provider>
   );

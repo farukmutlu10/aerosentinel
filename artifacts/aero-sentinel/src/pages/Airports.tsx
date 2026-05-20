@@ -1,9 +1,10 @@
-import { useRef } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "wouter";
 import { useListAirports, getListAirportsQueryKey } from "@workspace/api-client-react";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { useWatchlist } from "@/context/WatchlistContext";
+import { useThemeContext } from "@/App";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Airports() {
@@ -11,56 +12,104 @@ export default function Airports() {
     query: { queryKey: getListAirportsQueryKey(), refetchInterval: 30_000 },
   });
 
-  const { rawInput, setRawInput, clearWatchlist, isWatching, hasFilter, watchedIcaos } = useWatchlist();
+  const { watchedIcaos, addIcao, removeIcao, clearWatchlist, isWatching, hasFilter } = useWatchlist();
+  const { theme, toggleTheme } = useThemeContext();
+  const [inputVal, setInputVal] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const airports = allAirports ?? [];
   const displayed = hasFilter ? airports.filter((a) => isWatching(a.icao)) : airports;
-
   const criticalCount = displayed.filter((a) => a.status === "critical").length;
   const warningCount = displayed.filter((a) => a.status === "warning").length;
 
+  const handleAdd = () => {
+    const codes = inputVal.split(/[,\s]+/).filter(Boolean);
+    codes.forEach(addIcao);
+    setInputVal("");
+    inputRef.current?.focus();
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      handleAdd();
+    }
+    if (e.key === "Backspace" && inputVal === "" && watchedIcaos.length > 0) {
+      removeIcao(watchedIcaos[watchedIcaos.length - 1]);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <NavHeader />
+      <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
-        {/* Watchlist filter */}
+        {/* Watchlist tag input */}
         <div className="bg-card border border-border rounded-lg p-4 mb-6">
-          <label className="block text-xs font-mono text-muted-foreground uppercase tracking-widest mb-2">
-            WATCHLIST — Alert Alınacak Meydanlar
-          </label>
-          <div className="flex items-center gap-3">
-            <input
-              ref={inputRef}
-              type="text"
-              value={rawInput}
-              onChange={(e) => setRawInput(e.target.value)}
-              placeholder="LTFJ, LTAC, LTBU, EDDF ..."
-              className="flex-1 bg-background border border-input rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
-            />
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-mono text-muted-foreground uppercase tracking-widest">
+              WATCHLIST — İzlenecek Meydanlar
+            </label>
             {hasFilter && (
               <button
                 onClick={clearWatchlist}
-                className="px-3 py-2 text-xs font-mono border border-border rounded text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                className="text-xs font-mono text-muted-foreground hover:text-destructive transition-colors"
               >
-                TEMIZLE
+                Tümünü Temizle
               </button>
             )}
           </div>
-          {hasFilter ? (
-            <p className="text-xs text-sky-400 font-mono mt-2">
-              {watchedIcaos.length} meydan izleniyor — tüm sayfalarda bu filtre geçerli
-            </p>
-          ) : (
-            <p className="text-xs text-muted-foreground font-mono mt-2">
-              Boş bırakılırsa tüm {airports.length} meydan izlenir
-            </p>
-          )}
+
+          {/* Tag input box */}
+          <div
+            className="flex flex-wrap items-center gap-1.5 min-h-[42px] bg-background border border-input rounded-md px-2 py-1.5 cursor-text focus-within:border-primary transition-colors"
+            onClick={() => inputRef.current?.focus()}
+          >
+            {watchedIcaos.map((icao) => (
+              <span
+                key={icao}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-primary/15 border border-primary/30 text-primary text-xs font-mono font-bold"
+              >
+                {icao}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); removeIcao(icao); }}
+                  className="text-primary/60 hover:text-primary transition-colors leading-none"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputVal}
+              onChange={(e) => setInputVal(e.target.value.toUpperCase())}
+              onKeyDown={handleKeyDown}
+              placeholder={watchedIcaos.length === 0 ? "ICAO kodu gir, Enter ile ekle... (örn: LTFJ)" : "Ekle..."}
+              className="flex-1 min-w-[140px] bg-transparent text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none py-0.5"
+            />
+            {inputVal.length >= 2 && (
+              <button
+                type="button"
+                onClick={handleAdd}
+                className="px-2 py-0.5 text-xs font-mono bg-primary text-primary-foreground rounded hover:opacity-90 transition-opacity"
+              >
+                EKLE
+              </button>
+            )}
+          </div>
+
+          <p className="text-xs text-muted-foreground font-mono mt-2">
+            {hasFilter
+              ? <span className="text-sky-400">{watchedIcaos.length} meydan izleniyor — tüm sayfalarda bu filtre geçerli</span>
+              : `Boş bırakılırsa tüm ${airports.length} meydan izlenir`
+            }
+          </p>
         </div>
 
-        {/* Status summary */}
-        <div className="flex items-center gap-6 mb-6 text-sm font-mono">
+        {/* Status bar */}
+        <div className="flex items-center gap-6 mb-5 text-sm font-mono">
           <span className="text-muted-foreground">
             {displayed.length}{hasFilter ? ` / ${airports.length}` : ""} AIRPORTS
           </span>
@@ -85,7 +134,7 @@ export default function Airports() {
                     ? "border-red-500/40 bg-red-500/10 hover:border-red-500/60"
                     : airport.status === "warning"
                     ? "border-yellow-500/40 bg-yellow-500/10 hover:border-yellow-500/60"
-                    : "border-border bg-card hover:border-border/80"
+                    : "border-border bg-card hover:border-foreground/20"
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">

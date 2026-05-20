@@ -11,6 +11,7 @@ import { AlertBadge } from "@/components/AlertBadge";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { useWatchlist } from "@/context/WatchlistContext";
+import { useThemeContext } from "@/App";
 import { formatDistanceToNow } from "date-fns";
 
 type AlertType = "TAF_AMD" | "TAF_COR" | "SPECI";
@@ -19,6 +20,7 @@ const ALL_TYPES: AlertType[] = ["SPECI", "TAF_AMD", "TAF_COR"];
 export default function Dashboard() {
   const queryClient = useQueryClient();
   const { isWatching, hasFilter, watchedIcaos } = useWatchlist();
+  const { theme, toggleTheme } = useThemeContext();
   const [activeTypes, setActiveTypes] = useState<Set<AlertType>>(new Set(ALL_TYPES));
 
   const { data: summary, isLoading: summaryLoading } = useGetAlertsSummary({
@@ -68,7 +70,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <NavHeader monitorStatus={monitor} />
+      <NavHeader monitorStatus={monitor} theme={theme} onToggleTheme={toggleTheme} />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8 space-y-8">
         {/* Summary Stats */}

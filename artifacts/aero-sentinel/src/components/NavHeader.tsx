@@ -1,12 +1,12 @@
 import { Link, useLocation } from "wouter";
 
 interface Props {
-  monitorStatus?: { running: boolean; lastScan?: string | null; scanCount?: number };
-  notificationPermission?: NotificationPermission;
-  onRequestNotification?: () => void;
+  monitorStatus?: { running: boolean };
+  theme?: "dark" | "light";
+  onToggleTheme?: () => void;
 }
 
-export function NavHeader({ monitorStatus, notificationPermission, onRequestNotification }: Props) {
+export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
   const [location] = useLocation();
 
   const navItems = [
@@ -22,24 +22,20 @@ export function NavHeader({ monitorStatus, notificationPermission, onRequestNoti
     <header className="border-b border-border bg-card px-6 py-0">
       <div className="max-w-7xl mx-auto flex items-center justify-between h-14">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 group select-none">
-          <div className="flex items-center gap-0 leading-none">
-            <span
-              className="font-black text-xl tracking-tight"
-              style={{ color: "#38BDF8", fontFamily: "'Inter', sans-serif", letterSpacing: "-0.02em" }}
-            >
-              AJET
-            </span>
-            <span className="mx-1.5 text-border font-light text-lg">|</span>
-            <span className="font-bold text-sm tracking-widest text-primary font-mono">
-              AERO-SENTINEL
-            </span>
-            <span className="ml-1.5 text-muted-foreground text-xs font-mono">v1.5</span>
-          </div>
+        <Link href="/" className="flex items-center gap-0 select-none">
+          <span
+            className="font-black text-xl tracking-tight"
+            style={{ color: "#38BDF8", fontFamily: "'Inter', sans-serif", letterSpacing: "-0.02em" }}
+          >
+            AJET
+          </span>
+          <span className="mx-2 text-border font-light text-lg">|</span>
+          <span className="font-bold text-sm tracking-widest text-primary font-mono">AERO-SENTINEL</span>
+          <span className="ml-1.5 text-muted-foreground text-xs font-mono">v1.5</span>
         </Link>
 
-        {/* Nav + status */}
-        <div className="flex items-center gap-4">
+        {/* Right side */}
+        <div className="flex items-center gap-2">
           <nav className="flex items-center gap-1">
             {navItems.map((item) => (
               <Link
@@ -56,39 +52,36 @@ export function NavHeader({ monitorStatus, notificationPermission, onRequestNoti
             ))}
           </nav>
 
-          {/* Notification bell */}
-          {notificationPermission !== undefined && (
+          {/* Theme toggle */}
+          {onToggleTheme && (
             <button
-              onClick={onRequestNotification}
-              title={
-                notificationPermission === "granted"
-                  ? "Desktop bildirimleri aktif"
-                  : notificationPermission === "denied"
-                  ? "Bildirimler engellendi"
-                  : "Desktop bildirimlerini etkinleştir"
-              }
-              className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
-                notificationPermission === "granted"
-                  ? "text-green-400 cursor-default"
-                  : notificationPermission === "denied"
-                  ? "text-muted-foreground cursor-not-allowed"
-                  : "text-yellow-400 hover:text-yellow-300 cursor-pointer sentinel-pulse"
-              }`}
+              onClick={onToggleTheme}
+              title={theme === "dark" ? "Açık moda geç" : "Koyu moda geç"}
+              className="w-8 h-8 flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors ml-2"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-              </svg>
+              {theme === "dark" ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="5"/>
+                  <line x1="12" y1="1" x2="12" y2="3"/>
+                  <line x1="12" y1="21" x2="12" y2="23"/>
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                  <line x1="1" y1="12" x2="3" y2="12"/>
+                  <line x1="21" y1="12" x2="23" y2="12"/>
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+              )}
             </button>
           )}
 
           {monitorStatus !== undefined && (
-            <div className="flex items-center gap-2 border-l border-border pl-4">
-              <div
-                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                  monitorStatus.running ? "bg-green-400 sentinel-pulse" : "bg-red-500"
-                }`}
-              />
+            <div className="flex items-center gap-2 border-l border-border pl-3 ml-1">
+              <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${monitorStatus.running ? "bg-green-400 sentinel-pulse" : "bg-red-500"}`} />
               <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">
                 {monitorStatus.running ? "LIVE" : "OFFLINE"}
               </span>
