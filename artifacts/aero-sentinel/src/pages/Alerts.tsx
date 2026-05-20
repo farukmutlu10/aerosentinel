@@ -7,6 +7,7 @@ import {
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { useWatchlist } from "@/context/WatchlistContext";
+import { useThemeContext } from "@/App";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertBadge } from "@/components/AlertBadge";
 import { formatDistanceToNow, format } from "date-fns";
@@ -18,6 +19,7 @@ export default function Alerts() {
   const [hideAcknowledged, setHideAcknowledged] = useState(false);
   const queryClient = useQueryClient();
   const { isWatching, hasFilter } = useWatchlist();
+  const { theme, toggleTheme } = useThemeContext();
 
   const { data: allAlerts, isLoading } = useListAlerts(
     { limit: 200 },
@@ -51,7 +53,7 @@ export default function Alerts() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <NavHeader />
+      <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
         <div className="flex items-center gap-4 mb-6 flex-wrap">
