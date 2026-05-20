@@ -2,9 +2,11 @@ import { Link, useLocation } from "wouter";
 
 interface Props {
   monitorStatus?: { running: boolean; lastScan?: string | null; scanCount?: number };
+  notificationPermission?: NotificationPermission;
+  onRequestNotification?: () => void;
 }
 
-export function NavHeader({ monitorStatus }: Props) {
+export function NavHeader({ monitorStatus, notificationPermission, onRequestNotification }: Props) {
   const [location] = useLocation();
 
   const navItems = [
@@ -24,7 +26,7 @@ export function NavHeader({ monitorStatus }: Props) {
           <div className="flex items-center gap-0 leading-none">
             <span
               className="font-black text-xl tracking-tight"
-              style={{ color: "#FF5E14", fontFamily: "'Inter', sans-serif", letterSpacing: "-0.02em" }}
+              style={{ color: "#38BDF8", fontFamily: "'Inter', sans-serif", letterSpacing: "-0.02em" }}
             >
               AJET
             </span>
@@ -37,7 +39,7 @@ export function NavHeader({ monitorStatus }: Props) {
         </Link>
 
         {/* Nav + status */}
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
           <nav className="flex items-center gap-1">
             {navItems.map((item) => (
               <Link
@@ -54,8 +56,34 @@ export function NavHeader({ monitorStatus }: Props) {
             ))}
           </nav>
 
-          {monitorStatus && (
-            <div className="flex items-center gap-2 border-l border-border pl-6">
+          {/* Notification bell */}
+          {notificationPermission !== undefined && (
+            <button
+              onClick={onRequestNotification}
+              title={
+                notificationPermission === "granted"
+                  ? "Desktop bildirimleri aktif"
+                  : notificationPermission === "denied"
+                  ? "Bildirimler engellendi"
+                  : "Desktop bildirimlerini etkinleştir"
+              }
+              className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
+                notificationPermission === "granted"
+                  ? "text-green-400 cursor-default"
+                  : notificationPermission === "denied"
+                  ? "text-muted-foreground cursor-not-allowed"
+                  : "text-yellow-400 hover:text-yellow-300 cursor-pointer sentinel-pulse"
+              }`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+            </button>
+          )}
+
+          {monitorStatus !== undefined && (
+            <div className="flex items-center gap-2 border-l border-border pl-4">
               <div
                 className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                   monitorStatus.running ? "bg-green-400 sentinel-pulse" : "bg-red-500"

@@ -1,6 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { useListAlerts, getListAlertsQueryKey, useAcknowledgeAlert, getGetAlertsSummaryQueryKey, getGetRecentAlertsQueryKey } from "@workspace/api-client-react";
+import {
+  useListAlerts,
+  getListAlertsQueryKey,
+  useAcknowledgeAlert,
+  getGetAlertsSummaryQueryKey,
+  getGetRecentAlertsQueryKey,
+} from "@workspace/api-client-react";
 import { NavHeader } from "@/components/NavHeader";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertBadge } from "@/components/AlertBadge";
@@ -13,10 +19,18 @@ export default function Alerts() {
   const [hideAcknowledged, setHideAcknowledged] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data: alerts, isLoading } = useListAlerts(
-    { type: typeFilter, acknowledged: hideAcknowledged ? false : undefined, limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ type: typeFilter, acknowledged: hideAcknowledged ? false : undefined, limit: 100 }), refetchInterval: 30_000 } }
+  // Fetch all alerts, filter client-side to avoid query param coercion issues
+  const { data: allAlerts, isLoading } = useListAlerts(
+    { limit: 200 },
+    { query: { queryKey: getListAlertsQueryKey({ limit: 200 }), refetchInterval: 30_000 } }
   );
+
+  const alerts = useMemo(() => {
+    let list = allAlerts ?? [];
+    if (typeFilter) list = list.filter((a) => a.type === typeFilter);
+    if (hideAcknowledged) list = list.filter((a) => !a.acknowledged);
+    return list;
+  }, [allAlerts, typeFilter, hideAcknowledged]);
 
   const { mutate: acknowledge, isPending } = useAcknowledgeAlert({
     mutation: {
@@ -40,7 +54,6 @@ export default function Alerts() {
       <NavHeader />
 
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Filter bar */}
         <div className="flex items-center gap-4 mb-6 flex-wrap">
           <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-1">
             {filters.map((f) => (
@@ -62,7 +75,7 @@ export default function Alerts() {
             onClick={() => setHideAcknowledged(!hideAcknowledged)}
             className={`px-3 py-1.5 rounded text-xs font-mono font-medium border transition-colors ${
               hideAcknowledged
-                ? "border-primary text-primary"
+                ? "border-primary text-primary bg-primary/10"
                 : "border-border text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -70,18 +83,17 @@ export default function Alerts() {
           </button>
 
           <span className="text-xs text-muted-foreground font-mono ml-auto">
-            {alerts?.length ?? 0} ALERTS
+            {alerts.length} / {allAlerts?.length ?? 0} ALERTS
           </span>
         </div>
 
-        {/* Alert list */}
         {isLoading ? (
           <div className="space-y-2">
             {[...Array(8)].map((_, i) => (
               <div key={i} className="h-24 rounded-lg bg-card animate-pulse border border-border" />
             ))}
           </div>
-        ) : !alerts?.length ? (
+        ) : !alerts.length ? (
           <div className="bg-card border border-border rounded-lg p-16 text-center">
             <p className="text-muted-foreground font-mono text-sm">NO ALERTS MATCH CURRENT FILTERS</p>
           </div>
@@ -91,9 +103,11 @@ export default function Alerts() {
               <div
                 key={alert.id}
                 className={`border rounded-lg px-4 py-4 transition-opacity ${alert.acknowledged ? "opacity-40" : ""} ${
-                  alert.type === "SPECI" ? "alert-speci" :
-                  alert.type === "TAF_AMD" ? "alert-taf-amd" :
-                  "alert-taf-cor"
+                  alert.type === "SPECI"
+                    ? "alert-speci"
+                    : alert.type === "TAF_AMD"
+                    ? "alert-taf-amd"
+                    : "alert-taf-cor"
                 }`}
               >
                 <div className="flex items-start justify-between gap-4">
@@ -103,7 +117,10 @@ export default function Alerts() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-2">
-                        <Link href={`/airports/${alert.icao}`} className="font-mono font-bold text-sm hover:underline">
+                        <Link
+                          href={`/airports/${alert.icao}`}
+                          className="font-mono font-bold text-sm hover:underline"
+                        >
                           {alert.icao}
                         </Link>
                         <span className="text-xs text-muted-foreground font-mono">
