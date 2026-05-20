@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { useListAirports, getListAirportsQueryKey } from "@workspace/api-client-react";
+import { NavHeader } from "@/components/NavHeader";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Airports() {
@@ -12,19 +13,7 @@ export default function Airports() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-lg font-bold tracking-widest text-primary font-mono">AERO-SENTINEL</h1>
-            <span className="text-muted-foreground text-xs font-mono">v1.5</span>
-          </div>
-          <nav className="flex items-center gap-4 text-sm">
-            <Link href="/" className="text-muted-foreground hover:text-foreground transition-colors">OVERVIEW</Link>
-            <Link href="/alerts" className="text-muted-foreground hover:text-foreground transition-colors">ALERTS</Link>
-            <Link href="/airports" className="text-primary font-medium">AIRPORTS</Link>
-          </nav>
-        </div>
-      </header>
+      <NavHeader />
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Status summary */}

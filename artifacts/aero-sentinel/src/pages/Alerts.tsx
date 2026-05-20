@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useListAlerts, getListAlertsQueryKey, useAcknowledgeAlert, getGetAlertsSummaryQueryKey, getGetRecentAlertsQueryKey } from "@workspace/api-client-react";
+import { NavHeader } from "@/components/NavHeader";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertBadge } from "@/components/AlertBadge";
 import { formatDistanceToNow, format } from "date-fns";
@@ -9,12 +10,12 @@ type AlertType = "TAF_AMD" | "TAF_COR" | "SPECI";
 
 export default function Alerts() {
   const [typeFilter, setTypeFilter] = useState<AlertType | undefined>(undefined);
-  const [showAcknowledged, setShowAcknowledged] = useState(false);
+  const [hideAcknowledged, setHideAcknowledged] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: alerts, isLoading } = useListAlerts(
-    { type: typeFilter, acknowledged: showAcknowledged ? undefined : false, limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ type: typeFilter, acknowledged: showAcknowledged ? undefined : false, limit: 100 }), refetchInterval: 30_000 } }
+    { type: typeFilter, acknowledged: hideAcknowledged ? false : undefined, limit: 100 },
+    { query: { queryKey: getListAlertsQueryKey({ type: typeFilter, acknowledged: hideAcknowledged ? false : undefined, limit: 100 }), refetchInterval: 30_000 } }
   );
 
   const { mutate: acknowledge, isPending } = useAcknowledgeAlert({
@@ -36,19 +37,7 @@ export default function Alerts() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-lg font-bold tracking-widest text-primary font-mono">AERO-SENTINEL</h1>
-            <span className="text-muted-foreground text-xs font-mono">v1.5</span>
-          </div>
-          <nav className="flex items-center gap-4 text-sm">
-            <Link href="/" className="text-muted-foreground hover:text-foreground transition-colors">OVERVIEW</Link>
-            <Link href="/alerts" className="text-primary font-medium">ALERTS</Link>
-            <Link href="/airports" className="text-muted-foreground hover:text-foreground transition-colors">AIRPORTS</Link>
-          </nav>
-        </div>
-      </header>
+      <NavHeader />
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Filter bar */}
@@ -70,14 +59,14 @@ export default function Alerts() {
           </div>
 
           <button
-            onClick={() => setShowAcknowledged(!showAcknowledged)}
+            onClick={() => setHideAcknowledged(!hideAcknowledged)}
             className={`px-3 py-1.5 rounded text-xs font-mono font-medium border transition-colors ${
-              showAcknowledged
+              hideAcknowledged
                 ? "border-primary text-primary"
                 : "border-border text-muted-foreground hover:text-foreground"
             }`}
           >
-            {showAcknowledged ? "HIDE ACKNOWLEDGED" : "SHOW ACKNOWLEDGED"}
+            {hideAcknowledged ? "SHOWING UNACKNOWLEDGED ONLY" : "HIDE ACKNOWLEDGED"}
           </button>
 
           <span className="text-xs text-muted-foreground font-mono ml-auto">
