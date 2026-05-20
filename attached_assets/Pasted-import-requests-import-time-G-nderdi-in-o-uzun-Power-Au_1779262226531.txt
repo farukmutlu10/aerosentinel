@@ -1,0 +1,67 @@
+import requests
+import time
+ 
+# Gönderdiğin o uzun Power Automate linkini buraya yapıştır:
+FLOW_URL = "https://default745a1b8b99584d1eac1cf741f0ff4e.ba.environment.api.powerplatform.com:443/powerautomat…
+ 
+# 66 Meydanlık Operasyonel Takip Listesi
+MEYDANLAR = "LTFJ,LTAC,HCMM,LTBJ,LTAU,LTAJ,LTAI,LTCG,LTCB,LTCE,LTCI,ORER,OSAP,LTFO,LTCR,OLBA,LTCC,LCEN,LTBS,LTDB,LTCN,LTCV,LTCO,LTFE,LTAZ,LTCS,LTCF,LKPR,LTCP,LTFH,EBBR,LFPG,EGSS,EHAM,EDDV,EKCH,EDDB,LIRF,EDDL,LIME,LSGG,EDDM,EDDF,LOWW,EDDS,UBBB,LTFM,LTCT,LQSA,LTBR,LTCK,LTCD,LTCA,LTDA,LTAW,LTCJ,LTBH,UUWW,ULLI,HECA,EDDK,UGTB,OEJN,OEMA,HESH,LTAT,HEGN,UCFM,UACC,UTTT,LTAN,LSZH,ESSA,EDDH,LYBE,OSDI,LTAR,LTAY,OERK,LATI,EHRD,LFLL,LTFG,LWSK,UAAA,ORBI,BKPR,LEBL,LHBP,DAAG,LROP,LEMD,LQTZ,HDAM,LTBA"
+ 
+son_gorulen_taf = {}
+son_gorulen_metar = {}
+ 
+def flow_tetikle(mesaj_metni):
+   # Power Automate'in manual tetikleyicisine veriyi JSON olarak basıyoruz
+   payload = {"mesaj": mesaj_metni}
+   try:
+       response = requests.post(FLOW_URL, json=payload)
+       if response.status_code in [200, 202]:
+           print(f"[{time.strftime('%H:%M:%S')}] Veri başarıyla Power Automate'e paslandı.")
+       else:
+           print(f"Flow Hatası: {response.status_code}")
+   except Exception as e:
+       print("Bağlantı Hatası:", e)
+ 
+def sentinel_radar():
+   headers = {'User-Agent': 'Mozilla/5.0'}
+ 
+   # --- TAF AMD/COR KONTROLÜ ---
+   try:
+       r_taf = requests.get(f"https://aviationweather.gov/api/data/taf?ids={MEYDANLAR}&format=json", headers=headers)
+       if r_taf.status_code == 200:
+           for taf in r_taf.json():
+               icao = taf.get('icaoId')
+               raw_taf = taf.get('rawTAF', '')
+ 
+               if son_gorulen_taf.get(icao) != raw_taf:
+                   son_gorulen_taf[icao] = raw_taf
+ 
+                   if "AMD" in raw_taf or "COR" in raw_taf:
+                       metin = f"⚠️ **[AERO-SENTINEL] TAF REVİZYONU (AMD/COR)**\n\n📍 **Meydan:** {icao}\n📝 `{raw_taf}`\n⚡ *Planlamayı kontrol edin!*"
+                       flow_tetikle(metin)
+   except Exception as e:
+       print("TAF Hatası:", e)
+ 
+   # --- METAR SPECI KONTROLÜ ---
+   try:
+       r_metar = requests.get(f"https://aviationweather.gov/api/data/metar?ids={MEYDANLAR}&format=json", headers=headers)
+       if r_metar.status_code == 200:
+           for metar in r_metar.json():
+               icao = metar.get('icaoId')
+               raw_metar = metar.get('rawOb', '')
+ 
+               if son_gorulen_metar.get(icao) != raw_metar:
+                   son_gorulen_metar[icao] = raw_metar
+ 
+                   if raw_metar.startswith("SPECI") or " SPECI " in raw_metar:
+                       metin = f"🚨 **[AERO-SENTINEL] ACİL SPECI ALARMI!**\n\n📍 **Meydan:** {icao}\n📝 `{raw_metar}`\n✈️ *Flight Watch'u güncelleyin!*"
+                       flow_tetikle(metin)
+   except Exception as e:
+       print("METAR Hatası:", e)
+ 
+print("🚀 AERO-SENTINEL v1.5 (Direct Invoke) Aktif!")
+print("✈️ 66 meydan her 60 saniyede bir otonom taranıyor...\n")
+ 
+while True:
+   sentinel_radar()
+   time.sleep(60)

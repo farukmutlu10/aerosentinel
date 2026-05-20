@@ -1,15 +1,18 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: AERO-SENTINEL Aviation Weather Monitoring API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: alerts
+    description: Weather alert operations
+  - name: airports
+    description: Airport monitoring operations
 paths:
   /healthz:
     get:
@@ -24,6 +27,160 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /alerts:
+    get:
+      operationId: listAlerts
+      tags: [alerts]
+      summary: List all alerts
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [TAF_AMD, TAF_COR, SPECI]
+        - name: icao
+          in: query
+          schema:
+            type: string
+        - name: acknowledged
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: List of alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Alert"
+
+  /alerts/summary:
+    get:
+      operationId: getAlertsSummary
+      tags: [alerts]
+      summary: Get alert summary stats
+      responses:
+        "200":
+          description: Summary statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertsSummary"
+
+  /alerts/recent:
+    get:
+      operationId: getRecentAlerts
+      tags: [alerts]
+      summary: Get recent alert feed (last 10)
+      responses:
+        "200":
+          description: Recent alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Alert"
+
+  /alerts/{id}/acknowledge:
+    patch:
+      operationId: acknowledgeAlert
+      tags: [alerts]
+      summary: Acknowledge an alert
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Acknowledged alert
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "404":
+          description: Not found
+
+  /airports:
+    get:
+      operationId: listAirports
+      tags: [airports]
+      summary: List all monitored airports with status
+      responses:
+        "200":
+          description: List of airports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Airport"
+
+  /airports/{icao}/taf:
+    get:
+      operationId: getAirportTaf
+      tags: [airports]
+      summary: Get current TAF for an airport
+      parameters:
+        - name: icao
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: TAF data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TafData"
+        "404":
+          description: Not found
+
+  /airports/{icao}/metar:
+    get:
+      operationId: getAirportMetar
+      tags: [airports]
+      summary: Get current METAR for an airport
+      parameters:
+        - name: icao
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: METAR data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetarData"
+        "404":
+          description: Not found
+
+  /monitor/status:
+    get:
+      operationId: getMonitorStatus
+      tags: [airports]
+      summary: Get monitoring loop status
+      responses:
+        "200":
+          description: Monitor status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitorStatus"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +191,89 @@ components:
       required:
         - status
 
+    Alert:
+      type: object
+      required: [id, type, icao, rawText, detectedAt, acknowledged]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [TAF_AMD, TAF_COR, SPECI]
+        icao:
+          type: string
+        rawText:
+          type: string
+        detectedAt:
+          type: string
+          format: date-time
+        acknowledged:
+          type: boolean
+        acknowledgedAt:
+          type: ["string", "null"]
+          format: date-time
+
+    AlertsSummary:
+      type: object
+      required: [totalAlerts, unacknowledged, tafRevisions, speciAlerts, airportsAffected, lastScan]
+      properties:
+        totalAlerts:
+          type: integer
+        unacknowledged:
+          type: integer
+        tafRevisions:
+          type: integer
+        speciAlerts:
+          type: integer
+        airportsAffected:
+          type: integer
+        lastScan:
+          type: ["string", "null"]
+          format: date-time
+
+    Airport:
+      type: object
+      required: [icao, alertCount, lastAlert, status]
+      properties:
+        icao:
+          type: string
+        alertCount:
+          type: integer
+        lastAlert:
+          type: ["string", "null"]
+          format: date-time
+        status:
+          type: string
+          enum: [normal, warning, critical]
+
+    TafData:
+      type: object
+      required: [icao, rawTaf]
+      properties:
+        icao:
+          type: string
+        rawTaf:
+          type: string
+
+    MetarData:
+      type: object
+      required: [icao, rawMetar]
+      properties:
+        icao:
+          type: string
+        rawMetar:
+          type: string
+
+    MonitorStatus:
+      type: object
+      required: [running, scanCount, lastScan, monitoredAirports]
+      properties:
+        running:
+          type: boolean
+        scanCount:
+          type: integer
+        lastScan:
+          type: ["string", "null"]
+          format: date-time
+        monitoredAirports:
+          type: integer
