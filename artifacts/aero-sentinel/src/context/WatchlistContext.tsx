@@ -56,7 +56,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
 
   const addIcao = useCallback((raw: string) => {
     const icao = normalizeIcao(raw);
-    if (icao.length < 2) return;
+    if (icao.length !== 4) return;
     addMutation.mutate(icao);
   }, [addMutation]);
 

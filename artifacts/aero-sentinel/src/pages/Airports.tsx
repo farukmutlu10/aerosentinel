@@ -43,19 +43,35 @@ export default function Airports() {
   const [sortMode, setSortMode] = useState<SortMode>("alpha");
 
   const handleAdd = () => {
-    const codes = inputVal.split(/[,\s]+/).filter(Boolean);
-    codes.forEach((c) => addIcao(normalizeIcao(c)));
-    setInputVal("");
+    const raw = inputVal;
+    const codes = raw.split(/[,\s]+/).filter(Boolean);
+    const added: string[] = [];
+    const skipped: string[] = [];
+    codes.forEach((c) => {
+      const icao = normalizeIcao(c);
+      if (icao.length === 4) { addIcao(icao); added.push(icao); }
+      else if (icao.length > 0) skipped.push(c);
+    });
+    setInputVal(skipped.length > 0 ? skipped.join(",") : "");
     inputRef.current?.focus();
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" || e.key === ",") { e.preventDefault(); handleAdd(); }
+    if (e.key === "Enter") { e.preventDefault(); handleAdd(); }
     if (e.key === "Backspace" && inputVal === "" && watchedIcaos.length > 0) removeIcao(watchedIcaos[watchedIcaos.length - 1]);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputVal(normalizeIcao(e.target.value));
+    const val = e.target.value
+      .replace(/İ/g, "I").replace(/ı/g, "I")
+      .replace(/Ş/g, "S").replace(/ş/g, "S")
+      .replace(/Ğ/g, "G").replace(/ğ/g, "G")
+      .replace(/Ü/g, "U").replace(/ü/g, "U")
+      .replace(/Ö/g, "O").replace(/ö/g, "O")
+      .replace(/Ç/g, "C").replace(/ç/g, "C")
+      .toUpperCase()
+      .replace(/[^A-Z0-9,\s]/g, "");
+    setInputVal(val);
   };
 
   const toggleCat = (c: FlightCategory) =>
@@ -125,10 +141,10 @@ export default function Airports() {
             <input ref={inputRef} type="text" value={inputVal}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={watchedIcaos.length === 0 ? "Enter ICAO code, press Enter to add... (e.g. LTFJ, VIDP, EDDF)" : "Add more..."}
+              placeholder={watchedIcaos.length === 0 ? "Type ICAO codes and press Enter — e.g. LTFJ,LTAC,LTFM" : "Add more (comma-separated)..."}
               className="flex-1 min-w-[200px] bg-transparent text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none py-0.5"
             />
-            {inputVal.length >= 2 && (
+            {inputVal.replace(/[,\s]/g, "").length >= 4 && (
               <button type="button" onClick={handleAdd}
                 className="px-2 py-0.5 text-xs font-mono bg-primary text-primary-foreground rounded hover:opacity-90 transition-opacity">
                 ADD
