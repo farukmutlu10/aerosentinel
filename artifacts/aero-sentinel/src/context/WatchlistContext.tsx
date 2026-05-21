@@ -1,5 +1,6 @@
 import { createContext, useContext, useCallback, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { normalizeIcao } from "@/lib/icaoUtils";
 
 const WATCHLIST_KEY = ["watchlist"];
 const DEFAULT_ICAO = "LTFH";
@@ -44,8 +45,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
   });
 
   const removeMutation = useMutation({
-    mutationFn: (icao: string) =>
-      apiFetch(`/api/watchlist/${icao}`, { method: "DELETE" }),
+    mutationFn: (icao: string) => apiFetch(`/api/watchlist/${icao}`, { method: "DELETE" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: WATCHLIST_KEY }),
   });
 
@@ -55,7 +55,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
   });
 
   const addIcao = useCallback((raw: string) => {
-    const icao = raw.trim().toUpperCase();
+    const icao = normalizeIcao(raw);
     if (icao.length < 2) return;
     addMutation.mutate(icao);
   }, [addMutation]);
@@ -73,8 +73,6 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     [effectiveIcaos]
   );
 
-  const hasFilter = watchedIcaos.length > 0;
-
   return (
     <WatchlistContext.Provider value={{
       watchedIcaos,
@@ -83,7 +81,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       removeIcao,
       clearWatchlist,
       isWatching,
-      hasFilter,
+      hasFilter: watchedIcaos.length > 0,
       isLoading,
     }}>
       {children}

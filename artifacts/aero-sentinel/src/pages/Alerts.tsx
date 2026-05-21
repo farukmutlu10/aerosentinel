@@ -14,10 +14,26 @@ import { ColoredRawText } from "@/components/ColoredRawText";
 import { formatDistanceToNow, format } from "date-fns";
 
 type AlertType = "TAF_AMD" | "TAF_COR" | "SPECI";
+type RouteFilter = "ALL" | "DOM" | "INT";
+type SortMode = "newest" | "oldest" | "icao-az";
+
+const TYPE_FILTERS: Array<{ label: string; value: AlertType | undefined }> = [
+  { label: "ALL", value: undefined },
+  { label: "TAF AMD", value: "TAF_AMD" },
+  { label: "TAF COR", value: "TAF_COR" },
+  { label: "SPECI", value: "SPECI" },
+];
+const SORT_OPTIONS: { value: SortMode; label: string }[] = [
+  { value: "newest", label: "Newest" },
+  { value: "oldest", label: "Oldest" },
+  { value: "icao-az", label: "ICAO A–Z" },
+];
 
 export default function Alerts() {
   const [typeFilter, setTypeFilter] = useState<AlertType | undefined>(undefined);
+  const [routeFilter, setRouteFilter] = useState<RouteFilter>("ALL");
   const [hideAcknowledged, setHideAcknowledged] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>("newest");
   const queryClient = useQueryClient();
   const { isWatching, hasFilter } = useWatchlist();
   const { theme, toggleTheme } = useThemeContext();
@@ -32,8 +48,15 @@ export default function Alerts() {
     if (typeFilter) list = list.filter((a) => a.type === typeFilter);
     if (hideAcknowledged) list = list.filter((a) => !a.acknowledged);
     if (hasFilter) list = list.filter((a) => isWatching(a.icao));
-    return list;
-  }, [allAlerts, typeFilter, hideAcknowledged, hasFilter, isWatching]);
+    if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
+    else if (routeFilter === "INT") list = list.filter((a) => !a.icao.startsWith("LT"));
+
+    const sorted = [...list];
+    if (sortMode === "newest") sorted.sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime());
+    else if (sortMode === "oldest") sorted.sort((a, b) => new Date(a.detectedAt).getTime() - new Date(b.detectedAt).getTime());
+    else if (sortMode === "icao-az") sorted.sort((a, b) => a.icao.localeCompare(b.icao));
+    return sorted;
+  }, [allAlerts, typeFilter, hideAcknowledged, hasFilter, isWatching, routeFilter, sortMode]);
 
   const { mutate: acknowledge, isPending } = useAcknowledgeAlert({
     mutation: {
@@ -45,45 +68,62 @@ export default function Alerts() {
     },
   });
 
-  const filters: Array<{ label: string; value: AlertType | undefined }> = [
-    { label: "ALL", value: undefined },
-    { label: "TAF AMD", value: "TAF_AMD" },
-    { label: "TAF COR", value: "TAF_COR" },
-    { label: "SPECI", value: "SPECI" },
-  ];
-
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
-        <div className="flex items-center gap-4 mb-6 flex-wrap">
-          <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-1">
-            {filters.map((f) => (
+        {/* Filter row */}
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          {/* Type filter */}
+          <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
+            {TYPE_FILTERS.map((f) => (
               <button key={String(f.value)} onClick={() => setTypeFilter(f.value)}
                 className={`px-3 py-1.5 rounded text-xs font-mono font-medium transition-colors ${
                   typeFilter === f.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}>
-                {f.label}
-              </button>
+                }`}>{f.label}</button>
+            ))}
+          </div>
+
+          <span className="text-border text-xs">|</span>
+
+          {/* DOM/INT */}
+          <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
+            {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
+              <button key={f} onClick={() => setRouteFilter(f)}
+                className={`px-2.5 py-1.5 rounded text-xs font-mono font-medium transition-colors ${
+                  routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}>{f}</button>
+            ))}
+          </div>
+
+          <span className="text-border text-xs">|</span>
+
+          {/* Sort */}
+          <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
+            {SORT_OPTIONS.map((s) => (
+              <button key={s.value} onClick={() => setSortMode(s.value)}
+                className={`px-2.5 py-1.5 rounded text-xs font-mono transition-colors ${
+                  sortMode === s.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}>{s.label}</button>
             ))}
           </div>
 
           <button onClick={() => setHideAcknowledged(!hideAcknowledged)}
-            className={`px-3 py-1.5 rounded text-xs font-mono font-medium border transition-colors ${
+            className={`px-3 py-1.5 rounded text-xs font-mono font-medium border transition-colors ml-1 ${
               hideAcknowledged ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"
             }`}>
-            {hideAcknowledged ? "SHOWING UNACKNOWLEDGED ONLY" : "HIDE ACKNOWLEDGED"}
+            {hideAcknowledged ? "Unacknowledged Only" : "Hide Acknowledged"}
           </button>
 
           {hasFilter && (
             <Link href="/airports" className="text-xs text-sky-400 font-mono border border-sky-400/30 px-2 py-1.5 rounded hover:border-sky-400/60 transition-colors">
-              WATCHLIST ACTIVE
+              Watchlist Active
             </Link>
           )}
 
           <span className="text-xs text-muted-foreground font-mono ml-auto">
-            {alerts.length} / {allAlerts?.length ?? 0} ALERTS
+            {alerts.length} / {allAlerts?.length ?? 0} alerts
           </span>
         </div>
 
@@ -91,7 +131,7 @@ export default function Alerts() {
           <div className="space-y-2">{[...Array(8)].map((_, i) => <div key={i} className="h-24 rounded-lg bg-card animate-pulse border border-border" />)}</div>
         ) : !alerts.length ? (
           <div className="bg-card border border-border rounded-lg p-16 text-center">
-            <p className="text-muted-foreground font-mono text-sm">NO ALERTS MATCH CURRENT FILTERS</p>
+            <p className="text-muted-foreground font-mono text-sm">No alerts match current filters</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -106,9 +146,12 @@ export default function Alerts() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-2">
                         <Link href={`/airports/${alert.icao}`} className="font-mono font-bold text-sm hover:underline">{alert.icao}</Link>
+                        <span className="text-[10px] font-mono text-muted-foreground border border-border px-1 py-0.5 rounded">
+                          {alert.icao.startsWith("LT") ? "DOM" : "INT"}
+                        </span>
                         <span className="text-xs text-muted-foreground font-mono">{format(new Date(alert.detectedAt), "dd MMM HH:mm")} UTC</span>
                         <span className="text-xs text-muted-foreground font-mono">({formatDistanceToNow(new Date(alert.detectedAt), { addSuffix: true })})</span>
-                        {alert.acknowledged && <span className="text-xs bg-muted text-muted-foreground font-mono px-2 py-0.5 rounded">ACKNOWLEDGED</span>}
+                        {alert.acknowledged && <span className="text-xs bg-muted text-muted-foreground font-mono px-2 py-0.5 rounded">ACK</span>}
                       </div>
                       <ColoredRawText raw={alert.rawText} />
                     </div>

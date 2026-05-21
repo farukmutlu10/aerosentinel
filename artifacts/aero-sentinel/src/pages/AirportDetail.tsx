@@ -57,7 +57,7 @@ export default function AirportDetail({ icao }: Props) {
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8 space-y-6">
         {/* Header */}
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <Link href="/airports" className="text-xs text-muted-foreground hover:text-foreground font-mono transition-colors">
               &larr; AIRPORTS
@@ -65,10 +65,8 @@ export default function AirportDetail({ icao }: Props) {
             <div className="flex items-center gap-3 mt-2">
               <h2 className="text-3xl font-bold font-mono text-primary">{icao}</h2>
               {parsedMetar && (
-                <span
-                  className="text-sm font-mono font-bold px-2.5 py-1 rounded border"
-                  style={{ color: catColor, borderColor: catColor + "60", backgroundColor: catColor + "18" }}
-                >
+                <span className="text-sm font-mono font-bold px-2.5 py-1 rounded border"
+                  style={{ color: catColor, borderColor: `${catColor}60`, backgroundColor: `${catColor}18` }}>
                   {cat}
                 </span>
               )}
@@ -78,7 +76,7 @@ export default function AirportDetail({ icao }: Props) {
             </div>
           </div>
 
-          {/* Quick METAR summary */}
+          {/* Quick summary */}
           {parsedMetar && (
             <div className="hidden md:flex items-center gap-4 text-xs font-mono bg-card border border-border rounded-lg px-4 py-2">
               {parsedMetar.cavok ? (
@@ -112,13 +110,9 @@ export default function AirportDetail({ icao }: Props) {
               {parsedMetar.phenomena.length > 0 && (
                 <div className="flex gap-1">
                   {parsedMetar.phenomena.slice(0, 3).map((p) => (
-                    <span key={p.code}
-                      className="px-1 py-0.5 rounded text-[10px]"
+                    <span key={p.code} className="px-1 py-0.5 rounded text-[10px]"
                       style={{ color: p.danger ? "#ef4444" : "#94a3b8", backgroundColor: p.danger ? "#ef444420" : "transparent" }}
-                      title={p.label}
-                    >
-                      {p.code}
-                    </span>
+                      title={p.label}>{p.code}</span>
                   ))}
                 </div>
               )}
@@ -126,7 +120,7 @@ export default function AirportDetail({ icao }: Props) {
           )}
         </div>
 
-        {/* TAF / METAR cards */}
+        {/* TAF / METAR */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <WeatherCard title="CURRENT TAF" isLoading={tafLoading} raw={taf?.rawTaf} />
           <WeatherCard title="CURRENT METAR" isLoading={metarLoading} raw={metar?.rawMetar} />
@@ -141,7 +135,7 @@ export default function AirportDetail({ icao }: Props) {
             <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-20 rounded-lg bg-card animate-pulse border border-border" />)}</div>
           ) : !alerts?.length ? (
             <div className="bg-card border border-border rounded-lg p-10 text-center">
-              <p className="text-muted-foreground font-mono text-sm">NO ALERTS DETECTED FOR {icao}</p>
+              <p className="text-muted-foreground font-mono text-sm">No alerts detected for {icao}</p>
             </div>
           ) : (
             <div className="space-y-2">

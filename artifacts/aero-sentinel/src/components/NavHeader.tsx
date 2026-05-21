@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { useGetAlertsSummary } from "@workspace/api-client-react";
 
 interface Props {
   monitorStatus?: { running: boolean };
@@ -8,6 +9,11 @@ interface Props {
 
 export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
   const [location] = useLocation();
+
+  const { data: summary } = useGetAlertsSummary({
+    query: { refetchInterval: 30_000, refetchIntervalInBackground: true },
+  });
+  const unacknowledgedCount = summary?.unacknowledged ?? 0;
 
   const navItems = [
     { label: "OVERVIEW", href: "/" },
@@ -39,13 +45,18 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`px-3 py-1 rounded text-xs font-mono font-medium tracking-wider transition-colors ${
+                className={`relative px-3 py-1 rounded text-xs font-mono font-medium tracking-wider transition-colors ${
                   isActive(item.href)
                     ? "text-foreground bg-muted"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {item.label}
+                {item.href === "/alerts" && unacknowledgedCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white font-mono">
+                    {unacknowledgedCount > 9 ? "9+" : unacknowledgedCount}
+                  </span>
+                )}
               </Link>
             ))}
           </nav>
@@ -53,7 +64,7 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
           {onToggleTheme && (
             <button
               onClick={onToggleTheme}
-              title={theme === "dark" ? "Açık moda geç" : "Koyu moda geç"}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
               className="w-8 h-8 flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors ml-2"
             >
               {theme === "dark" ? (

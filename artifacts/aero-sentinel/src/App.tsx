@@ -38,29 +38,23 @@ function AppInner() {
         </Switch>
       </WouterRouter>
 
-      {/* Desktop notification banner */}
+      {/* Desktop notification permission banner */}
       {showBanner && (
         <div className="fixed bottom-4 right-4 z-50 bg-card border border-border rounded-lg px-4 py-3 shadow-xl flex items-start gap-3 max-w-xs">
           <div className="w-2 h-2 rounded-full bg-yellow-400 sentinel-pulse flex-shrink-0 mt-1" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-mono text-foreground font-semibold tracking-wider">MASAÜSTÜ BİLDİRİMLERİ</p>
+            <p className="text-xs font-mono text-foreground font-semibold tracking-wider">DESKTOP NOTIFICATIONS</p>
             <p className="text-xs text-muted-foreground font-mono mt-0.5 leading-relaxed">
-              Yeni alert'lerde pop-up almak ister misiniz?
+              Receive pop-up alerts when new weather events are detected?
             </p>
             <div className="flex items-center gap-2 mt-2">
-              <button
-                type="button"
-                onClick={requestPermission}
-                className="text-xs font-mono font-bold px-3 py-1.5 rounded border border-primary text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
-              >
-                İZİN VER
+              <button type="button" onClick={requestPermission}
+                className="text-xs font-mono font-bold px-3 py-1.5 rounded border border-primary text-primary hover:bg-primary hover:text-primary-foreground transition-colors">
+                ALLOW
               </button>
-              <button
-                type="button"
-                onClick={dismiss}
-                className="text-xs font-mono px-2 py-1.5 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Kapat
+              <button type="button" onClick={dismiss}
+                className="text-xs font-mono px-2 py-1.5 text-muted-foreground hover:text-foreground transition-colors">
+                Dismiss
               </button>
             </div>
           </div>
@@ -69,8 +63,10 @@ function AppInner() {
 
       {permission === "denied" && (
         <div className="fixed bottom-4 right-4 z-50 bg-card border border-border rounded-lg px-3 py-2 shadow flex items-center gap-2 text-xs font-mono text-muted-foreground max-w-xs">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-          Bildirimler tarayıcıdan engellendi
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+          </svg>
+          Notifications blocked by browser
           <button onClick={dismiss} className="ml-1 hover:text-foreground">✕</button>
         </div>
       )}
