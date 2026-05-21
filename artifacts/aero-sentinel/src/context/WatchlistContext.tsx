@@ -1,64 +1,91 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useCallback, type ReactNode } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+const WATCHLIST_KEY = ["watchlist"];
+const DEFAULT_ICAO = "LTFH";
+
+interface WatchlistEntry { id: number; icao: string; addedAt: string }
 
 interface WatchlistContextValue {
   watchedIcaos: string[];
+  effectiveIcaos: string[];
   addIcao: (icao: string) => void;
   removeIcao: (icao: string) => void;
   clearWatchlist: () => void;
   isWatching: (icao: string) => boolean;
   hasFilter: boolean;
+  isLoading: boolean;
 }
 
 const WatchlistContext = createContext<WatchlistContextValue | null>(null);
 
-function load(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem("aero-sentinel-watchlist") ?? "[]");
-  } catch {
-    return [];
-  }
-}
-
-function save(list: string[]) {
-  localStorage.setItem("aero-sentinel-watchlist", JSON.stringify(list));
+async function apiFetch(path: string, opts?: RequestInit) {
+  const res = await fetch(path, opts);
+  if (!res.ok) throw new Error(`API ${path} failed: ${res.status}`);
+  return res.json();
 }
 
 export function WatchlistProvider({ children }: { children: ReactNode }) {
-  const [watchedIcaos, setWatchedIcaos] = useState<string[]>(load);
+  const queryClient = useQueryClient();
+
+  const { data: entries = [], isLoading } = useQuery<WatchlistEntry[]>({
+    queryKey: WATCHLIST_KEY,
+    queryFn: () => apiFetch("/api/watchlist"),
+    staleTime: 10_000,
+  });
+
+  const watchedIcaos = entries.map((e) => e.icao);
+  const effectiveIcaos = watchedIcaos.length > 0 ? watchedIcaos : [DEFAULT_ICAO];
+
+  const addMutation = useMutation({
+    mutationFn: (icao: string) =>
+      apiFetch("/api/watchlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ icao }) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: WATCHLIST_KEY }),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (icao: string) =>
+      apiFetch(`/api/watchlist/${icao}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: WATCHLIST_KEY }),
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: () => apiFetch("/api/watchlist/all", { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: WATCHLIST_KEY }),
+  });
 
   const addIcao = useCallback((raw: string) => {
     const icao = raw.trim().toUpperCase();
     if (icao.length < 2) return;
-    setWatchedIcaos((prev) => {
-      if (prev.includes(icao)) return prev;
-      const next = [...prev, icao];
-      save(next);
-      return next;
-    });
-  }, []);
+    addMutation.mutate(icao);
+  }, [addMutation]);
 
   const removeIcao = useCallback((icao: string) => {
-    setWatchedIcaos((prev) => {
-      const next = prev.filter((x) => x !== icao);
-      save(next);
-      return next;
-    });
-  }, []);
+    removeMutation.mutate(icao.toUpperCase());
+  }, [removeMutation]);
 
   const clearWatchlist = useCallback(() => {
-    setWatchedIcaos([]);
-    localStorage.removeItem("aero-sentinel-watchlist");
-  }, []);
+    clearMutation.mutate();
+  }, [clearMutation]);
+
+  const isWatching = useCallback(
+    (icao: string) => effectiveIcaos.includes(icao.toUpperCase()),
+    [effectiveIcaos]
+  );
 
   const hasFilter = watchedIcaos.length > 0;
 
-  const isWatching = useCallback(
-    (icao: string) => !hasFilter || watchedIcaos.includes(icao.toUpperCase()),
-    [watchedIcaos, hasFilter]
-  );
-
   return (
-    <WatchlistContext.Provider value={{ watchedIcaos, addIcao, removeIcao, clearWatchlist, isWatching, hasFilter }}>
+    <WatchlistContext.Provider value={{
+      watchedIcaos,
+      effectiveIcaos,
+      addIcao,
+      removeIcao,
+      clearWatchlist,
+      isWatching,
+      hasFilter,
+      isLoading,
+    }}>
       {children}
     </WatchlistContext.Provider>
   );

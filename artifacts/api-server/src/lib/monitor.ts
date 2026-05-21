@@ -107,3 +107,22 @@ export function getAllWeather(): Array<{ icao: string; rawMetar: string | null; 
     rawTaf: sonGorulenTaf[icao] ?? null,
   }));
 }
+
+export async function fetchWeatherForIcao(icao: string): Promise<{ rawTaf: string | null; rawMetar: string | null }> {
+  const cachedTaf = sonGorulenTaf[icao];
+  const cachedMetar = sonGorulenMetar[icao];
+  if (cachedTaf !== undefined || cachedMetar !== undefined) {
+    return { rawTaf: cachedTaf ?? null, rawMetar: cachedMetar ?? null };
+  }
+  try {
+    const [tafData, metarData] = await Promise.all([
+      fetchJson(`${BASE_URL}/taf?ids=${icao}&format=json`),
+      fetchJson(`${BASE_URL}/metar?ids=${icao}&format=json`),
+    ]);
+    const rawTaf = (tafData as Array<{ rawTAF?: string }>)[0]?.rawTAF ?? null;
+    const rawMetar = (metarData as Array<{ rawOb?: string }>)[0]?.rawOb ?? null;
+    return { rawTaf, rawMetar };
+  } catch {
+    return { rawTaf: null, rawMetar: null };
+  }
+}
