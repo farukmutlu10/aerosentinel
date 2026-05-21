@@ -21,20 +21,18 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
   return (
     <header className="border-b border-border bg-card px-6 py-0">
       <div className="max-w-7xl mx-auto flex items-center justify-between h-14">
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-0 select-none">
-          <span
-            className="font-black text-xl tracking-tight"
-            style={{ color: "#38BDF8", fontFamily: "'Inter', sans-serif", letterSpacing: "-0.02em" }}
-          >
-            AJET
-          </span>
-          <span className="mx-2 text-border font-light text-lg">|</span>
-          <span className="font-bold text-sm tracking-widest text-primary font-mono">AERO-SENTINEL</span>
-          <span className="ml-1.5 text-muted-foreground text-xs font-mono">v1.5</span>
+        <Link href="/" className="flex items-center gap-2.5 select-none">
+          <img
+            src={`${import.meta.env.BASE_URL}ajet-logo.jpeg`}
+            alt="AJET"
+            className="h-8 w-8 rounded-md object-cover flex-shrink-0"
+          />
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-sm tracking-widest text-primary font-mono">AERO-SENTINEL</span>
+            <span className="text-muted-foreground text-xs font-mono">v1.6</span>
+          </div>
         </Link>
 
-        {/* Right side */}
         <div className="flex items-center gap-2">
           <nav className="flex items-center gap-1">
             {navItems.map((item) => (
@@ -52,7 +50,6 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
             ))}
           </nav>
 
-          {/* Theme toggle */}
           {onToggleTheme && (
             <button
               onClick={onToggleTheme}
@@ -62,14 +59,10 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
               {theme === "dark" ? (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="5"/>
-                  <line x1="12" y1="1" x2="12" y2="3"/>
-                  <line x1="12" y1="21" x2="12" y2="23"/>
-                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                  <line x1="1" y1="12" x2="3" y2="12"/>
-                  <line x1="21" y1="12" x2="23" y2="12"/>
-                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                  <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                  <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
                 </svg>
               ) : (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

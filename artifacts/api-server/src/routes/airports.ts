@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, alertsTable } from "@workspace/db";
 import { eq, desc, count, max } from "drizzle-orm";
-import { AIRPORTS, getMonitorState, getCurrentTaf, getCurrentMetar } from "../lib/monitor.js";
+import { AIRPORTS, getMonitorState, getCurrentTaf, getCurrentMetar, getAllWeather } from "../lib/monitor.js";
 
 const router = Router();
 
@@ -30,6 +30,10 @@ router.get("/airports", async (_req, res) => {
   });
 
   return res.json(airports);
+});
+
+router.get("/airports/weather", (_req, res) => {
+  return res.json(getAllWeather());
 });
 
 router.get("/airports/:icao/taf", async (req, res) => {
