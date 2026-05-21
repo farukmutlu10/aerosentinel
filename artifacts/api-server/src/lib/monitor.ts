@@ -99,3 +99,11 @@ export async function getCurrentTaf(icao: string): Promise<string | null> {
 export async function getCurrentMetar(icao: string): Promise<string | null> {
   return sonGorulenMetar[icao] ?? null;
 }
+
+export function getAllWeather(): Array<{ icao: string; rawMetar: string | null; rawTaf: string | null }> {
+  return AIRPORTS.map((icao) => ({
+    icao,
+    rawMetar: sonGorulenMetar[icao] ?? null,
+    rawTaf: sonGorulenTaf[icao] ?? null,
+  }));
+}
