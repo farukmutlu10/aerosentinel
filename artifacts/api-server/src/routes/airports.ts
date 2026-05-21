@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, alertsTable } from "@workspace/db";
 import { eq, desc, count, max } from "drizzle-orm";
-import { AIRPORTS, getMonitorState, getCurrentTaf, getCurrentMetar, getAllWeather } from "../lib/monitor.js";
+import { AIRPORTS, getMonitorState, getCurrentTaf, getCurrentMetar, getAllWeather, fetchWeatherForIcao } from "../lib/monitor.js";
 
 const router = Router();
 
@@ -38,21 +38,25 @@ router.get("/airports/weather", (_req, res) => {
 
 router.get("/airports/:icao/taf", async (req, res) => {
   const icao = req.params.icao?.toUpperCase();
-  if (!AIRPORTS.includes(icao)) return res.status(404).json({ error: "Airport not monitored" });
-
-  const rawTaf = await getCurrentTaf(icao);
-  if (!rawTaf) return res.status(404).json({ error: "No TAF data yet" });
-
+  if (AIRPORTS.includes(icao)) {
+    const rawTaf = await getCurrentTaf(icao);
+    if (!rawTaf) return res.status(404).json({ error: "No TAF data yet" });
+    return res.json({ icao, rawTaf });
+  }
+  const { rawTaf } = await fetchWeatherForIcao(icao);
+  if (!rawTaf) return res.status(404).json({ error: "No TAF data available" });
   return res.json({ icao, rawTaf });
 });
 
 router.get("/airports/:icao/metar", async (req, res) => {
   const icao = req.params.icao?.toUpperCase();
-  if (!AIRPORTS.includes(icao)) return res.status(404).json({ error: "Airport not monitored" });
-
-  const rawMetar = await getCurrentMetar(icao);
-  if (!rawMetar) return res.status(404).json({ error: "No METAR data yet" });
-
+  if (AIRPORTS.includes(icao)) {
+    const rawMetar = await getCurrentMetar(icao);
+    if (!rawMetar) return res.status(404).json({ error: "No METAR data yet" });
+    return res.json({ icao, rawMetar });
+  }
+  const { rawMetar } = await fetchWeatherForIcao(icao);
+  if (!rawMetar) return res.status(404).json({ error: "No METAR data available" });
   return res.json({ icao, rawMetar });
 });
 
