@@ -22,7 +22,11 @@ export function useAlertNotifications() {
   }, []);
 
   const { data: recent } = useGetRecentAlerts({
-    query: { queryKey: getGetRecentAlertsQueryKey(), refetchInterval: 30_000 },
+    query: {
+      queryKey: getGetRecentAlertsQueryKey(),
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: true,
+    },
   });
 
   useEffect(() => {
@@ -40,7 +44,7 @@ export function useAlertNotifications() {
           `AJET AERO-SENTINEL — ${TYPE_LABELS[alert.type] ?? alert.type}`,
           {
             body: `${alert.icao}: ${alert.rawText.slice(0, 120)}`,
-            icon: "/favicon.ico",
+            icon: `${import.meta.env.BASE_URL}ajet-logo.jpeg`,
             tag: `aero-alert-${alert.id}`,
             requireInteraction: true,
           }
@@ -61,10 +65,7 @@ export function useAlertNotifications() {
         setDismissed(false);
       }
     } catch {
-      // Safari fallback
-      Notification.requestPermission((p) => {
-        setPermission(p);
-      });
+      Notification.requestPermission((p) => setPermission(p));
     }
   };
 
