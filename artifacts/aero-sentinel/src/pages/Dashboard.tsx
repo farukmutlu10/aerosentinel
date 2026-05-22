@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -9,6 +9,7 @@ import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { TafText } from "@/components/TafText";
 import { ColoredRawText } from "@/components/ColoredRawText";
+import { ClockCard } from "@/components/ClockDisplay";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
@@ -38,19 +39,9 @@ const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "vfr-first", label: "Best First" },
 ];
 
-function useClockState() {
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  return now;
-}
-
 export default function Dashboard() {
   const { theme, toggleTheme } = useThemeContext();
   const { effectiveIcaos, watchedIcaos } = useWatchlist();
-  const now = useClockState();
 
   const [showMetar, setShowMetar] = usePersistedState<boolean>("as-dash-metar", false);
   const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-dash-cats", ALL_CATS);
@@ -95,11 +86,6 @@ export default function Dashboard() {
     return sorted;
   }, [airports, activeCatsArr, routeFilter, sortMode]);
 
-  const utcTime = now.toLocaleTimeString("en-GB", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const utcDate = now.toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short" });
-  const istTime = now.toLocaleTimeString("en-GB", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const istDate = now.toLocaleDateString("en-GB", { timeZone: "Europe/Istanbul", day: "2-digit", month: "short" });
-
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader monitorStatus={monitor} theme={theme} onToggleTheme={toggleTheme} />
@@ -112,21 +98,7 @@ export default function Dashboard() {
           <StatCard label="TAF REVISIONS" value={summaryLoading ? "—" : String(summary?.tafRevisions ?? 0)} color="amber" />
           <StatCard label="SPECI ALERTS" value={summaryLoading ? "—" : String(summary?.speciAlerts ?? 0)} color="red" />
 
-          {/* Clock card */}
-          <div className="bg-card border border-border rounded-lg px-4 py-3">
-            <div className="flex flex-col gap-1.5">
-              <div className="pb-1.5 border-b border-border/50">
-                <p className="text-[9px] font-mono text-sky-400 uppercase tracking-widest mb-0.5">UTC</p>
-                <p className="text-lg font-bold font-mono text-sky-300 leading-none">{utcTime}</p>
-                <p className="text-[10px] text-sky-400/60 font-mono">{utcDate}</p>
-              </div>
-              <div className="pt-0.5">
-                <p className="text-[9px] font-mono text-amber-400 uppercase tracking-widest mb-0.5">IST (UTC+3)</p>
-                <p className="text-lg font-bold font-mono text-amber-300 leading-none">{istTime}</p>
-                <p className="text-[10px] text-amber-400/60 font-mono">{istDate}</p>
-              </div>
-            </div>
-          </div>
+          <ClockCard />
         </div>
 
         {/* Monitor bar */}
