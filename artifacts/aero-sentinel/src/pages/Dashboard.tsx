@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -13,7 +13,7 @@ import { ClockCard } from "@/components/ClockDisplay";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
-import { parseMetar, FlightCategory, CATEGORY_COLOR, extractTimeSlots, formatTimeSlot } from "@/lib/metarParser";
+import { parseMetar, FlightCategory, CATEGORY_COLOR, extractTimeSlots } from "@/lib/metarParser";
 
 type RouteFilter = "ALL" | "DOM" | "INT";
 type SortMode = "alpha" | "lifr-first" | "vfr-first";
@@ -41,7 +41,7 @@ const SORT_OPTIONS: { value: SortMode; label: string }[] = [
 ];
 
 const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
-  { value: "TAF",  label: "TAF" },
+  { value: "TAF",   label: "TAF" },
   { value: "METAR", label: "METAR" },
   { value: "BOTH",  label: "TAF+METAR" },
 ];
@@ -54,11 +54,25 @@ export default function Dashboard() {
   const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-dash-cats", ALL_CATS);
   const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-dash-route", "ALL");
   const [sortMode, setSortMode] = usePersistedState<SortMode>("as-dash-sort", "alpha");
-  const [timeSlotFilter, setTimeSlotFilter] = usePersistedState<string>("as-dash-time", "ALL");
+  const [timeFilter, setTimeFilter] = usePersistedState<string>("as-dash-time", "ALL");
+  const [timeOpen, setTimeOpen] = useState(false);
+  const timeRef = useRef<HTMLDivElement>(null);
 
   const activeCats = new Set<FlightCategory>(activeCatsArr as FlightCategory[]);
   const toggleCat = (c: FlightCategory) =>
     setActiveCatsArr((p) => p.includes(c) ? p.filter((x) => x !== c) : [...p, c]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!timeOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (timeRef.current && !timeRef.current.contains(e.target as Node)) {
+        setTimeOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [timeOpen]);
 
   const { data: summary, isLoading: summaryLoading } = useGetAlertsSummary({
     query: { queryKey: getGetAlertsSummaryQueryKey(), refetchInterval: 30_000 },
@@ -73,25 +87,34 @@ export default function Dashboard() {
     return weatherData.map((w) => ({ ...w, parsed: w.rawMetar ? parseMetar(w.rawMetar) : null }));
   }, [weatherData]);
 
-  // Collect all unique time slots across all airport reports
+  // Extract time slots based on active view: TAF→rawTaf, METAR→rawMetar, BOTH→rawTaf
   const allTimeSlots = useMemo(() => {
     const slots = new Set<string>();
     for (const a of airports) {
-      if (a.rawMetar) extractTimeSlots(a.rawMetar).forEach((s) => slots.add(s));
-      if (a.rawTaf) extractTimeSlots(a.rawTaf).forEach((s) => slots.add(s));
+      const raw = view === "METAR" ? (a.rawMetar ?? "") : (a.rawTaf ?? "");
+      extractTimeSlots(raw).forEach((s) => slots.add(s));
     }
-    return [...slots].sort();
-  }, [airports]);
+    // Sort descending (newest first: higher day+hour string sorts last with simple compare,
+    // but DDHHMM lexicographic — reverse so newest at top)
+    return [...slots].sort().reverse();
+  }, [airports, view]);
+
+  // If stored filter is stale (not in current slots), reset it
+  useEffect(() => {
+    if (timeFilter !== "ALL" && allTimeSlots.length > 0 && !allTimeSlots.includes(timeFilter)) {
+      setTimeFilter("ALL");
+    }
+  }, [allTimeSlots, timeFilter]);
 
   const displayed = useMemo(() => {
     let list = airports;
     list = list.filter((a) => activeCats.has(a.parsed?.flightCategory ?? FlightCategory.VFR));
     if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
     else if (routeFilter === "INT") list = list.filter((a) => !a.icao.startsWith("LT"));
-    if (timeSlotFilter !== "ALL") {
+    if (timeFilter !== "ALL") {
       list = list.filter((a) => {
-        const raw = (a.rawMetar ?? "") + " " + (a.rawTaf ?? "");
-        return extractTimeSlots(raw).includes(timeSlotFilter);
+        const raw = view === "METAR" ? (a.rawMetar ?? "") : (a.rawTaf ?? "");
+        return extractTimeSlots(raw).includes(timeFilter);
       });
     }
     const sorted = [...list];
@@ -108,7 +131,9 @@ export default function Dashboard() {
       });
     }
     return sorted;
-  }, [airports, activeCatsArr, routeFilter, sortMode, timeSlotFilter]);
+  }, [airports, activeCatsArr, routeFilter, sortMode, timeFilter, view]);
+
+  const timeActive = timeFilter !== "ALL";
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -145,8 +170,8 @@ export default function Dashboard() {
 
         {/* Airport Weather Section */}
         <section>
-          {/* Filter row 1: category / route / sort / view */}
-          <div className="flex flex-wrap items-center gap-2 mb-2">
+          {/* Filter row */}
+          <div className="flex flex-wrap items-center gap-2 mb-3">
             {/* Category */}
             <div className="flex items-center gap-1">
               {ALL_CATS.map((cat) => (
@@ -162,6 +187,7 @@ export default function Dashboard() {
               ))}
             </div>
             <span className="text-border text-xs font-mono">|</span>
+
             {/* DOM/INT */}
             <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
               {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
@@ -172,6 +198,7 @@ export default function Dashboard() {
               ))}
             </div>
             <span className="text-border text-xs font-mono">|</span>
+
             {/* Sort */}
             <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
               {SORT_OPTIONS.map((s) => (
@@ -182,40 +209,64 @@ export default function Dashboard() {
               ))}
             </div>
             <span className="text-border text-xs font-mono">|</span>
+
             {/* View: TAF / METAR / BOTH */}
             <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
               {VIEW_OPTIONS.map((v) => (
-                <button key={v.value} onClick={() => setView(v.value)}
+                <button key={v.value} onClick={() => { setView(v.value); setTimeFilter("ALL"); }}
                   className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors ${view === v.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                   {v.label}
                 </button>
               ))}
             </div>
+            <span className="text-border text-xs font-mono">|</span>
+
+            {/* TIME dropdown button */}
+            {!weatherLoading && allTimeSlots.length > 0 && (
+              <div className="relative" ref={timeRef}>
+                <button
+                  onClick={() => setTimeOpen((o) => !o)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-medium border transition-colors ${
+                    timeActive
+                      ? "border-primary text-primary bg-primary/10"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  TIME
+                  {timeActive && (
+                    <span className="font-mono tabular-nums">{timeFilter}</span>
+                  )}
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                    className={`transition-transform ${timeOpen ? "rotate-180" : ""}`}>
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+
+                {timeOpen && (
+                  <div className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-lg min-w-[140px] overflow-hidden">
+                    <button
+                      onClick={() => { setTimeFilter("ALL"); setTimeOpen(false); }}
+                      className={`w-full text-left px-3 py-2 text-xs font-mono transition-colors ${timeFilter === "ALL" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
+                      ALL
+                    </button>
+                    {allTimeSlots.map((slot) => (
+                      <button key={slot}
+                        onClick={() => { setTimeFilter(slot); setTimeOpen(false); }}
+                        className={`w-full text-left px-3 py-2 text-xs font-mono tabular-nums transition-colors ${timeFilter === slot ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
+                        {slot}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <span className="text-muted-foreground text-xs font-mono ml-auto">
               {weatherLoading ? "loading..." : `${displayed.length} airports`}
             </span>
           </div>
-
-          {/* Filter row 2: time slots (only when data available) */}
-          {!weatherLoading && allTimeSlots.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">OBS</span>
-              <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
-                <button
-                  onClick={() => setTimeSlotFilter("ALL")}
-                  className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors ${timeSlotFilter === "ALL" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-                  ALL
-                </button>
-                {allTimeSlots.map((slot) => (
-                  <button key={slot}
-                    onClick={() => setTimeSlotFilter(timeSlotFilter === slot ? "ALL" : slot)}
-                    className={`px-2.5 py-1 rounded text-xs font-mono tabular-nums transition-colors ${timeSlotFilter === slot ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-                    {formatTimeSlot(slot)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {weatherLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
