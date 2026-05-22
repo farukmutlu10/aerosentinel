@@ -31,12 +31,25 @@ const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "icao-az", label: "ICAO A–Z" },
 ];
 
+const DEFAULT_TYPE = undefined;
+const DEFAULT_ROUTE: RouteFilter = "ALL";
+const DEFAULT_SORT: SortMode = "newest";
+const DEFAULT_HIDE_ACK = false;
+
 export default function Alerts() {
-  const [typeFilter, setTypeFilter] = usePersistedState<AlertType | undefined>("as-alerts-type", undefined);
-  const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-alerts-route", "ALL");
-  const [sortMode, setSortMode] = usePersistedState<SortMode>("as-alerts-sort", "newest");
-  const [hideAcknowledged, setHideAcknowledged] = usePersistedState<boolean>("as-alerts-hide-ack", false);
+  const [typeFilter, setTypeFilter] = usePersistedState<AlertType | undefined>("as-alerts-type", DEFAULT_TYPE);
+  const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-alerts-route", DEFAULT_ROUTE);
+  const [sortMode, setSortMode] = usePersistedState<SortMode>("as-alerts-sort", DEFAULT_SORT);
+  const [hideAcknowledged, setHideAcknowledged] = usePersistedState<boolean>("as-alerts-hide-ack", DEFAULT_HIDE_ACK);
   const [ackingAll, setAckingAll] = useState(false);
+
+  const isFiltered = typeFilter !== DEFAULT_TYPE || routeFilter !== DEFAULT_ROUTE || sortMode !== DEFAULT_SORT || hideAcknowledged !== DEFAULT_HIDE_ACK;
+  const resetFilters = () => {
+    setTypeFilter(DEFAULT_TYPE);
+    setRouteFilter(DEFAULT_ROUTE);
+    setSortMode(DEFAULT_SORT);
+    setHideAcknowledged(DEFAULT_HIDE_ACK);
+  };
 
   const queryClient = useQueryClient();
   const { isWatching, hasFilter } = useWatchlist();
@@ -138,6 +151,16 @@ export default function Alerts() {
             <Link href="/airports" className="text-xs text-sky-400 font-mono border border-sky-400/30 px-2 py-1.5 rounded hover:border-sky-400/60 transition-colors">
               Watchlist Active
             </Link>
+          )}
+
+          {isFiltered && (
+            <button onClick={resetFilters} title="Reset all filters"
+              className="flex items-center gap-1 px-2 py-1.5 rounded text-xs font-mono text-muted-foreground hover:text-destructive border border-border hover:border-destructive/50 transition-colors">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+              </svg>
+              Reset
+            </button>
           )}
 
           {/* ACK ALL */}

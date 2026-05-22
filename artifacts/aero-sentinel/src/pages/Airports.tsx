@@ -33,6 +33,10 @@ const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "vfr-first", label: "Best First" },
 ];
 
+const DEFAULT_AIRPORT_CATS = ALL_CATS as string[];
+const DEFAULT_AIRPORT_ROUTE: RouteFilter = "ALL";
+const DEFAULT_AIRPORT_SORT: SortMode = "alpha";
+
 export default function Airports() {
   const { watchedIcaos, effectiveIcaos, addIcao, removeIcao, clearWatchlist, hasFilter } = useWatchlist();
   const { theme, toggleTheme } = useThemeContext();
@@ -40,9 +44,16 @@ export default function Airports() {
   const inputRef = useRef<HTMLInputElement>(null);
   const { data: weatherData, isLoading: weatherLoading } = useWatchlistWeather(effectiveIcaos);
 
-  const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-airports-cats", ALL_CATS);
-  const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-airports-route", "ALL");
-  const [sortMode, setSortMode] = usePersistedState<SortMode>("as-airports-sort", "alpha");
+  const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-airports-cats", DEFAULT_AIRPORT_CATS);
+  const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-airports-route", DEFAULT_AIRPORT_ROUTE);
+  const [sortMode, setSortMode] = usePersistedState<SortMode>("as-airports-sort", DEFAULT_AIRPORT_SORT);
+
+  const isFiltered = activeCatsArr.length !== DEFAULT_AIRPORT_CATS.length || routeFilter !== DEFAULT_AIRPORT_ROUTE || sortMode !== DEFAULT_AIRPORT_SORT;
+  const resetFilters = () => {
+    setActiveCatsArr(DEFAULT_AIRPORT_CATS);
+    setRouteFilter(DEFAULT_AIRPORT_ROUTE);
+    setSortMode(DEFAULT_AIRPORT_SORT);
+  };
 
   const activeCats = new Set<FlightCategory>(activeCatsArr as FlightCategory[]);
   const toggleCat = (c: FlightCategory) =>
@@ -185,6 +196,16 @@ export default function Airports() {
               </button>
             ))}
           </div>
+          {isFiltered && (
+            <button onClick={resetFilters} title="Reset all filters"
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-mono text-muted-foreground hover:text-destructive border border-border hover:border-destructive/50 transition-colors">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+              </svg>
+              Reset
+            </button>
+          )}
+
           <span className="text-muted-foreground text-xs font-mono ml-auto">
             {weatherLoading ? "loading..." : `${displayed.length} airports`}
           </span>

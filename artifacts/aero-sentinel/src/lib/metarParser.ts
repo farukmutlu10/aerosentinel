@@ -226,7 +226,7 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
       color = "#38BDF8"; bold = true;
     } else if (nonSpaceIdx <= 2 && /^[A-Z]{4}$/.test(t) && !/^(AUTO|CORR|NOSIG|BECMG|TEMPO|INTER|PROB)$/.test(t)) {
       color = "#38BDF8"; bold = true; title = `Station: ${t}`;
-    } else if (/^\d{6}Z$/.test(t) || /^\d{4}\/\d{4}$/.test(t) || /^\d{4}Z?$/.test(t) && t.length <= 5 && nonSpaceIdx <= 4) {
+    } else if (/^\d{6}Z$/.test(t) || /^\d{4}\/\d{4}$/.test(t)) {
       color = "#64748b"; title = "Time";
     } else if (/^(VRB|\d{3})\d{2,3}(G\d{2,3})?KT$/.test(t)) {
       const spd = parseInt(t.match(/(?:VRB|\d{3})(\d{2,3})/)?.[1] ?? "0");
