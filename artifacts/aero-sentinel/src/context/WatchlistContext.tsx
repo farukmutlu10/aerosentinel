@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import { normalizeIcao } from "@/lib/icaoUtils";
 
 const DEFAULT_ICAO = "LTFH";
@@ -20,13 +20,29 @@ function saveLocal(icaos: string[]) {
   try { localStorage.setItem(LS_KEY, JSON.stringify(icaos)); } catch {}
 }
 
-// Notify backend to add airport to the monitored pool (fire-and-forget)
-function notifyBackendAdd(icao: string) {
+// On mount: replace backend list with this browser's localStorage list
+function syncToBackend(icaos: string[]) {
+  void fetch("/api/watchlist/sync", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ icaos }),
+  }).catch(() => {});
+}
+
+function apiAdd(icao: string) {
   void fetch("/api/watchlist", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ icao }),
   }).catch(() => {});
+}
+
+function apiRemove(icao: string) {
+  void fetch(`/api/watchlist/${icao}`, { method: "DELETE" }).catch(() => {});
+}
+
+function apiClear() {
+  void fetch("/api/watchlist", { method: "DELETE" }).catch(() => {});
 }
 
 interface WatchlistContextValue {
@@ -45,6 +61,11 @@ const WatchlistContext = createContext<WatchlistContextValue | null>(null);
 export function WatchlistProvider({ children }: { children: ReactNode }) {
   const [watchedIcaos, setWatchedIcaos] = useState<string[]>(loadLocal);
 
+  // On mount: push this browser's list to backend as source of truth
+  useEffect(() => {
+    syncToBackend(loadLocal());
+  }, []);
+
   const addIcao = useCallback((raw: string) => {
     const icao = normalizeIcao(raw);
     if (icao.length !== 4) return;
@@ -52,7 +73,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       if (prev.includes(icao)) return prev;
       const next = [...prev, icao];
       saveLocal(next);
-      notifyBackendAdd(icao); // add to monitoring pool
+      apiAdd(icao);
       return next;
     });
   }, []);
@@ -62,7 +83,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     setWatchedIcaos((prev) => {
       const next = prev.filter((c) => c !== up);
       saveLocal(next);
-      // do NOT remove from backend — other browsers may still have it
+      apiRemove(up);
       return next;
     });
   }, []);
@@ -70,7 +91,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
   const clearWatchlist = useCallback(() => {
     setWatchedIcaos([]);
     saveLocal([]);
-    // do NOT clear backend — shared monitoring pool
+    apiClear();
   }, []);
 
   const effectiveIcaos = watchedIcaos.length > 0 ? watchedIcaos : [DEFAULT_ICAO];

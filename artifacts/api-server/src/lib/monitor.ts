@@ -111,6 +111,10 @@ export function getAirports(): string[] {
   return cachedIcaos;
 }
 
+export function updateCachedIcaos(icaos: string[]) {
+  cachedIcaos = icaos;
+}
+
 export async function getCurrentTaf(icao: string): Promise<string | null> {
   return sonGorulenTaf[icao] ?? null;
 }

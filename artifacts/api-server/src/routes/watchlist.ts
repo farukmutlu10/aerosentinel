@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, watchlistTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { fetchWeatherForIcao } from "../lib/monitor.js";
+import { fetchWeatherForIcao, updateCachedIcaos } from "../lib/monitor.js";
 
 const router = Router();
 
@@ -22,6 +22,20 @@ router.post("/watchlist", async (req, res) => {
 router.delete("/watchlist", async (_req, res) => {
   await db.delete(watchlistTable);
   return res.json({ ok: true });
+});
+
+// Replace entire watchlist with the given list (browser sync on mount)
+router.put("/watchlist/sync", async (req, res) => {
+  const raw = req.body?.icaos;
+  const icaos: string[] = Array.isArray(raw)
+    ? raw.map((s: unknown) => String(s).trim().toUpperCase()).filter((s) => s.length >= 2 && s.length <= 6)
+    : [];
+  await db.delete(watchlistTable);
+  if (icaos.length > 0) {
+    await db.insert(watchlistTable).values(icaos.map((icao) => ({ icao }))).onConflictDoNothing();
+  }
+  updateCachedIcaos(icaos.length > 0 ? icaos : ["LTFH"]);
+  return res.json({ ok: true, icaos });
 });
 
 router.delete("/watchlist/:icao", async (req, res) => {
