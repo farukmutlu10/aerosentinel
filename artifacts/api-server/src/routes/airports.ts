@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { db, alertsTable } from "@workspace/db";
-import { eq, desc, count, max } from "drizzle-orm";
-import { AIRPORTS, getMonitorState, getCurrentTaf, getCurrentMetar, getAllWeather, fetchWeatherForIcao } from "../lib/monitor.js";
+import { count, max } from "drizzle-orm";
+import { getAirports, getMonitorState, getCurrentTaf, getCurrentMetar, getAllWeather, fetchWeatherForIcao } from "../lib/monitor.js";
 
 const router = Router();
 
 router.get("/airports", async (_req, res) => {
+  const airports = getAirports();
   const alertCounts = await db
     .select({
       icao: alertsTable.icao,
@@ -17,19 +18,17 @@ router.get("/airports", async (_req, res) => {
 
   const countMap = new Map(alertCounts.map((r) => [r.icao, r]));
 
-  const airports = AIRPORTS.map((icao) => {
+  const result = airports.map((icao) => {
     const row = countMap.get(icao);
     const alertCount = row ? Number(row.alertCount) : 0;
     const lastAlert = row?.lastAlert ?? null;
-
     let status: "normal" | "warning" | "critical" = "normal";
     if (alertCount >= 3) status = "critical";
     else if (alertCount >= 1) status = "warning";
-
     return { icao, alertCount, lastAlert, status };
   });
 
-  return res.json(airports);
+  return res.json(result);
 });
 
 router.get("/airports/weather", (_req, res) => {
@@ -38,7 +37,7 @@ router.get("/airports/weather", (_req, res) => {
 
 router.get("/airports/:icao/taf", async (req, res) => {
   const icao = req.params.icao?.toUpperCase();
-  if (AIRPORTS.includes(icao)) {
+  if (getAirports().includes(icao)) {
     const rawTaf = await getCurrentTaf(icao);
     if (!rawTaf) return res.status(404).json({ error: "No TAF data yet" });
     return res.json({ icao, rawTaf });
@@ -50,7 +49,7 @@ router.get("/airports/:icao/taf", async (req, res) => {
 
 router.get("/airports/:icao/metar", async (req, res) => {
   const icao = req.params.icao?.toUpperCase();
-  if (AIRPORTS.includes(icao)) {
+  if (getAirports().includes(icao)) {
     const rawMetar = await getCurrentMetar(icao);
     if (!rawMetar) return res.status(404).json({ error: "No METAR data yet" });
     return res.json({ icao, rawMetar });

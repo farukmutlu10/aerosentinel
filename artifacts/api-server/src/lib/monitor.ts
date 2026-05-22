@@ -1,10 +1,6 @@
-import { db, alertsTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { db, alertsTable, watchlistTable } from "@workspace/db";
 
-const MEYDANLAR =
-  "LTFJ,LTAC,HCMM,LTBJ,LTAU,LTAJ,LTAI,LTCG,LTCB,LTCE,LTCI,ORER,OSAP,LTFO,LTCR,OLBA,LTCC,LCEN,LTBS,LTDB,LTCN,LTCV,LTCO,LTFE,LTAZ,LTCS,LTCF,LKPR,LTCP,LTFH,EBBR,LFPG,EGSS,EHAM,EDDV,EKCH,EDDB,LIRF,EDDL,LIME,LSGG,EDDM,EDDF,LOWW,EDDS,UBBB,LTFM,LTCT,LQSA,LTBR,LTCK,LTCD,LTCA,LTDA,LTAW,LTCJ,LTBH,UUWW,ULLI,HECA,EDDK,UGTB,OEJN,OEMA,HESH,LTAT,HEGN,UCFM,UACC,UTTT,LTAN,LSZH,ESSA,EDDH,LYBE,OSDI,LTAR,LTAY,OERK,LATI,EHRD,LFLL,LTFG,LWSK,UAAA,ORBI,BKPR,LEBL,LHBP,DAAG,LROP,LEMD,LQTZ,HDAM,LTBA";
-
-export const AIRPORTS = MEYDANLAR.split(",");
+let cachedIcaos: string[] = [];
 
 const sonGorulenTaf: Record<string, string> = {};
 const sonGorulenMetar: Record<string, string> = {};
@@ -23,42 +19,56 @@ async function fetchJson(url: string): Promise<unknown[]> {
   return (await res.json()) as unknown[];
 }
 
-async function scanTaf() {
-  const data = await fetchJson(`${BASE_URL}/taf?ids=${MEYDANLAR}&format=json`);
+async function refreshIcaoCache(): Promise<string[]> {
+  const rows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
+  if (rows.length === 0) {
+    // Watchlist is empty — seed default and return it
+    await db.insert(watchlistTable).values({ icao: "LTFH" }).onConflictDoNothing();
+    cachedIcaos = ["LTFH"];
+  } else {
+    cachedIcaos = rows.map((r) => r.icao);
+  }
+  return cachedIcaos;
+}
+
+async function seedIfEmpty() {
+  const rows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
+  if (rows.length === 0) {
+    await db.insert(watchlistTable).values({ icao: "LTFH" }).onConflictDoNothing();
+    cachedIcaos = ["LTFH"];
+  } else {
+    cachedIcaos = rows.map((r) => r.icao);
+  }
+}
+
+async function scanTaf(ids: string) {
+  if (!ids) return;
+  const data = await fetchJson(`${BASE_URL}/taf?ids=${ids}&format=json`);
   for (const entry of data as Array<{ icaoId?: string; rawTAF?: string }>) {
     const icao = entry.icaoId;
     const rawTaf = entry.rawTAF ?? "";
     if (!icao) continue;
-
     if (sonGorulenTaf[icao] !== rawTaf) {
       sonGorulenTaf[icao] = rawTaf;
       if (rawTaf.includes("AMD") || rawTaf.includes("COR")) {
         const alertType = rawTaf.includes("AMD") ? "TAF_AMD" : "TAF_COR";
-        await db.insert(alertsTable).values({
-          type: alertType,
-          icao,
-          rawText: rawTaf,
-        });
+        await db.insert(alertsTable).values({ type: alertType, icao, rawText: rawTaf });
       }
     }
   }
 }
 
-async function scanMetar() {
-  const data = await fetchJson(`${BASE_URL}/metar?ids=${MEYDANLAR}&format=json`);
+async function scanMetar(ids: string) {
+  if (!ids) return;
+  const data = await fetchJson(`${BASE_URL}/metar?ids=${ids}&format=json`);
   for (const entry of data as Array<{ icaoId?: string; rawOb?: string }>) {
     const icao = entry.icaoId;
     const rawMetar = entry.rawOb ?? "";
     if (!icao) continue;
-
     if (sonGorulenMetar[icao] !== rawMetar) {
       sonGorulenMetar[icao] = rawMetar;
       if (rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ")) {
-        await db.insert(alertsTable).values({
-          type: "SPECI",
-          icao,
-          rawText: rawMetar,
-        });
+        await db.insert(alertsTable).values({ type: "SPECI", icao, rawText: rawMetar });
       }
     }
   }
@@ -66,7 +76,9 @@ async function scanMetar() {
 
 async function sentinelRadar() {
   try {
-    await Promise.all([scanTaf(), scanMetar()]);
+    const icaos = await refreshIcaoCache();
+    const ids = icaos.join(",");
+    await Promise.all([scanTaf(ids), scanMetar(ids)]);
   } catch (err) {
     console.error("Scan error:", err);
   } finally {
@@ -78,9 +90,12 @@ async function sentinelRadar() {
 export function startMonitor() {
   if (running) return;
   running = true;
-  console.log("AERO-SENTINEL monitor started — scanning every 60s");
-  sentinelRadar();
-  intervalHandle = setInterval(sentinelRadar, 60_000);
+  void (async () => {
+    await seedIfEmpty();
+    console.log(`AERO-SENTINEL monitor started — watching ${cachedIcaos.length} airports`);
+    await sentinelRadar();
+    intervalHandle = setInterval(sentinelRadar, 60_000);
+  })();
 }
 
 export function stopMonitor() {
@@ -89,7 +104,11 @@ export function stopMonitor() {
 }
 
 export function getMonitorState() {
-  return { running, scanCount, lastScan, monitoredAirports: AIRPORTS.length };
+  return { running, scanCount, lastScan, monitoredAirports: cachedIcaos.length };
+}
+
+export function getAirports(): string[] {
+  return cachedIcaos;
 }
 
 export async function getCurrentTaf(icao: string): Promise<string | null> {
@@ -101,7 +120,7 @@ export async function getCurrentMetar(icao: string): Promise<string | null> {
 }
 
 export function getAllWeather(): Array<{ icao: string; rawMetar: string | null; rawTaf: string | null }> {
-  return AIRPORTS.map((icao) => ({
+  return cachedIcaos.map((icao) => ({
     icao,
     rawMetar: sonGorulenMetar[icao] ?? null,
     rawTaf: sonGorulenTaf[icao] ?? null,
