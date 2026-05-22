@@ -276,6 +276,41 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
   return tokens;
 }
 
+// ── TAF worst-case category ───────────────────────────────────────────────────
+
+/** Scan all groups in a raw TAF and return the worst FlightCategory found */
+export function parseTafWorstCategory(rawTaf: string | null): FlightCategory | null {
+  if (!rawTaf) return null;
+  const order = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
+  let worst: FlightCategory = FlightCategory.VFR;
+
+  const tokens = rawTaf.split(/\s+/);
+  for (const token of tokens) {
+    // Visibility: bare 4-digit meter value (not a validity period DDHH/DDHH which contains /)
+    if (/^\d{4}$/.test(token)) {
+      const v = parseInt(token);
+      let cat: FlightCategory;
+      if (v < 1500)       cat = FlightCategory.LIFR;
+      else if (v <= 4999) cat = FlightCategory.IFR;
+      else if (v <= 8000) cat = FlightCategory.MVFR;
+      else                cat = FlightCategory.VFR;
+      if (order.indexOf(cat) > order.indexOf(worst)) worst = cat;
+    }
+    // Ceiling: BKN or OVC + 3-digit height in hundreds of feet
+    const ceilMatch = token.match(/^(?:BKN|OVC)(\d{3})$/);
+    if (ceilMatch) {
+      const c = parseInt(ceilMatch[1]) * 100;
+      let cat: FlightCategory;
+      if (c < 500)        cat = FlightCategory.LIFR;
+      else if (c < 1000)  cat = FlightCategory.IFR;
+      else if (c <= 3000) cat = FlightCategory.MVFR;
+      else                cat = FlightCategory.VFR;
+      if (order.indexOf(cat) > order.indexOf(worst)) worst = cat;
+    }
+  }
+  return worst;
+}
+
 // ── Time slot extraction ──────────────────────────────────────────────────────
 
 /** Extract unique full raw timestamps (e.g. "221940Z") from a raw METAR/TAF string */
