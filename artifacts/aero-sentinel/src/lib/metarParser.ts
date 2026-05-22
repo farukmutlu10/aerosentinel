@@ -186,10 +186,11 @@ export interface DisplayToken {
 }
 
 // Only color IFR (red) and LIFR (purple) — VFR/MVFR visibility stays neutral
+// Thresholds match categorizeFlight(): LIFR <1500m, IFR 1500–4999m, MVFR/VFR ≥5000m
 function visColor(m?: number): string {
   if (!m) return "";
-  if (m >= 1500) return "";       // VFR or MVFR — no highlight
-  if (m >= 800)  return "#ef4444"; // IFR
+  if (m >= 5000) return "";        // MVFR or VFR — no highlight
+  if (m >= 1500) return "#ef4444"; // IFR
   return "#a855f7";                // LIFR
 }
 
