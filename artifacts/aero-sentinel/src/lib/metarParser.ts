@@ -185,20 +185,19 @@ export interface DisplayToken {
   title?: string;
 }
 
+// Only color IFR (red) and LIFR (purple) — VFR/MVFR visibility stays neutral
 function visColor(m?: number): string {
   if (!m) return "";
-  if (m >= 9999) return "#22c55e";
-  if (m >= 8001) return "#22c55e";
-  if (m >= 5000) return "#3b82f6";
-  if (m >= 1500) return "#ef4444";
-  return "#a855f7";
+  if (m >= 1500) return "";       // VFR or MVFR — no highlight
+  if (m >= 800)  return "#ef4444"; // IFR
+  return "#a855f7";                // LIFR
 }
 
+// Only color IFR (red) and LIFR (purple) ceilings — higher stays neutral
 function ceilColor(ft: number): string {
-  if (ft > 3000) return "#22c55e";
-  if (ft >= 1000) return "#3b82f6";
-  if (ft >= 500)  return "#ef4444";
-  return "#a855f7";
+  if (ft >= 1000) return "";      // VFR or MVFR — no highlight
+  if (ft >= 500)  return "#ef4444"; // IFR
+  return "#a855f7";                // LIFR
 }
 
 function wxColor(code: string): string {
@@ -232,16 +231,22 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
       const spd = parseInt(t.match(/(?:VRB|\d{3})(\d{2,3})/)?.[1] ?? "0");
       const gst = parseInt(t.match(/G(\d{2,3})/)?.[1] ?? "0");
       const max = Math.max(spd, gst);
-      color = max >= 35 ? "#ef4444" : max >= 25 ? "#f97316" : max >= 16 ? "#eab308" : "#22c55e";
-      title = `Wind: ${max >= 35 ? "Extreme" : max >= 25 ? "Strong" : max >= 16 ? "Moderate" : "Light"}`;
+      // Only highlight moderate+ winds — light winds stay neutral
+      color = max >= 35 ? "#ef4444" : max >= 25 ? "#f97316" : max >= 16 ? "#eab308" : undefined;
+      if (max >= 16) title = `Wind: ${max >= 35 ? "Extreme" : max >= 25 ? "Strong" : "Moderate"}`;
     } else if (/^(CAVOK|NSC|NCD|SKC|CLR)$/.test(t)) {
-      color = "#22c55e"; bold = true; title = t === "CAVOK" ? "Ceiling And Visibility OK" : "No Significant Clouds";
+      // Neutral — good conditions, no highlight needed
+      color = "#64748b"; title = t === "CAVOK" ? "Ceiling And Visibility OK" : "No Significant Clouds";
     } else if (/^\d{4}$/.test(t) && parseInt(t) <= 9999) {
       const vis = parseInt(t);
-      color = visColor(vis); title = `Visibility: ${vis}m`;
+      const c = visColor(vis);
+      if (c) color = c;
+      title = `Visibility: ${vis}m`;
     } else if (/^(BKN|OVC|VV)\d{3}/.test(t)) {
       const ft = parseInt(t.slice(t.startsWith("VV") ? 2 : 3)) * 100;
-      color = ceilColor(ft); title = `Ceiling: ${ft}ft`;
+      const c = ceilColor(ft);
+      if (c) color = c;
+      title = `Ceiling: ${ft}ft`;
     } else if (/^(FEW|SCT)\d{3}/.test(t)) {
       color = "#94a3b8"; title = `Cloud layer: ${parseInt(t.slice(3)) * 100}ft`;
     } else if (/^M?\d{2}\/M?\d{2}$/.test(t)) {
@@ -251,7 +256,7 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
     } else if (/^(BECMG|TEMPO|INTER|PROB\d{2})$/.test(t) || /^FM\d{6}$/.test(t) || /^AT\d{4}$/.test(t) || /^TL\d{4}$/.test(t)) {
       color = "#f59e0b"; bold = true; title = "TAF change group";
     } else if (t === "NOSIG") {
-      color = "#22c55e"; bold = true; title = "No Significant Change";
+      color = "#64748b"; title = "No Significant Change";
     } else if (/^(RMK|TEMPO|TX|TN)/.test(t)) {
       color = "#64748b";
     } else {
@@ -268,4 +273,20 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
   }
 
   return tokens;
+}
+
+// ── Time slot extraction ──────────────────────────────────────────────────────
+
+/** Extract unique "DDHH" time slots (e.g. "2219") from a raw METAR/TAF string */
+export function extractTimeSlots(raw: string): string[] {
+  const slots = new Set<string>();
+  for (const m of raw.matchAll(/\b(\d{2})(\d{2})\d{2}Z\b/g)) {
+    slots.add(m[1] + m[2]); // e.g. "2219"
+  }
+  return [...slots];
+}
+
+/** Format a DDHH slot for display, e.g. "2219" → "22/19Z" */
+export function formatTimeSlot(slot: string): string {
+  return `${slot.slice(0, 2)}/${slot.slice(2)}Z`;
 }
