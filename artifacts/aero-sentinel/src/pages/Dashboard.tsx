@@ -20,6 +20,11 @@ type SortMode = "alpha" | "lifr-first" | "vfr-first";
 type ViewMode = "TAF" | "METAR" | "BOTH";
 const ALL_CATS = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
 
+const DEFAULT_CATS = ALL_CATS as string[];
+const DEFAULT_VIEW: ViewMode = "TAF";
+const DEFAULT_ROUTE: RouteFilter = "ALL";
+const DEFAULT_SORT: SortMode = "alpha";
+
 interface WeatherItem { icao: string; rawTaf: string | null; rawMetar: string | null }
 
 function useWatchlistWeather(icaos: string[]) {
@@ -50,17 +55,20 @@ export default function Dashboard() {
   const { theme, toggleTheme } = useThemeContext();
   const { effectiveIcaos, watchedIcaos } = useWatchlist();
 
-  const [view, setView] = usePersistedState<ViewMode>("as-dash-view", "TAF");
-  const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-dash-cats", ALL_CATS);
-  const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-dash-route", "ALL");
-  const [sortMode, setSortMode] = usePersistedState<SortMode>("as-dash-sort", "alpha");
-  const [timeFilter, setTimeFilter] = usePersistedState<string>("as-dash-time", "ALL");
+  const [view, setView] = usePersistedState<ViewMode>("as-dash-view", DEFAULT_VIEW);
+  const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-dash-cats", DEFAULT_CATS);
+  const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-dash-route", DEFAULT_ROUTE);
+  const [sortMode, setSortMode] = usePersistedState<SortMode>("as-dash-sort", DEFAULT_SORT);
+  const [timeFilters, setTimeFilters] = usePersistedState<string[]>("as-dash-time-multi", []);
   const [timeOpen, setTimeOpen] = useState(false);
   const timeRef = useRef<HTMLDivElement>(null);
 
   const activeCats = new Set<FlightCategory>(activeCatsArr as FlightCategory[]);
   const toggleCat = (c: FlightCategory) =>
     setActiveCatsArr((p) => p.includes(c) ? p.filter((x) => x !== c) : [...p, c]);
+
+  const toggleTimeSlot = (slot: string) =>
+    setTimeFilters((p) => p.includes(slot) ? p.filter((s) => s !== slot) : [...p, slot]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -94,27 +102,42 @@ export default function Dashboard() {
       const raw = view === "METAR" ? (a.rawMetar ?? "") : (a.rawTaf ?? "");
       extractTimeSlots(raw).forEach((s) => slots.add(s));
     }
-    // Sort descending (newest first: higher day+hour string sorts last with simple compare,
-    // but DDHHMM lexicographic — reverse so newest at top)
-    return [...slots].sort().reverse();
+    return [...slots].sort().reverse(); // newest first
   }, [airports, view]);
 
-  // If stored filter is stale (not in current slots), reset it
+  // Drop stale time filters when view changes
   useEffect(() => {
-    if (timeFilter !== "ALL" && allTimeSlots.length > 0 && !allTimeSlots.includes(timeFilter)) {
-      setTimeFilter("ALL");
+    if (timeFilters.length > 0 && allTimeSlots.length > 0) {
+      const valid = timeFilters.filter((f) => allTimeSlots.includes(f));
+      if (valid.length !== timeFilters.length) setTimeFilters(valid);
     }
-  }, [allTimeSlots, timeFilter]);
+  }, [allTimeSlots]);
+
+  const isFiltered =
+    view !== DEFAULT_VIEW ||
+    activeCatsArr.length !== DEFAULT_CATS.length ||
+    routeFilter !== DEFAULT_ROUTE ||
+    sortMode !== DEFAULT_SORT ||
+    timeFilters.length > 0;
+
+  const resetFilters = () => {
+    setView(DEFAULT_VIEW);
+    setActiveCatsArr(DEFAULT_CATS);
+    setRouteFilter(DEFAULT_ROUTE);
+    setSortMode(DEFAULT_SORT);
+    setTimeFilters([]);
+  };
 
   const displayed = useMemo(() => {
     let list = airports;
     list = list.filter((a) => activeCats.has(a.parsed?.flightCategory ?? FlightCategory.VFR));
     if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
     else if (routeFilter === "INT") list = list.filter((a) => !a.icao.startsWith("LT"));
-    if (timeFilter !== "ALL") {
+    if (timeFilters.length > 0) {
       list = list.filter((a) => {
         const raw = view === "METAR" ? (a.rawMetar ?? "") : (a.rawTaf ?? "");
-        return extractTimeSlots(raw).includes(timeFilter);
+        const slots = extractTimeSlots(raw);
+        return timeFilters.some((f) => slots.includes(f));
       });
     }
     const sorted = [...list];
@@ -131,9 +154,7 @@ export default function Dashboard() {
       });
     }
     return sorted;
-  }, [airports, activeCatsArr, routeFilter, sortMode, timeFilter, view]);
-
-  const timeActive = timeFilter !== "ALL";
+  }, [airports, activeCatsArr, routeFilter, sortMode, timeFilters, view]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -170,7 +191,6 @@ export default function Dashboard() {
 
         {/* Airport Weather Section */}
         <section>
-          {/* Filter row */}
           <div className="flex flex-wrap items-center gap-2 mb-3">
             {/* Category */}
             <div className="flex items-center gap-1">
@@ -210,10 +230,10 @@ export default function Dashboard() {
             </div>
             <span className="text-border text-xs font-mono">|</span>
 
-            {/* View: TAF / METAR / BOTH */}
+            {/* View */}
             <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
               {VIEW_OPTIONS.map((v) => (
-                <button key={v.value} onClick={() => { setView(v.value); setTimeFilter("ALL"); }}
+                <button key={v.value} onClick={() => { setView(v.value); setTimeFilters([]); }}
                   className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors ${view === v.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                   {v.label}
                 </button>
@@ -221,13 +241,13 @@ export default function Dashboard() {
             </div>
             <span className="text-border text-xs font-mono">|</span>
 
-            {/* TIME dropdown button */}
+            {/* TIME multi-select dropdown */}
             {!weatherLoading && allTimeSlots.length > 0 && (
               <div className="relative" ref={timeRef}>
                 <button
                   onClick={() => setTimeOpen((o) => !o)}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-medium border transition-colors ${
-                    timeActive
+                    timeFilters.length > 0
                       ? "border-primary text-primary bg-primary/10"
                       : "border-border text-muted-foreground hover:text-foreground"
                   }`}>
@@ -235,8 +255,10 @@ export default function Dashboard() {
                     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                   </svg>
                   TIME
-                  {timeActive && (
-                    <span className="font-mono tabular-nums">{timeFilter}</span>
+                  {timeFilters.length > 0 && (
+                    <span className="bg-primary text-primary-foreground rounded-full text-[9px] font-bold px-1 leading-tight">
+                      {timeFilters.length}
+                    </span>
                   )}
                   <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
                     className={`transition-transform ${timeOpen ? "rotate-180" : ""}`}>
@@ -245,22 +267,47 @@ export default function Dashboard() {
                 </button>
 
                 {timeOpen && (
-                  <div className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-lg min-w-[140px] overflow-hidden">
-                    <button
-                      onClick={() => { setTimeFilter("ALL"); setTimeOpen(false); }}
-                      className={`w-full text-left px-3 py-2 text-xs font-mono transition-colors ${timeFilter === "ALL" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
-                      ALL
-                    </button>
-                    {allTimeSlots.map((slot) => (
-                      <button key={slot}
-                        onClick={() => { setTimeFilter(slot); setTimeOpen(false); }}
-                        className={`w-full text-left px-3 py-2 text-xs font-mono tabular-nums transition-colors ${timeFilter === slot ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
-                        {slot}
+                  <div className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-lg min-w-[150px] overflow-hidden">
+                    {timeFilters.length > 0 && (
+                      <button
+                        onClick={() => setTimeFilters([])}
+                        className="w-full text-left px-3 py-2 text-xs font-mono text-muted-foreground hover:bg-muted hover:text-foreground transition-colors border-b border-border/50">
+                        Clear selection
                       </button>
-                    ))}
+                    )}
+                    {allTimeSlots.map((slot) => {
+                      const selected = timeFilters.includes(slot);
+                      return (
+                        <button key={slot}
+                          onClick={() => toggleTimeSlot(slot)}
+                          className={`w-full text-left px-3 py-2 text-xs font-mono tabular-nums flex items-center justify-between gap-3 transition-colors ${
+                            selected ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          }`}>
+                          {slot}
+                          {selected && (
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Reset filters */}
+            {isFiltered && (
+              <button onClick={resetFilters}
+                title="Reset all filters"
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-mono text-muted-foreground hover:text-destructive border border-border hover:border-destructive/50 transition-colors">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                  <path d="M3 3v5h5"/>
+                </svg>
+                Reset
+              </button>
             )}
 
             <span className="text-muted-foreground text-xs font-mono ml-auto">
