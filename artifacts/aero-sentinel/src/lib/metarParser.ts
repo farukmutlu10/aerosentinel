@@ -278,16 +278,11 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
 
 // ── Time slot extraction ──────────────────────────────────────────────────────
 
-/** Extract unique "DDHH" time slots (e.g. "2219") from a raw METAR/TAF string */
+/** Extract unique full raw timestamps (e.g. "221940Z") from a raw METAR/TAF string */
 export function extractTimeSlots(raw: string): string[] {
   const slots = new Set<string>();
-  for (const m of raw.matchAll(/\b(\d{2})(\d{2})\d{2}Z\b/g)) {
-    slots.add(m[1] + m[2]); // e.g. "2219"
+  for (const m of raw.matchAll(/\b\d{6}Z\b/g)) {
+    slots.add(m[0]); // e.g. "221940Z"
   }
   return [...slots];
-}
-
-/** Format a DDHH slot for display, e.g. "2219" → "22/19Z" */
-export function formatTimeSlot(slot: string): string {
-  return `${slot.slice(0, 2)}/${slot.slice(2)}Z`;
 }
