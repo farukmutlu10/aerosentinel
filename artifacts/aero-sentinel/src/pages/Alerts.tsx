@@ -64,7 +64,7 @@ export default function Alerts() {
     let list = allAlerts ?? [];
     if (typeFilter) list = list.filter((a) => a.type === typeFilter);
     if (hideAcknowledged) list = list.filter((a) => !a.acknowledged);
-    if (hasFilter) list = list.filter((a) => isWatching(a.icao));
+    list = list.filter((a) => isWatching(a.icao));
     if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
     else if (routeFilter === "INT") list = list.filter((a) => !a.icao.startsWith("LT"));
     const sorted = [...list];
