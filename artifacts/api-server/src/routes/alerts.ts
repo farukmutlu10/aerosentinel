@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, alertsTable } from "@workspace/db";
-import { eq, and, desc, sql, isNotNull, count } from "drizzle-orm";
+import { eq, and, desc, sql, count } from "drizzle-orm";
 import {
   ListAlertsQueryParams,
   AcknowledgeAlertParams,
@@ -24,7 +24,6 @@ router.get("/alerts", async (req, res) => {
   }
 
   const { type, icao, acknowledged, limit = 50 } = parsed.data;
-
   const conditions = [];
   if (type) conditions.push(eq(alertsTable.type, type));
   if (icao) conditions.push(eq(alertsTable.icao, icao));
@@ -42,26 +41,11 @@ router.get("/alerts", async (req, res) => {
 
 router.get("/alerts/summary", async (_req, res) => {
   const [total] = await db.select({ count: count() }).from(alertsTable);
-  const [unacked] = await db
-    .select({ count: count() })
-    .from(alertsTable)
-    .where(eq(alertsTable.acknowledged, false));
-  const [tafRevisions] = await db
-    .select({ count: count() })
-    .from(alertsTable)
-    .where(sql`${alertsTable.type} IN ('TAF_AMD', 'TAF_COR')`);
-  const [speciAlerts] = await db
-    .select({ count: count() })
-    .from(alertsTable)
-    .where(eq(alertsTable.type, "SPECI"));
-  const affectedRows = await db
-    .selectDistinct({ icao: alertsTable.icao })
-    .from(alertsTable);
-  const [lastScanRow] = await db
-    .select({ detectedAt: alertsTable.detectedAt })
-    .from(alertsTable)
-    .orderBy(desc(alertsTable.detectedAt))
-    .limit(1);
+  const [unacked] = await db.select({ count: count() }).from(alertsTable).where(eq(alertsTable.acknowledged, false));
+  const [tafRevisions] = await db.select({ count: count() }).from(alertsTable).where(sql`${alertsTable.type} IN ('TAF_AMD', 'TAF_COR')`);
+  const [speciAlerts] = await db.select({ count: count() }).from(alertsTable).where(eq(alertsTable.type, "SPECI"));
+  const affectedRows = await db.selectDistinct({ icao: alertsTable.icao }).from(alertsTable);
+  const [lastScanRow] = await db.select({ detectedAt: alertsTable.detectedAt }).from(alertsTable).orderBy(desc(alertsTable.detectedAt)).limit(1);
 
   return res.json({
     totalAlerts: Number(total.count),
@@ -74,12 +58,16 @@ router.get("/alerts/summary", async (_req, res) => {
 });
 
 router.get("/alerts/recent", async (_req, res) => {
-  const alerts = await db
-    .select()
-    .from(alertsTable)
-    .orderBy(desc(alertsTable.detectedAt))
-    .limit(10);
+  const alerts = await db.select().from(alertsTable).orderBy(desc(alertsTable.detectedAt)).limit(10);
   return res.json(alerts);
+});
+
+router.patch("/alerts/acknowledge-all", async (_req, res) => {
+  await db
+    .update(alertsTable)
+    .set({ acknowledged: true, acknowledgedAt: new Date() })
+    .where(eq(alertsTable.acknowledged, false));
+  return res.json({ ok: true });
 });
 
 router.patch("/alerts/:id/acknowledge", async (req, res) => {

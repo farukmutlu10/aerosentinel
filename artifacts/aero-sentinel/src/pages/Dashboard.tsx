@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -7,22 +7,25 @@ import {
 } from "@workspace/api-client-react";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
+import { TafText } from "@/components/TafText";
 import { ColoredRawText } from "@/components/ColoredRawText";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import { parseMetar, FlightCategory, CATEGORY_COLOR } from "@/lib/metarParser";
 
 type RouteFilter = "ALL" | "DOM" | "INT";
 type SortMode = "alpha" | "lifr-first" | "vfr-first";
 const ALL_CATS = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
-const CAT_LABEL: Record<FlightCategory, string> = { VFR: "VFR", MVFR: "MVFR", IFR: "IFR", LIFR: "LIFR" };
 
 interface WeatherItem { icao: string; rawTaf: string | null; rawMetar: string | null }
 
-function useWatchlistWeather() {
+function useWatchlistWeather(icaos: string[]) {
+  const key = icaos.join(",");
   return useQuery<WeatherItem[]>({
-    queryKey: ["watchlist", "weather"],
-    queryFn: () => fetch("/api/watchlist/weather").then((r) => r.json()),
+    queryKey: ["watchlist", "weather", key],
+    queryFn: () => fetch(`/api/watchlist/weather?icaos=${key}`).then((r) => r.json()),
+    enabled: icaos.length > 0,
     refetchInterval: 60_000,
     refetchIntervalInBackground: true,
     staleTime: 30_000,
@@ -35,13 +38,28 @@ const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "vfr-first", label: "Best First" },
 ];
 
+function useClockState() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
 export default function Dashboard() {
   const { theme, toggleTheme } = useThemeContext();
-  const { watchedIcaos } = useWatchlist();
-  const [showMetar, setShowMetar] = useState(false);
-  const [activeCats, setActiveCats] = useState<Set<FlightCategory>>(new Set(ALL_CATS));
-  const [routeFilter, setRouteFilter] = useState<RouteFilter>("ALL");
-  const [sortMode, setSortMode] = useState<SortMode>("alpha");
+  const { effectiveIcaos, watchedIcaos } = useWatchlist();
+  const now = useClockState();
+
+  const [showMetar, setShowMetar] = usePersistedState<boolean>("as-dash-metar", false);
+  const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-dash-cats", ALL_CATS);
+  const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-dash-route", "ALL");
+  const [sortMode, setSortMode] = usePersistedState<SortMode>("as-dash-sort", "alpha");
+
+  const activeCats = new Set<FlightCategory>(activeCatsArr as FlightCategory[]);
+  const toggleCat = (c: FlightCategory) =>
+    setActiveCatsArr((p) => p.includes(c) ? p.filter((x) => x !== c) : [...p, c]);
 
   const { data: summary, isLoading: summaryLoading } = useGetAlertsSummary({
     query: { queryKey: getGetAlertsSummaryQueryKey(), refetchInterval: 30_000 },
@@ -49,7 +67,7 @@ export default function Dashboard() {
   const { data: monitor } = useGetMonitorStatus({
     query: { queryKey: getGetMonitorStatusQueryKey(), refetchInterval: 30_000 },
   });
-  const { data: weatherData, isLoading: weatherLoading } = useWatchlistWeather();
+  const { data: weatherData, isLoading: weatherLoading } = useWatchlistWeather(effectiveIcaos);
 
   const airports = useMemo(() => {
     if (!weatherData) return [];
@@ -61,7 +79,6 @@ export default function Dashboard() {
     list = list.filter((a) => activeCats.has(a.parsed?.flightCategory ?? FlightCategory.VFR));
     if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
     else if (routeFilter === "INT") list = list.filter((a) => !a.icao.startsWith("LT"));
-
     const sorted = [...list];
     if (sortMode === "alpha") {
       sorted.sort((a, b) => a.icao.localeCompare(b.icao));
@@ -76,10 +93,12 @@ export default function Dashboard() {
       });
     }
     return sorted;
-  }, [airports, activeCats, routeFilter, sortMode]);
+  }, [airports, activeCatsArr, routeFilter, sortMode]);
 
-  const toggleCat = (c: FlightCategory) =>
-    setActiveCats((p) => { const n = new Set(p); n.has(c) ? n.delete(c) : n.add(c); return n; });
+  const utcTime = now.toLocaleTimeString("en-GB", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const utcDate = now.toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short" });
+  const istTime = now.toLocaleTimeString("en-GB", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const istDate = now.toLocaleDateString("en-GB", { timeZone: "Europe/Istanbul", day: "2-digit", month: "short" });
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -92,7 +111,22 @@ export default function Dashboard() {
           <StatCard label="UNACKNOWLEDGED" value={summaryLoading ? "—" : String(summary?.unacknowledged ?? 0)} highlight={!summaryLoading && (summary?.unacknowledged ?? 0) > 0} />
           <StatCard label="TAF REVISIONS" value={summaryLoading ? "—" : String(summary?.tafRevisions ?? 0)} color="amber" />
           <StatCard label="SPECI ALERTS" value={summaryLoading ? "—" : String(summary?.speciAlerts ?? 0)} color="red" />
-          <StatCard label="AIRPORTS HIT" value={summaryLoading ? "—" : String(summary?.airportsAffected ?? 0)} />
+
+          {/* Clock card */}
+          <div className="bg-card border border-border rounded-lg px-4 py-3">
+            <div className="flex flex-col gap-1.5">
+              <div className="pb-1.5 border-b border-border/50">
+                <p className="text-[9px] font-mono text-sky-400 uppercase tracking-widest mb-0.5">UTC</p>
+                <p className="text-lg font-bold font-mono text-sky-300 leading-none">{utcTime}</p>
+                <p className="text-[10px] text-sky-400/60 font-mono">{utcDate}</p>
+              </div>
+              <div className="pt-0.5">
+                <p className="text-[9px] font-mono text-amber-400 uppercase tracking-widest mb-0.5">IST (UTC+3)</p>
+                <p className="text-lg font-bold font-mono text-amber-300 leading-none">{istTime}</p>
+                <p className="text-[10px] text-amber-400/60 font-mono">{istDate}</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Monitor bar */}
@@ -116,9 +150,8 @@ export default function Dashboard() {
 
         {/* Airport Weather Section */}
         <section>
-          {/* Filter row */}
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            {/* Category toggles */}
+            {/* Category */}
             <div className="flex items-center gap-1">
               {ALL_CATS.map((cat) => (
                 <button key={cat} onClick={() => toggleCat(cat)}
@@ -128,41 +161,33 @@ export default function Dashboard() {
                     color: CATEGORY_COLOR[cat],
                     backgroundColor: CATEGORY_COLOR[cat] + "18",
                   } : { borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
-                  {CAT_LABEL[cat]}
+                  {cat}
                 </button>
               ))}
             </div>
-
             <span className="text-border text-xs font-mono">|</span>
-
             {/* DOM/INT */}
             <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
               {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
                 <button key={f} onClick={() => setRouteFilter(f)}
-                  className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors ${
-                    routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                  }`}>
+                  className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors ${routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                   {f}
                 </button>
               ))}
             </div>
-
             <span className="text-border text-xs font-mono">|</span>
-
             {/* Sort */}
             <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
               {SORT_OPTIONS.map((s) => (
                 <button key={s.value} onClick={() => setSortMode(s.value)}
-                  className={`px-2.5 py-1 rounded text-xs font-mono transition-colors ${
-                    sortMode === s.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                  }`}>
+                  className={`px-2.5 py-1 rounded text-xs font-mono transition-colors ${sortMode === s.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                   {s.label}
                 </button>
               ))}
             </div>
-
-            <span className="text-muted-foreground text-xs font-mono ml-auto">{displayed.length} airports</span>
-
+            <span className="text-muted-foreground text-xs font-mono ml-auto">
+              {weatherLoading ? "loading..." : `${displayed.length} airports`}
+            </span>
             {/* METAR toggle */}
             <label className="flex items-center gap-2 cursor-pointer select-none ml-2">
               <span className="text-xs font-mono text-muted-foreground">METAR</span>
@@ -190,7 +215,6 @@ export default function Dashboard() {
           )}
         </section>
       </main>
-
       <Footer />
     </div>
   );
@@ -203,7 +227,6 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, showMetar }: {
   const cat = parsed?.flightCategory ?? FlightCategory.VFR;
   const catColor = CATEGORY_COLOR[cat];
   const isDom = icao.startsWith("LT");
-
   return (
     <Link href={`/airports/${icao}`}
       className="block bg-card border border-border rounded-lg overflow-hidden hover:border-foreground/20 transition-colors cursor-pointer"
@@ -215,9 +238,7 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, showMetar }: {
         </div>
         {rawMetar ? (
           <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
-            style={{ color: catColor, borderColor: `${catColor}60`, backgroundColor: `${catColor}18` }}>
-            {cat}
-          </span>
+            style={{ color: catColor, borderColor: `${catColor}60`, backgroundColor: `${catColor}18` }}>{cat}</span>
         ) : (
           <span className="text-xs font-mono text-muted-foreground">NO DATA</span>
         )}
@@ -225,8 +246,8 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, showMetar }: {
       <div className="px-4 py-3">
         <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1.5">TAF</p>
         {rawTaf ? (
-          <div className="max-h-32 overflow-y-auto">
-            <ColoredRawText raw={rawTaf} className="text-[11px] leading-relaxed" />
+          <div className="max-h-36 overflow-y-auto">
+            <TafText raw={rawTaf} />
           </div>
         ) : (
           <p className="text-xs font-mono text-muted-foreground italic">Awaiting TAF data...</p>
@@ -235,11 +256,7 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, showMetar }: {
       {showMetar && (
         <div className="px-4 py-3 border-t border-border/60 bg-background/30">
           <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1.5">METAR</p>
-          {rawMetar ? (
-            <ColoredRawText raw={rawMetar} className="text-[11px] leading-relaxed" />
-          ) : (
-            <p className="text-xs font-mono text-muted-foreground italic">Awaiting METAR data...</p>
-          )}
+          {rawMetar ? <ColoredRawText raw={rawMetar} /> : <p className="text-xs font-mono text-muted-foreground italic">Awaiting METAR...</p>}
         </div>
       )}
     </Link>

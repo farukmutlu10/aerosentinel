@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { useThemeContext } from "@/App";
+import { TafText } from "@/components/TafText";
 import { ColoredRawText } from "@/components/ColoredRawText";
 import {
   useGetAirportTaf, getGetAirportTafQueryKey,
@@ -42,11 +43,7 @@ export default function AirportDetail({ icao }: Props) {
     },
   });
 
-  const parsedMetar = useMemo(
-    () => (metar?.rawMetar ? parseMetar(metar.rawMetar) : null),
-    [metar?.rawMetar]
-  );
-
+  const parsedMetar = useMemo(() => (metar?.rawMetar ? parseMetar(metar.rawMetar) : null), [metar?.rawMetar]);
   const cat = parsedMetar?.flightCategory ?? FlightCategory.VFR;
   const catColor = CATEGORY_COLOR[cat];
   const isDom = icao.startsWith("LT");
@@ -75,8 +72,6 @@ export default function AirportDetail({ icao }: Props) {
               </span>
             </div>
           </div>
-
-          {/* Quick summary */}
           {parsedMetar && (
             <div className="hidden md:flex items-center gap-4 text-xs font-mono bg-card border border-border rounded-lg px-4 py-2">
               {parsedMetar.cavok ? (
@@ -107,23 +102,32 @@ export default function AirportDetail({ icao }: Props) {
                   <span style={{ color: parsedMetar.wind.dangerColor }}>{parsedMetar.wind.raw}</span>
                 </div>
               )}
-              {parsedMetar.phenomena.length > 0 && (
-                <div className="flex gap-1">
-                  {parsedMetar.phenomena.slice(0, 3).map((p) => (
-                    <span key={p.code} className="px-1 py-0.5 rounded text-[10px]"
-                      style={{ color: p.danger ? "#ef4444" : "#94a3b8", backgroundColor: p.danger ? "#ef444420" : "transparent" }}
-                      title={p.label}>{p.code}</span>
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </div>
 
         {/* TAF / METAR */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <WeatherCard title="CURRENT TAF" isLoading={tafLoading} raw={taf?.rawTaf} />
-          <WeatherCard title="CURRENT METAR" isLoading={metarLoading} raw={metar?.rawMetar} />
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-3">CURRENT TAF</p>
+            {tafLoading ? (
+              <div className="h-16 animate-pulse bg-muted rounded" />
+            ) : taf?.rawTaf ? (
+              <TafText raw={taf.rawTaf} />
+            ) : (
+              <p className="text-muted-foreground font-mono text-sm">No data yet — awaiting first scan</p>
+            )}
+          </div>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-3">CURRENT METAR</p>
+            {metarLoading ? (
+              <div className="h-16 animate-pulse bg-muted rounded" />
+            ) : metar?.rawMetar ? (
+              <ColoredRawText raw={metar.rawMetar} />
+            ) : (
+              <p className="text-muted-foreground font-mono text-sm">No data yet — awaiting first scan</p>
+            )}
+          </div>
         </div>
 
         {/* Alert history */}
@@ -148,7 +152,7 @@ export default function AirportDetail({ icao }: Props) {
                     <div className="flex items-start gap-3 flex-1 min-w-0">
                       <AlertBadge type={alert.type as "TAF_AMD" | "TAF_COR" | "SPECI"} />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-1">
+                        <div className="flex items-center gap-3 mb-1 flex-wrap">
                           <span className="text-xs text-muted-foreground font-mono">{format(new Date(alert.detectedAt), "dd MMM HH:mm")} UTC</span>
                           <span className="text-xs text-muted-foreground font-mono">({formatDistanceToNow(new Date(alert.detectedAt), { addSuffix: true })})</span>
                           {alert.acknowledged && <span className="text-xs bg-muted text-muted-foreground font-mono px-2 py-0.5 rounded">ACK</span>}
@@ -169,23 +173,7 @@ export default function AirportDetail({ icao }: Props) {
           )}
         </section>
       </main>
-
       <Footer />
-    </div>
-  );
-}
-
-function WeatherCard({ title, isLoading, raw }: { title: string; isLoading: boolean; raw?: string }) {
-  return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-3">{title}</p>
-      {isLoading ? (
-        <div className="h-16 animate-pulse bg-muted rounded" />
-      ) : raw ? (
-        <ColoredRawText raw={raw} />
-      ) : (
-        <p className="text-muted-foreground font-mono text-sm">No data yet — awaiting first scan</p>
-      )}
     </div>
   );
 }
