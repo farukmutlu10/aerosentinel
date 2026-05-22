@@ -6,6 +6,7 @@ import {
 } from "@workspace/api-client-react";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
+import { ClockBadge } from "@/components/ClockDisplay";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
@@ -89,6 +90,12 @@ export default function Alerts() {
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
+        {/* Top bar: title + clock */}
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Alert Log</h1>
+          <ClockBadge />
+        </div>
+
         {/* Filter row */}
         <div className="flex flex-wrap items-center gap-2 mb-6">
           <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">

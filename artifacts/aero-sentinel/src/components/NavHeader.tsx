@@ -25,19 +25,26 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
     href === "/" ? location === "/" : location.startsWith(href);
 
   return (
-    <header className="border-b border-border bg-card px-6 py-0">
-      <div className="max-w-7xl mx-auto flex items-center justify-between h-14">
-        <Link href="/" className="flex items-center gap-3 select-none">
-          <img
-            src={`${import.meta.env.BASE_URL}aero-logo.png`}
-            alt="AERO-SENTINEL"
-            className="h-9 object-contain"
-          />
-          <span className="text-[10px] font-mono text-muted-foreground/60 tracking-widest border border-border/40 px-1.5 py-0.5 rounded">
-            v1.7
-          </span>
-        </Link>
+    <header className="border-b border-border bg-card px-6">
+      <div className="max-w-7xl mx-auto relative flex items-center justify-between h-24">
 
+        {/* Centered logo */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center">
+          <Link href="/">
+            <img
+              src={`${import.meta.env.BASE_URL}aero-logo.png`}
+              alt="AERO-SENTINEL"
+              className="h-16 object-contain select-none"
+            />
+          </Link>
+        </div>
+
+        {/* Left — version badge */}
+        <span className="text-[10px] font-mono text-muted-foreground/50 tracking-widest border border-border/30 px-1.5 py-0.5 rounded select-none">
+          v1.7
+        </span>
+
+        {/* Right — nav + controls */}
         <div className="flex items-center gap-2">
           <nav className="flex items-center gap-1">
             {navItems.map((item) => (
@@ -64,7 +71,7 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
             <button
               onClick={onToggleTheme}
               title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              className="w-8 h-8 flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors ml-2"
+              className="w-8 h-8 flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors ml-1"
             >
               {theme === "dark" ? (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
