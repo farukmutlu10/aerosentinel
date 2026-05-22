@@ -8,6 +8,7 @@ import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertBadge } from "@/components/AlertBadge";
 import { ColoredRawText } from "@/components/ColoredRawText";
@@ -30,17 +31,19 @@ const SORT_OPTIONS: { value: SortMode; label: string }[] = [
 ];
 
 export default function Alerts() {
-  const [typeFilter, setTypeFilter] = useState<AlertType | undefined>(undefined);
-  const [routeFilter, setRouteFilter] = useState<RouteFilter>("ALL");
-  const [hideAcknowledged, setHideAcknowledged] = useState(false);
-  const [sortMode, setSortMode] = useState<SortMode>("newest");
+  const [typeFilter, setTypeFilter] = usePersistedState<AlertType | undefined>("as-alerts-type", undefined);
+  const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-alerts-route", "ALL");
+  const [sortMode, setSortMode] = usePersistedState<SortMode>("as-alerts-sort", "newest");
+  const [hideAcknowledged, setHideAcknowledged] = usePersistedState<boolean>("as-alerts-hide-ack", false);
+  const [ackingAll, setAckingAll] = useState(false);
+
   const queryClient = useQueryClient();
   const { isWatching, hasFilter } = useWatchlist();
   const { theme, toggleTheme } = useThemeContext();
 
   const { data: allAlerts, isLoading } = useListAlerts(
-    { limit: 200 },
-    { query: { queryKey: getListAlertsQueryKey({ limit: 200 }), refetchInterval: 30_000 } }
+    { limit: 100 },
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 30_000 } }
   );
 
   const alerts = useMemo(() => {
@@ -50,7 +53,6 @@ export default function Alerts() {
     if (hasFilter) list = list.filter((a) => isWatching(a.icao));
     if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
     else if (routeFilter === "INT") list = list.filter((a) => !a.icao.startsWith("LT"));
-
     const sorted = [...list];
     if (sortMode === "newest") sorted.sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime());
     else if (sortMode === "oldest") sorted.sort((a, b) => new Date(a.detectedAt).getTime() - new Date(b.detectedAt).getTime());
@@ -68,6 +70,20 @@ export default function Alerts() {
     },
   });
 
+  const handleAckAll = async () => {
+    setAckingAll(true);
+    try {
+      await fetch("/api/alerts/acknowledge-all", { method: "PATCH" });
+      queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetAlertsSummaryQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetRecentAlertsQueryKey() });
+    } finally {
+      setAckingAll(false);
+    }
+  };
+
+  const unackedCount = alerts.filter((a) => !a.acknowledged).length;
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
@@ -75,45 +91,40 @@ export default function Alerts() {
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
         {/* Filter row */}
         <div className="flex flex-wrap items-center gap-2 mb-6">
-          {/* Type filter */}
           <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
             {TYPE_FILTERS.map((f) => (
               <button key={String(f.value)} onClick={() => setTypeFilter(f.value)}
-                className={`px-3 py-1.5 rounded text-xs font-mono font-medium transition-colors ${
-                  typeFilter === f.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}>{f.label}</button>
+                className={`px-3 py-1.5 rounded text-xs font-mono font-medium transition-colors ${typeFilter === f.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                {f.label}
+              </button>
             ))}
           </div>
 
           <span className="text-border text-xs">|</span>
 
-          {/* DOM/INT */}
           <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
             {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
               <button key={f} onClick={() => setRouteFilter(f)}
-                className={`px-2.5 py-1.5 rounded text-xs font-mono font-medium transition-colors ${
-                  routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}>{f}</button>
+                className={`px-2.5 py-1.5 rounded text-xs font-mono font-medium transition-colors ${routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                {f}
+              </button>
             ))}
           </div>
 
           <span className="text-border text-xs">|</span>
 
-          {/* Sort */}
           <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
             {SORT_OPTIONS.map((s) => (
               <button key={s.value} onClick={() => setSortMode(s.value)}
-                className={`px-2.5 py-1.5 rounded text-xs font-mono transition-colors ${
-                  sortMode === s.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}>{s.label}</button>
+                className={`px-2.5 py-1.5 rounded text-xs font-mono transition-colors ${sortMode === s.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                {s.label}
+              </button>
             ))}
           </div>
 
           <button onClick={() => setHideAcknowledged(!hideAcknowledged)}
-            className={`px-3 py-1.5 rounded text-xs font-mono font-medium border transition-colors ml-1 ${
-              hideAcknowledged ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"
-            }`}>
-            {hideAcknowledged ? "Unacknowledged Only" : "Hide Acknowledged"}
+            className={`px-3 py-1.5 rounded text-xs font-mono font-medium border transition-colors ${hideAcknowledged ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"}`}>
+            {hideAcknowledged ? "Unacknowledged Only ✓" : "Hide Acknowledged"}
           </button>
 
           {hasFilter && (
@@ -122,7 +133,15 @@ export default function Alerts() {
             </Link>
           )}
 
-          <span className="text-xs text-muted-foreground font-mono ml-auto">
+          {/* ACK ALL */}
+          {unackedCount > 0 && (
+            <button onClick={handleAckAll} disabled={ackingAll}
+              className="ml-auto px-3 py-1.5 text-xs font-mono font-bold border border-green-500/40 text-green-400 rounded hover:bg-green-500/10 transition-colors disabled:opacity-50 flex items-center gap-1.5">
+              {ackingAll ? "Acknowledging..." : `ACK ALL (${unackedCount})`}
+            </button>
+          )}
+
+          <span className={`text-xs text-muted-foreground font-mono ${unackedCount > 0 ? "" : "ml-auto"}`}>
             {alerts.length} / {allAlerts?.length ?? 0} alerts
           </span>
         </div>
@@ -144,11 +163,9 @@ export default function Alerts() {
                   <div className="flex items-start gap-3 flex-1 min-w-0">
                     <div className="flex-shrink-0 pt-0.5"><AlertBadge type={alert.type as AlertType} /></div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
                         <Link href={`/airports/${alert.icao}`} className="font-mono font-bold text-sm hover:underline">{alert.icao}</Link>
-                        <span className="text-[10px] font-mono text-muted-foreground border border-border px-1 py-0.5 rounded">
-                          {alert.icao.startsWith("LT") ? "DOM" : "INT"}
-                        </span>
+                        <span className="text-[10px] font-mono text-muted-foreground border border-border px-1 py-0.5 rounded">{alert.icao.startsWith("LT") ? "DOM" : "INT"}</span>
                         <span className="text-xs text-muted-foreground font-mono">{format(new Date(alert.detectedAt), "dd MMM HH:mm")} UTC</span>
                         <span className="text-xs text-muted-foreground font-mono">({formatDistanceToNow(new Date(alert.detectedAt), { addSuffix: true })})</span>
                         {alert.acknowledged && <span className="text-xs bg-muted text-muted-foreground font-mono px-2 py-0.5 rounded">ACK</span>}
@@ -168,7 +185,6 @@ export default function Alerts() {
           </div>
         )}
       </main>
-
       <Footer />
     </div>
   );
