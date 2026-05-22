@@ -13,7 +13,7 @@ import { ClockCard } from "@/components/ClockDisplay";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
-import { parseMetar, FlightCategory, CATEGORY_COLOR, extractTimeSlots } from "@/lib/metarParser";
+import { parseMetar, FlightCategory, CATEGORY_COLOR, extractTimeSlots, parseTafWorstCategory } from "@/lib/metarParser";
 
 type RouteFilter = "ALL" | "DOM" | "INT";
 type SortMode = "alpha" | "lifr-first" | "vfr-first";
@@ -346,6 +346,12 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
   const isDom = icao.startsWith("LT");
   const showTaf = view === "TAF" || view === "BOTH";
   const showMetar = view === "METAR" || view === "BOTH";
+
+  const tafWorst = parseTafWorstCategory(rawTaf);
+  const order = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
+  const tafIsBadder = tafWorst && rawTaf && order.indexOf(tafWorst) > order.indexOf(cat);
+  const tafWorstColor = tafWorst ? CATEGORY_COLOR[tafWorst] : null;
+
   return (
     <Link href={`/airports/${icao}`}
       className="block bg-card border border-border rounded-lg overflow-hidden hover:border-foreground/20 transition-colors cursor-pointer"
@@ -355,12 +361,27 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
           <span className="font-mono font-bold text-base tracking-wider">{icao}</span>
           <span className="text-xs font-mono text-muted-foreground border border-border px-1.5 py-0.5 rounded">{isDom ? "DOM" : "INT"}</span>
         </div>
-        {rawMetar ? (
-          <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
-            style={{ color: catColor, borderColor: `${catColor}60`, backgroundColor: `${catColor}18` }}>{cat}</span>
-        ) : (
-          <span className="text-xs font-mono text-muted-foreground">NO DATA</span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {rawMetar ? (
+            <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
+              style={{ color: catColor, borderColor: `${catColor}60`, backgroundColor: `${catColor}18` }}>
+              {cat}
+            </span>
+          ) : (
+            <span className="text-xs font-mono text-muted-foreground">NO DATA</span>
+          )}
+          {tafIsBadder && tafWorst && tafWorstColor && (
+            <span
+              title={`TAF worst forecast: ${tafWorst}`}
+              className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border flex items-center gap-1"
+              style={{ color: tafWorstColor, borderColor: `${tafWorstColor}60`, backgroundColor: `${tafWorstColor}18` }}>
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              TAF {tafWorst}
+            </span>
+          )}
+        </div>
       </div>
       {showTaf && (
         <div className="px-4 py-3">
