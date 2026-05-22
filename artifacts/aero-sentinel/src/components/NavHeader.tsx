@@ -34,7 +34,7 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
             <img
               src={`${import.meta.env.BASE_URL}aero-logo.png`}
               alt="AERO-SENTINEL"
-              className="h-16 object-contain select-none"
+              className="h-20 object-contain select-none"
             />
           </Link>
         </div>
