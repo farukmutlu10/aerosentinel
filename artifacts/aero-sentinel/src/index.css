@@ -164,6 +164,68 @@
 }
 .sentinel-pulse { animation: sentinel-pulse 2s ease-in-out infinite; }
 
+/* ── RGB spinning badge border ──────────────────────────── */
+@keyframes rgb-spin {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+.rgb-badge-wrapper {
+  position: relative;
+  padding: 1.5px;
+  border-radius: 5px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.rgb-badge-spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 300%;
+  height: 300%;
+  background: conic-gradient(
+    from 0deg,
+    #ff0000, #ff7700, #ffff00, #00ff00,
+    #00ffff, #0077ff, #8800ff, #ff00ff,
+    #ff0000
+  );
+  animation: rgb-spin 3s linear infinite;
+  border-radius: 50%;
+}
+
+.rgb-badge-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-card);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.1em;
+  color: hsl(var(--muted-foreground) / 0.7);
+  transition: color 0.15s;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.rgb-badge-wrapper:hover .rgb-badge-inner {
+  color: hsl(var(--foreground));
+}
+
+/* changelog modal version tag */
+.changelog-version-badge {
+  font-size: 11px;
+  background: hsl(var(--primary) / 0.15);
+  color: hsl(var(--primary));
+  border: 1px solid hsl(var(--primary) / 0.3);
+  border-radius: 4px;
+  padding: 1px 6px;
+  vertical-align: middle;
+}
+
 @keyframes fadeOut {
   0% { opacity: 1; }
   100% { opacity: 0; pointer-events: none; }
