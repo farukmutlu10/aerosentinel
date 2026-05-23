@@ -126,19 +126,19 @@
 
 /* ── Alert type colors — light ──────────────────────────── */
 .alert-taf-amd {
-  color: hsl(38 90% 35%);
-  border-color: hsl(38 90% 35% / 0.35);
-  background-color: hsl(38 90% 55% / 0.08);
+  color: hsl(38 90% 28%);
+  border-color: hsl(38 90% 32% / 0.55);
+  background-color: hsl(38 90% 55% / 0.14);
 }
 .alert-taf-cor {
-  color: hsl(22 85% 40%);
-  border-color: hsl(22 85% 40% / 0.35);
-  background-color: hsl(22 85% 50% / 0.08);
+  color: hsl(22 85% 28%);
+  border-color: hsl(22 85% 32% / 0.55);
+  background-color: hsl(22 85% 50% / 0.13);
 }
 .alert-speci {
-  color: hsl(0 80% 45%);
-  border-color: hsl(0 80% 45% / 0.35);
-  background-color: hsl(0 80% 50% / 0.07);
+  color: hsl(0 80% 32%);
+  border-color: hsl(0 80% 32% / 0.55);
+  background-color: hsl(0 80% 55% / 0.12);
 }
 
 /* ── Alert type colors — dark ────────────────────────────── */
