@@ -277,15 +277,22 @@ export default function Dashboard() {
                     )}
                     {allTimeSlots.map((slot) => {
                       const selected = timeFilters.includes(slot);
+                      const dayPart = slot.slice(0, 2);
+                      const hourMin = slot.slice(2, 6);
+                      const zPart = slot.slice(6);
                       return (
                         <button key={slot}
                           onClick={() => toggleTimeSlot(slot)}
                           className={`w-full text-left px-3 py-2 text-xs font-mono tabular-nums flex items-center justify-between gap-3 transition-colors ${
-                            selected ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            selected ? "bg-primary/10" : "hover:bg-muted"
                           }`}>
-                          {slot}
+                          <span>
+                            <span className={`opacity-50 ${selected ? "text-primary" : "text-muted-foreground"}`}>{dayPart}</span>
+                            <span className="text-[hsl(45_90%_50%)] font-bold">{hourMin}</span>
+                            <span className={`opacity-50 ${selected ? "text-primary" : "text-muted-foreground"}`}>{zPart}</span>
+                          </span>
                           {selected && (
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-primary flex-shrink-0">
                               <polyline points="20 6 9 17 4 12"/>
                             </svg>
                           )}
