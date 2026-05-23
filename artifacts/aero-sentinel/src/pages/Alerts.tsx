@@ -52,7 +52,7 @@ export default function Alerts() {
   };
 
   const queryClient = useQueryClient();
-  const { isWatching, hasFilter } = useWatchlist();
+  const { isWatching } = useWatchlist();
   const { theme, toggleTheme } = useThemeContext();
 
   const { data: allAlerts, isLoading } = useListAlerts(
@@ -72,7 +72,7 @@ export default function Alerts() {
     else if (sortMode === "oldest") sorted.sort((a, b) => new Date(a.detectedAt).getTime() - new Date(b.detectedAt).getTime());
     else if (sortMode === "icao-az") sorted.sort((a, b) => a.icao.localeCompare(b.icao));
     return sorted;
-  }, [allAlerts, typeFilter, hideAcknowledged, hasFilter, isWatching, routeFilter, sortMode]);
+  }, [allAlerts, typeFilter, hideAcknowledged, isWatching, routeFilter, sortMode]);
 
   const { mutate: acknowledge, isPending } = useAcknowledgeAlert({
     mutation: {
@@ -146,12 +146,6 @@ export default function Alerts() {
             className={`px-3 py-1.5 rounded text-xs font-mono font-medium border transition-colors ${hideAcknowledged ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"}`}>
             {hideAcknowledged ? "Unacknowledged Only ✓" : "Hide Acknowledged"}
           </button>
-
-          {hasFilter && (
-            <Link href="/airports" className="text-xs text-sky-400 font-mono border border-sky-400/30 px-2 py-1.5 rounded hover:border-sky-400/60 transition-colors">
-              Watchlist Active
-            </Link>
-          )}
 
           {isFiltered && (
             <button onClick={resetFilters} title="Reset all filters"
