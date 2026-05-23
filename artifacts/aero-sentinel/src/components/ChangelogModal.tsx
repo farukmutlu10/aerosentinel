@@ -9,9 +9,10 @@ const SECTIONS = [
   {
     title: "Arayüz",
     items: [
-      "Logo geniş formata (800×170) güncellendi, başlık ortaya alındı.",
+      "Logo yüksek çözünürlüklü renkli versiyona güncellendi ve boyutu küçültüldü.",
       "Sol üste versiyon rozeti eklendi (v1.7).",
       "UTC ve IST (+3) saatini gösteren canlı saat kartı eklendi (Overview ve Alerts sayfaları).",
+      "Açık tema (light mode) renkleri güçlendirildi; alarm kartları ve onaylanmış (ACK) uyarılar daha iyi okunuyor.",
     ],
   },
   {
@@ -28,6 +29,8 @@ const SECTIONS = [
       "Görünüm seçici üç seçenekli yapıldı: TAF / METAR / TAF+METAR.",
       "TIME butonu eklendi; birden fazla zaman dilimi aynı anda seçilebiliyor.",
       "TIME seçenekleri aktif görünüme göre değişiyor: TAF seçiliyse TAF zamanları, METAR seçiliyse METAR zamanları listeleniyor.",
+      "TIME listesi artık DOM/INT seçimine duyarlı: DOM'da yalnızca Türk meydanlarının, INT'de yalnızca yabancı meydanlarının saat dilimleri gösteriliyor.",
+      "TIME listesindeki saat haneleri sarı renkle vurgulanıyor; tarih ve Z harfi daha soluk görünüyor.",
       "VFR ve MVFR renkleri nötrleştirildi; yalnızca IFR (kırmızı) ve LIFR (mor) vurgulu gösteriliyor.",
       "Üç sayfada da (Overview, Alerts, Airports) tek tıkla tüm filtreleri sıfırlayan Reset butonu eklendi.",
     ],
