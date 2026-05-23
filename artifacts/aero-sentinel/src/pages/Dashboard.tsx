@@ -95,15 +95,17 @@ export default function Dashboard() {
     return weatherData.map((w) => ({ ...w, parsed: w.rawMetar ? parseMetar(w.rawMetar) : null }));
   }, [weatherData]);
 
-  // Extract time slots based on active view: TAF→rawTaf, METAR→rawMetar, BOTH→rawTaf
+  // Extract time slots based on active view + routeFilter (DOM→LT only, INT→non-LT only)
   const allTimeSlots = useMemo(() => {
     const slots = new Set<string>();
     for (const a of airports) {
+      if (routeFilter === "DOM" && !a.icao.startsWith("LT")) continue;
+      if (routeFilter === "INT" && a.icao.startsWith("LT")) continue;
       const raw = view === "METAR" ? (a.rawMetar ?? "") : (a.rawTaf ?? "");
       extractTimeSlots(raw).forEach((s) => slots.add(s));
     }
     return [...slots].sort().reverse(); // newest first
-  }, [airports, view]);
+  }, [airports, view, routeFilter]);
 
   // Drop stale time filters when view changes
   useEffect(() => {

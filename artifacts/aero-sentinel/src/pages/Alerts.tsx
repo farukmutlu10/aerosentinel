@@ -180,7 +180,7 @@ export default function Alerts() {
           <div className="space-y-2">
             {alerts.map((alert) => (
               <div key={alert.id}
-                className={`border rounded-lg px-4 py-4 transition-opacity ${alert.acknowledged ? "opacity-50 dark:opacity-40" : ""} ${
+                className={`border rounded-lg px-4 py-4 transition-opacity ${alert.acknowledged ? "opacity-65 dark:opacity-40" : ""} ${
                   alert.type === "SPECI" ? "alert-speci" : alert.type === "TAF_AMD" ? "alert-taf-amd" : "alert-taf-cor"
                 }`}>
                 <div className="flex items-start justify-between gap-4">
