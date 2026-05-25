@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, type KeyboardEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -8,13 +8,15 @@ import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { TafText } from "@/components/TafText";
 import { ColoredRawText } from "@/components/ColoredRawText";
+import { ClockBadge } from "@/components/ClockDisplay";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import { normalizeIcao } from "@/lib/icaoUtils";
 import {
   parseMetar, FlightCategory, CATEGORY_COLOR,
   extractTimeSlots, parseTafWorstCategory,
-  hasCritWx, hasOrangeWx,
+  hasCritWx,
 } from "@/lib/metarParser";
 
 type RouteFilter = "ALL" | "DOM" | "INT";
@@ -58,9 +60,23 @@ const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
   { value: "BOTH",  label: "TAF+METAR" },
 ];
 
+/** Returns the category that should drive sorting/filtering for a given view mode */
+function getEffectiveCat(
+  rawTaf: string | null,
+  metar: ReturnType<typeof parseMetar> | null,
+  view: ViewMode,
+): FlightCategory {
+  if (view === "METAR") return metar?.flightCategory ?? FlightCategory.VFR;
+  const tafCat = parseTafWorstCategory(rawTaf);
+  return tafCat ?? metar?.flightCategory ?? FlightCategory.VFR;
+}
+
 export default function Dashboard() {
   const { theme, toggleTheme } = useThemeContext();
-  const { effectiveIcaos, watchedIcaos } = useWatchlist();
+  const {
+    effectiveIcaos, watchedIcaos,
+    addIcao, removeIcao, clearWatchlist, hasFilter,
+  } = useWatchlist();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [view, setView] = usePersistedState<ViewMode>("as-dash-view", DEFAULT_VIEW);
@@ -69,8 +85,14 @@ export default function Dashboard() {
   const [sortMode, setSortMode] = usePersistedState<SortMode>("as-dash-sort", DEFAULT_SORT);
   const [timeFilters, setTimeFilters] = usePersistedState<string[]>("as-dash-time-multi", []);
   const [icaoSearch, setIcaoSearch] = usePersistedState<string>("as-dash-icao-search", "");
+  const [showOnlyCrit, setShowOnlyCrit] = usePersistedState<boolean>("as-dash-crit", false);
+  const [watchlistOpen, setWatchlistOpen] = usePersistedState<boolean>("as-dash-watchlist-open", false);
   const [timeOpen, setTimeOpen] = useState(false);
   const timeRef = useRef<HTMLDivElement>(null);
+
+  // Watchlist input state
+  const [wlInput, setWlInput] = useState("");
+  const wlInputRef = useRef<HTMLInputElement>(null);
 
   const activeCats = new Set<FlightCategory>(activeCatsArr as FlightCategory[]);
   const toggleCat = (c: FlightCategory) =>
@@ -78,6 +100,38 @@ export default function Dashboard() {
 
   const toggleTimeSlot = (slot: string) =>
     setTimeFilters((p) => p.includes(slot) ? p.filter((s) => s !== slot) : [...p, slot]);
+
+  // Watchlist add handlers
+  const handleWlAdd = () => {
+    const codes = wlInput.split(/[,\s]+/).filter(Boolean);
+    const skipped: string[] = [];
+    codes.forEach((c) => {
+      const icao = normalizeIcao(c);
+      if (icao.length === 4) addIcao(icao);
+      else if (icao.length > 0) skipped.push(c);
+    });
+    setWlInput(skipped.length > 0 ? skipped.join(",") : "");
+    wlInputRef.current?.focus();
+  };
+
+  const handleWlKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") { e.preventDefault(); handleWlAdd(); }
+    if (e.key === "Backspace" && wlInput === "" && watchedIcaos.length > 0)
+      removeIcao(watchedIcaos[watchedIcaos.length - 1]);
+  };
+
+  const handleWlInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+      .replace(/İ/g, "I").replace(/ı/g, "I")
+      .replace(/Ş/g, "S").replace(/ş/g, "S")
+      .replace(/Ğ/g, "G").replace(/ğ/g, "G")
+      .replace(/Ü/g, "U").replace(/ü/g, "U")
+      .replace(/Ö/g, "O").replace(/ö/g, "O")
+      .replace(/Ç/g, "C").replace(/ç/g, "C")
+      .toUpperCase()
+      .replace(/[^A-Z0-9,\s]/g, "");
+    setWlInput(val);
+  };
 
   useEffect(() => {
     if (!timeOpen) return;
@@ -130,7 +184,8 @@ export default function Dashboard() {
     routeFilter !== DEFAULT_ROUTE ||
     sortMode !== DEFAULT_SORT ||
     timeFilters.length > 0 ||
-    icaoSearch.trim() !== "";
+    icaoSearch.trim() !== "" ||
+    showOnlyCrit;
 
   const resetFilters = () => {
     setView(DEFAULT_VIEW);
@@ -139,17 +194,36 @@ export default function Dashboard() {
     setSortMode(DEFAULT_SORT);
     setTimeFilters([]);
     setIcaoSearch("");
+    setShowOnlyCrit(false);
   };
 
   const displayed = useMemo(() => {
     let list = airports;
-    list = list.filter((a) => activeCats.has(a.parsed?.flightCategory ?? FlightCategory.VFR));
+
+    // Category filter — uses effective category based on view mode
+    list = list.filter((a) => activeCats.has(getEffectiveCat(a.rawTaf, a.parsed, view)));
+
+    // Route filter
     if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
     else if (routeFilter === "INT") list = list.filter((a) => !a.icao.startsWith("LT"));
-    if (icaoSearch.trim()) {
-      const q = icaoSearch.trim().toUpperCase();
-      list = list.filter((a) => a.icao.includes(q));
+
+    // CRIT filter
+    if (showOnlyCrit) {
+      list = list.filter((a) => {
+        if (view === "METAR") return hasCritWx(a.rawMetar ?? "");
+        return hasCritWx(a.rawTaf ?? "") || hasCritWx(a.rawMetar ?? "");
+      });
     }
+
+    // ICAO search — supports comma/space separated multi-ICAO
+    if (icaoSearch.trim()) {
+      const queries = icaoSearch.trim().toUpperCase().split(/[,\s]+/).filter((q) => q.length >= 2);
+      if (queries.length > 0) {
+        list = list.filter((a) => queries.some((q) => a.icao.startsWith(q) || a.icao.includes(q)));
+      }
+    }
+
+    // Time filter
     if (timeFilters.length > 0) {
       list = list.filter((a) => {
         const raw = view === "METAR" ? (a.rawMetar ?? "") : (a.rawTaf ?? "");
@@ -157,6 +231,7 @@ export default function Dashboard() {
         return timeFilters.some((f) => slots.includes(f));
       });
     }
+
     const sorted = [...list];
     if (sortMode === "alpha") {
       sorted.sort((a, b) => a.icao.localeCompare(b.icao));
@@ -165,13 +240,13 @@ export default function Dashboard() {
         ? [FlightCategory.LIFR, FlightCategory.IFR, FlightCategory.MVFR, FlightCategory.VFR]
         : [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
       sorted.sort((a, b) => {
-        const ai = order.indexOf(a.parsed?.flightCategory ?? FlightCategory.VFR);
-        const bi = order.indexOf(b.parsed?.flightCategory ?? FlightCategory.VFR);
+        const ai = order.indexOf(getEffectiveCat(a.rawTaf, a.parsed, view));
+        const bi = order.indexOf(getEffectiveCat(b.rawTaf, b.parsed, view));
         return ai !== bi ? ai - bi : a.icao.localeCompare(b.icao);
       });
     }
     return sorted;
-  }, [airports, activeCatsArr, routeFilter, sortMode, timeFilters, icaoSearch, view]);
+  }, [airports, activeCatsArr, routeFilter, sortMode, timeFilters, icaoSearch, view, showOnlyCrit]);
 
   const monitorData = monitor as { running?: boolean; scanCount?: number; scanCountToday?: number; monitoredAirports?: number } | undefined;
 
@@ -179,10 +254,10 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader monitorStatus={monitor} theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5 space-y-4">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5 space-y-3">
 
         {/* Monitor bar */}
-        <div className="bg-card border border-border rounded-lg px-4 py-2.5 flex items-center justify-between gap-2 flex-wrap">
+        <div className="bg-card border border-border rounded-lg px-4 py-2 flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-4 text-xs font-mono flex-wrap">
             <span className="text-muted-foreground tracking-widest">MONITOR</span>
             <span className={monitorData?.running ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
@@ -196,12 +271,13 @@ export default function Dashboard() {
               <span className="text-sky-400">WATCHLIST {watchedIcaos.length}</span></>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <ClockBadge />
             <span className="text-[10px] text-muted-foreground font-mono">INTERVAL: 60s</span>
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              title="Hava verisini yenile"
+              title="Refresh weather data"
               className="flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-mono font-bold border transition-all disabled:opacity-50"
               style={{
                 borderColor: "#38BDF840",
@@ -222,9 +298,78 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Collapsible watchlist panel */}
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <button
+            onClick={() => setWatchlistOpen((o) => !o)}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-mono hover:bg-muted/30 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-sky-400">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              </svg>
+              <span className="text-sky-400 tracking-widest">WATCHED AIRPORTS</span>
+              <span className="text-muted-foreground">
+                {watchedIcaos.length > 0 ? `${watchedIcaos.length} airports` : "default: LTFH"}
+              </span>
+            </div>
+            <svg
+              width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className={`text-muted-foreground transition-transform duration-200 ${watchlistOpen ? "rotate-180" : ""}`}
+            >
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+
+          {watchlistOpen && (
+            <div className="border-t border-border/60 px-4 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+                  WATCHLIST — Monitored Airports
+                </span>
+                {hasFilter && (
+                  <button onClick={clearWatchlist} className="text-xs font-mono text-muted-foreground hover:text-destructive transition-colors">
+                    Clear All
+                  </button>
+                )}
+              </div>
+              <div
+                className="flex flex-wrap items-center gap-1.5 min-h-[42px] bg-background border border-input rounded-md px-2 py-1.5 cursor-text focus-within:border-primary transition-colors"
+                onClick={() => wlInputRef.current?.focus()}
+              >
+                {watchedIcaos.map((icao) => (
+                  <span key={icao} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-primary/15 border border-primary/30 text-primary text-xs font-mono font-bold">
+                    {icao}
+                    <button type="button" onClick={(e) => { e.stopPropagation(); removeIcao(icao); }}
+                      className="text-primary/60 hover:text-primary transition-colors leading-none">✕</button>
+                  </span>
+                ))}
+                <input ref={wlInputRef} type="text" value={wlInput}
+                  onChange={handleWlInputChange} onKeyDown={handleWlKeyDown}
+                  placeholder={watchedIcaos.length === 0 ? "Enter ICAO and press Enter — e.g. LTFJ,LTAC,LTFM" : "Add (comma-separated)..."}
+                  className="flex-1 min-w-[200px] bg-transparent text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none py-0.5"
+                />
+                {wlInput.replace(/[,\s]/g, "").length >= 4 && (
+                  <button type="button" onClick={handleWlAdd}
+                    className="px-2 py-0.5 text-xs font-mono bg-primary text-primary-foreground rounded hover:opacity-90 transition-opacity">
+                    ADD
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground font-mono mt-2">
+                {hasFilter
+                  ? <span className="text-sky-400">{watchedIcaos.length} airports monitored — this browser only.</span>
+                  : <span>Watchlist empty — showing default <span className="text-primary font-bold">LTFH</span>. Add any 4-letter ICAO code.</span>
+                }
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* Airport Weather Section */}
         <section>
-          <div className="flex flex-wrap items-center gap-2 mb-3">
+          {/* Filter row */}
+          <div className="flex flex-wrap items-center gap-2 mb-2">
             {/* Category filters */}
             <div className="flex items-center gap-1">
               {ALL_CATS.map((cat) => (
@@ -238,6 +383,17 @@ export default function Dashboard() {
                   {cat}
                 </button>
               ))}
+              {/* CRIT filter */}
+              <button
+                onClick={() => setShowOnlyCrit((v) => !v)}
+                className="px-2 py-0.5 rounded text-xs font-mono border transition-colors"
+                style={showOnlyCrit ? {
+                  borderColor: "#ef444499",
+                  color: "#ef4444",
+                  backgroundColor: "#ef444418",
+                } : { borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
+                CRIT
+              </button>
             </div>
             <span className="text-border text-xs font-mono">|</span>
 
@@ -337,23 +493,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* ICAO search */}
-            <div className="relative flex items-center">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                className="absolute left-2 text-muted-foreground pointer-events-none">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <input
-                type="text"
-                placeholder="ICAO..."
-                value={icaoSearch}
-                onChange={(e) => setIcaoSearch(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
-                className={`pl-6 pr-2 py-1 w-20 rounded text-xs font-mono border bg-card transition-colors focus:outline-none focus:w-28 focus:border-primary ${
-                  icaoSearch ? "border-primary text-primary" : "border-border text-muted-foreground"
-                }`}
-              />
-            </div>
-
             {/* Reset filters */}
             {isFiltered && (
               <button onClick={resetFilters}
@@ -370,6 +509,30 @@ export default function Dashboard() {
             <span className="text-muted-foreground text-xs font-mono ml-auto">
               {weatherLoading ? "loading..." : `${displayed.length} airports`}
             </span>
+          </div>
+
+          {/* ICAO multi-search — below filter row */}
+          <div className="relative flex items-center mb-3">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className="absolute left-3 text-muted-foreground pointer-events-none">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              type="text"
+              placeholder="Filter airports — e.g. LTFH,LTAC,LTFJ or LTFH LTAC LTFJ"
+              value={icaoSearch}
+              onChange={(e) => setIcaoSearch(e.target.value.toUpperCase().replace(/[^A-Z0-9,\s]/g, ""))}
+              className={`w-full pl-8 pr-8 py-1.5 rounded-lg text-xs font-mono border bg-card transition-colors focus:outline-none focus:border-primary ${
+                icaoSearch ? "border-primary text-primary" : "border-border text-muted-foreground"
+              }`}
+            />
+            {icaoSearch && (
+              <button
+                onClick={() => setIcaoSearch("")}
+                className="absolute right-2.5 text-muted-foreground hover:text-foreground transition-colors text-sm leading-none">
+                ×
+              </button>
+            )}
           </div>
 
           {weatherLoading ? (
@@ -400,55 +563,43 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
   icao: string; rawTaf: string | null; rawMetar: string | null;
   parsed: ReturnType<typeof parseMetar> | null; view: ViewMode;
 }) {
-  const cat = parsed?.flightCategory ?? FlightCategory.VFR;
-  const catColor = CATEGORY_COLOR[cat];
-  const isDom = icao.startsWith("LT");
-  const showTaf = view === "TAF" || view === "BOTH";
-  const showMetar = view === "METAR" || view === "BOTH";
+  const metarCat = parsed?.flightCategory ?? FlightCategory.VFR;
+  const metarColor = CATEGORY_COLOR[metarCat];
 
   const tafWorst = parseTafWorstCategory(rawTaf);
-  const order = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
+  const tafCat = tafWorst ?? metarCat;
+  const tafColor = rawTaf ? CATEGORY_COLOR[tafCat] : "hsl(var(--border))";
+  const metarBorderColor = rawMetar ? metarColor : "hsl(var(--border))";
 
-  // Left border color + label: TAF mode uses TAF worst, METAR mode uses METAR category
-  let borderColor: string;
-  let borderLabel: string;
-  if (view === "METAR") {
-    borderColor = rawMetar ? catColor : "hsl(var(--border))";
-    borderLabel = "METAR";
-  } else {
-    // TAF or BOTH: left border = TAF worst category
-    const effectiveCat = tafWorst && rawTaf
-      ? (order.indexOf(tafWorst) >= order.indexOf(cat) ? tafWorst : cat)
-      : cat;
-    borderColor = rawTaf ? CATEGORY_COLOR[effectiveCat] : (rawMetar ? catColor : "hsl(var(--border))");
-    borderLabel = "TAF";
-  }
+  const showLeftStrip = view === "TAF" || view === "BOTH";
+  const showRightStrip = view === "METAR" || view === "BOTH";
 
   const critTaf = rawTaf ? hasCritWx(rawTaf) : false;
   const critMetar = rawMetar ? hasCritWx(rawMetar) : false;
-  const orangeTaf = rawTaf ? hasOrangeWx(rawTaf) : false;
+
+  // Border style
+  const borderStyle: React.CSSProperties = {};
+  if (showLeftStrip) { borderStyle.borderLeftWidth = "3px"; borderStyle.borderLeftColor = tafColor; }
+  if (showRightStrip) { borderStyle.borderRightWidth = "3px"; borderStyle.borderRightColor = metarBorderColor; }
+
+  // Badge to show — reflects current view mode
+  const showTafBadge = view === "TAF" || view === "BOTH";
+  const showMetarBadge = view === "METAR" || view === "BOTH";
 
   return (
     <Link href={`/airports/${icao}`}
       className="block bg-card border border-border rounded-lg overflow-hidden hover:border-foreground/20 transition-colors cursor-pointer flex"
-      style={{ borderLeftWidth: "3px", borderLeftColor: borderColor }}>
+      style={borderStyle}>
 
-      {/* Colored left strip with vertical label */}
-      <div
-        className="flex-shrink-0 w-[18px] flex items-center justify-center"
-        style={{ backgroundColor: `${borderColor}12` }}>
-        <span
-          className="text-[7px] font-mono font-bold tracking-[0.15em] select-none"
-          style={{
-            writingMode: "vertical-rl",
-            textOrientation: "mixed",
-            transform: "rotate(180deg)",
-            color: borderColor,
-            opacity: 0.75,
-          }}>
-          {borderLabel}
-        </span>
-      </div>
+      {/* Left strip — TAF or BOTH */}
+      {showLeftStrip && (
+        <div className="flex-shrink-0 w-[18px] flex items-center justify-center" style={{ backgroundColor: `${tafColor}12` }}>
+          <span className="text-[7px] font-mono font-bold tracking-[0.15em] select-none"
+            style={{ writingMode: "vertical-rl", textOrientation: "mixed", transform: "rotate(180deg)", color: tafColor, opacity: 0.75 }}>
+            TAF
+          </span>
+        </div>
+      )}
 
       {/* Card content */}
       <div className="flex-1 min-w-0">
@@ -456,17 +607,27 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/60">
           <div className="flex items-center gap-2">
             <span className="font-mono font-bold text-base tracking-wider">{icao}</span>
-            <span className="text-xs font-mono text-muted-foreground border border-border px-1.5 py-0.5 rounded">{isDom ? "DOM" : "INT"}</span>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
-            {rawMetar ? (
+            {/* TAF category badge */}
+            {showTafBadge && rawTaf && tafWorst && (
               <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
-                style={{ color: catColor, borderColor: `${catColor}60`, backgroundColor: `${catColor}18` }}>
-                {cat}
+                style={{ color: CATEGORY_COLOR[tafCat], borderColor: `${CATEGORY_COLOR[tafCat]}60`, backgroundColor: `${CATEGORY_COLOR[tafCat]}18` }}>
+                {tafCat}
               </span>
-            ) : (
+            )}
+            {/* METAR category badge — shown when BOTH and different from TAF, or METAR only mode */}
+            {showMetarBadge && rawMetar && (view === "METAR" || (view === "BOTH" && metarCat !== tafCat)) && (
+              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
+                style={{ color: metarColor, borderColor: `${metarColor}60`, backgroundColor: `${metarColor}18` }}>
+                {metarCat}
+              </span>
+            )}
+            {/* No data */}
+            {!rawMetar && !rawTaf && (
               <span className="text-xs font-mono text-muted-foreground">NO DATA</span>
             )}
+            {/* CRIT badges */}
             {critTaf && (
               <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border text-red-400 border-red-400/50 bg-red-400/10">
                 CRIT TAF
@@ -477,16 +638,11 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
                 CRIT METAR
               </span>
             )}
-            {!critTaf && orangeTaf && (
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border text-orange-400 border-orange-400/50 bg-orange-400/10">
-                WX TAF
-              </span>
-            )}
           </div>
         </div>
 
         {/* TAF section */}
-        {showTaf && (
+        {(view === "TAF" || view === "BOTH") && (
           <div className="px-3 py-3">
             {rawTaf ? (
               <div className="max-h-36 overflow-y-auto">
@@ -499,12 +655,22 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
         )}
 
         {/* METAR section */}
-        {showMetar && (
-          <div className={`px-3 py-3 ${showTaf ? "border-t border-border/60 bg-background/30" : ""}`}>
+        {(view === "METAR" || view === "BOTH") && (
+          <div className={`px-3 py-3 ${view === "BOTH" ? "border-t border-border/60 bg-background/30" : ""}`}>
             {rawMetar ? <ColoredRawText raw={rawMetar} /> : <p className="text-xs font-mono text-muted-foreground italic">Awaiting METAR...</p>}
           </div>
         )}
       </div>
+
+      {/* Right strip — METAR or BOTH */}
+      {showRightStrip && (
+        <div className="flex-shrink-0 w-[18px] flex items-center justify-center" style={{ backgroundColor: `${metarBorderColor}12` }}>
+          <span className="text-[7px] font-mono font-bold tracking-[0.15em] select-none"
+            style={{ writingMode: "vertical-rl", textOrientation: "mixed", transform: "rotate(180deg)", color: metarBorderColor, opacity: 0.75 }}>
+            METAR
+          </span>
+        </div>
+      )}
     </Link>
   );
 }
