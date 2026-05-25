@@ -1,12 +1,18 @@
 import { Router } from "express";
-import { db, alertsTable } from "@workspace/db";
-import { eq, and, desc, sql, count } from "drizzle-orm";
+import { db, alertsTable, watchlistTable } from "@workspace/db";
+import { eq, and, desc, sql, count, gte, inArray } from "drizzle-orm";
 import {
   ListAlertsQueryParams,
   AcknowledgeAlertParams,
 } from "@workspace/api-zod";
 
 const router = Router();
+
+function startOfTodayUtc(): Date {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
 
 router.get("/alerts", async (req, res) => {
   const raw = req.query;
@@ -40,12 +46,36 @@ router.get("/alerts", async (req, res) => {
 });
 
 router.get("/alerts/summary", async (_req, res) => {
-  const [total] = await db.select({ count: count() }).from(alertsTable);
-  const [unacked] = await db.select({ count: count() }).from(alertsTable).where(eq(alertsTable.acknowledged, false));
-  const [tafRevisions] = await db.select({ count: count() }).from(alertsTable).where(sql`${alertsTable.type} IN ('TAF_AMD', 'TAF_COR')`);
-  const [speciAlerts] = await db.select({ count: count() }).from(alertsTable).where(eq(alertsTable.type, "SPECI"));
-  const affectedRows = await db.selectDistinct({ icao: alertsTable.icao }).from(alertsTable);
-  const [lastScanRow] = await db.select({ detectedAt: alertsTable.detectedAt }).from(alertsTable).orderBy(desc(alertsTable.detectedAt)).limit(1);
+  const today = startOfTodayUtc();
+
+  // Get watchlist ICAOs for filtering
+  const watchlistRows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
+  const watchlistIcaos = watchlistRows.map((r) => r.icao);
+
+  if (watchlistIcaos.length === 0) {
+    return res.json({
+      totalAlerts: 0, unacknowledged: 0, tafRevisions: 0, speciAlerts: 0,
+      airportsAffected: 0, lastScan: null,
+    });
+  }
+
+  const baseConditions = [
+    gte(alertsTable.detectedAt, today),
+    inArray(alertsTable.icao, watchlistIcaos),
+  ];
+
+  const [total] = await db.select({ count: count() }).from(alertsTable)
+    .where(and(...baseConditions));
+  const [unacked] = await db.select({ count: count() }).from(alertsTable)
+    .where(and(...baseConditions, eq(alertsTable.acknowledged, false)));
+  const [tafRevisions] = await db.select({ count: count() }).from(alertsTable)
+    .where(and(...baseConditions, sql`${alertsTable.type} IN ('TAF_AMD', 'TAF_COR')`));
+  const [speciAlerts] = await db.select({ count: count() }).from(alertsTable)
+    .where(and(...baseConditions, eq(alertsTable.type, "SPECI")));
+  const affectedRows = await db.selectDistinct({ icao: alertsTable.icao }).from(alertsTable)
+    .where(and(...baseConditions));
+  const [lastScanRow] = await db.select({ detectedAt: alertsTable.detectedAt }).from(alertsTable)
+    .orderBy(desc(alertsTable.detectedAt)).limit(1);
 
   return res.json({
     totalAlerts: Number(total.count),

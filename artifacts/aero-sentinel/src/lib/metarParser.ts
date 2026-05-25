@@ -56,23 +56,68 @@ const WX_LABELS: Record<string, string> = {
   "-RA": "Lt Rain", RA: "Rain", "+RA": "Hvy Rain",
   "-SN": "Lt Snow", SN: "Snow", "+SN": "Hvy Snow",
   "-RASN": "Lt Rain/Snow", RASN: "Rain+Snow",
-  SH: "Showers", SHRA: "Rain Showers", SHSN: "Snow Showers",
-  SHGR: "Hail Showers", VCSH: "Vcnty Showers", VCTS: "Vcnty T-storm",
+  SH: "Showers", SHRA: "Rain Showers", "-SHRA": "Lt Rain Showers",
+  "+SHRA": "Hvy Rain Showers", SHSN: "Snow Showers", "-SHSN": "Lt Snow Showers",
+  "+SHSN": "Hvy Snow Showers", SHGR: "Hail Showers",
+  VCSH: "Vcnty Showers", VCTS: "Vcnty T-storm",
   BLSN: "Blowing Snow", BLDU: "Blowing Dust", DRSN: "Drifting Snow",
   SS: "Sandstorm", DS: "Duststorm", SG: "Snow Grains",
-  IC: "Ice Crystals", PL: "Ice Pellets",
-  NSW: "No Sig Weather",
+  IC: "Ice Crystals", PL: "Ice Pellets", FC: "Funnel Cloud", SQ: "Squall",
+  NSW: "No Sig Weather", CB: "Cumulonimbus",
+  "-TS": "Lt Thunderstorm", "+TS": "Hvy Thunderstorm",
+  "-TSRA": "Lt T-storm/Rain", "+TSRA": "Hvy T-storm/Rain",
+  "-SH": "Lt Showers", "+SH": "Hvy Showers",
+  "-FZRA": "Lt Freezing Rain", "+FZRA": "Hvy Freezing Rain",
 };
 
-const DANGER_CODES = ["TS", "FG", "FZFG", "+SN", "GR", "VA", "TSRA", "TSGR", "TSSN", "FZRA", "SS", "DS"];
+// ── Critical / orange wx sets ─────────────────────────────────────────────────
+
+/** Orange-level phenomena (both TAF and METAR; TAF also includes VCTS/BLDU) */
+export const ORANGE_WX = new Set([
+  "VCTS", "TS", "-TS", "TSRA", "-TSRA", "CB",
+  "DU", "FU", "-SH", "SH", "-RA", "RA", "SHRA", "-SHRA",
+  "SA", "FG", "BLDU",
+]);
+
+/** Red/critical phenomena (TAF and METAR) */
+export const RED_WX = new Set([
+  "+TS", "+TSRA", "+SH", "+SHRA", "DS", "SS",
+  "-SN", "SN", "+SN", "-SHSN", "SHSN", "+SHSN",
+  "-FZRA", "FZRA", "+FZRA", "IC", "PL", "GR", "GS", "VA", "FC", "SQ",
+]);
+
+const DANGER_CODES = [...RED_WX];
+
+/** Returns true if raw text contains any red (critical) weather code */
+export function hasCritWx(raw: string): boolean {
+  for (const code of RED_WX) {
+    const escaped = code.replace(/[+]/g, "\\+");
+    if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(raw)) return true;
+  }
+  return false;
+}
+
+/** Returns true if raw text contains any orange weather code */
+export function hasOrangeWx(raw: string): boolean {
+  for (const code of ORANGE_WX) {
+    const escaped = code.replace(/[+]/g, "\\+");
+    if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(raw)) return true;
+  }
+  return false;
+}
+
+// ── Internal parsers ──────────────────────────────────────────────────────────
 
 function parseWind(raw: string): WindData | undefined {
   const m = raw.match(/\b(?<dir>\d{3}|VRB)(?<spd>\d{2,3})(?:G(?<gst>\d{2,3}))?KT\b/);
   if (!m?.groups) return undefined;
   const sustainedKt = parseInt(m.groups.spd);
   const gustKt = m.groups.gst ? parseInt(m.groups.gst) : undefined;
-  const max = Math.max(sustainedKt, gustKt ?? 0);
-  const dangerColor = max >= 35 ? "#ef4444" : max >= 25 ? "#f97316" : max >= 16 ? "#eab308" : "#22c55e";
+  const g = gustKt ?? 0;
+  let dangerColor: string;
+  if (sustainedKt >= 15 || g >= 25) dangerColor = "#ef4444";       // red
+  else if (sustainedKt >= 12 || g >= 20) dangerColor = "#f97316";  // orange
+  else dangerColor = "#22c55e";                                      // green (ok)
   return { direction: m.groups.dir, sustainedKt, gustKt, dangerColor, raw: m[0] };
 }
 
@@ -104,42 +149,31 @@ function parsePhenomena(raw: string) {
     if (seen.has(code)) continue;
     seen.add(code);
     const label = WX_LABELS[code] ?? code;
-    const danger = DANGER_CODES.some((d) => code.includes(d));
+    const danger = DANGER_CODES.some((d) => code === d || code.includes(d));
     found.push({ code, label, danger });
   }
   return found;
 }
 
+/**
+ * Categorize flight conditions.
+ * Priority: LIFR > IFR > MVFR > VFR
+ * VFR:  vis ≥ 8000m AND ceiling ≥ 3000ft
+ * MVFR: vis ≥ 4800m but < 8000m  OR  ceiling ≥ 1000ft but < 3000ft
+ * IFR:  vis ≥ 1600m but < 4800m  OR  ceiling ≥ 500ft but < 1000ft
+ * LIFR: vis < 1600m  OR  ceiling < 500ft
+ */
 function categorizeFlight(
   vis?: number,
   ceiling?: { feet: number },
-  phenomena?: Array<{ code: string; danger: boolean }>
 ): FlightCategory {
-  const hasDanger = phenomena?.some((p) => p.danger) ?? false;
-
   const v = vis ?? 9999;
   const c = ceiling?.feet ?? 99999;
 
-  let catVis: FlightCategory;
-  if (v < 1500) catVis = FlightCategory.LIFR;
-  else if (v <= 4999) catVis = FlightCategory.IFR;
-  else if (v <= 8000) catVis = FlightCategory.MVFR;
-  else catVis = FlightCategory.VFR;
-
-  let catCeil: FlightCategory;
-  if (c < 500) catCeil = FlightCategory.LIFR;
-  else if (c < 1000) catCeil = FlightCategory.IFR;
-  else if (c <= 3000) catCeil = FlightCategory.MVFR;
-  else catCeil = FlightCategory.VFR;
-
-  const order = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
-  const worst = order[Math.max(order.indexOf(catVis), order.indexOf(catCeil))];
-
-  if (hasDanger) {
-    if (worst === FlightCategory.LIFR || v < 1500 || c < 500) return FlightCategory.LIFR;
-    return FlightCategory.IFR;
-  }
-  return worst;
+  if (v < 1600 || c < 500) return FlightCategory.LIFR;
+  if (v < 4800 || c < 1000) return FlightCategory.IFR;
+  if (v < 8000 || c < 3000) return FlightCategory.MVFR;
+  return FlightCategory.VFR;
 }
 
 export function parseMetar(raw: string): MetarParsed {
@@ -160,23 +194,16 @@ export function parseMetar(raw: string): MetarParsed {
   const { meters: vis, cavok } = parseVisibility(raw);
   const ceiling = parseCeiling(raw);
   const phenomena = parsePhenomena(raw);
-  const flightCategory = categorizeFlight(vis, ceiling, phenomena);
+  const flightCategory = categorizeFlight(vis, ceiling);
 
   return {
-    stationId,
-    raw,
-    flightCategory,
+    stationId, raw, flightCategory,
     categoryColor: CATEGORY_COLOR[flightCategory],
-    visibility: vis,
-    cavok,
-    ceiling,
-    wind,
-    phenomena,
-    valid: true,
+    visibility: vis, cavok, ceiling, wind, phenomena, valid: true,
   };
 }
 
-// ── Tokenizer for colored display ────────────────────────────────────────────
+// ── Tokenizer for colored display ─────────────────────────────────────────────
 
 export interface DisplayToken {
   text: string;
@@ -185,27 +212,25 @@ export interface DisplayToken {
   title?: string;
 }
 
-// Only color IFR (red) and LIFR (purple) — VFR/MVFR visibility stays neutral
-// Thresholds match categorizeFlight(): LIFR <1500m, IFR 1500–4999m, MVFR/VFR ≥5000m
+/** Visibility coloring: LIFR <1600 purple, IFR 1600-4799 red, ≥4800 no highlight */
 function visColor(m?: number): string {
   if (!m) return "";
-  if (m >= 5000) return "";        // MVFR or VFR — no highlight
-  if (m >= 1500) return "#ef4444"; // IFR
-  return "#a855f7";                // LIFR
+  if (m < 1600) return "#a855f7";
+  if (m < 4800) return "#ef4444";
+  return "";
 }
 
-// Only color IFR (red) and LIFR (purple) ceilings — higher stays neutral
+/** Ceiling coloring: LIFR <500ft purple, IFR 500-999ft red, ≥1000ft no highlight */
 function ceilColor(ft: number): string {
-  if (ft >= 1000) return "";      // VFR or MVFR — no highlight
-  if (ft >= 500)  return "#ef4444"; // IFR
-  return "#a855f7";                // LIFR
+  if (ft < 500) return "#a855f7";
+  if (ft < 1000) return "#ef4444";
+  return "";
 }
 
 function wxColor(code: string): string {
-  if (/TS|GR|VA|\+SN|SS|DS/.test(code)) return "#ef4444";
-  if (/FG|FZFG|FZRA|FZDZ/.test(code)) return "#ef4444";
-  if (/RA|DZ|SN|SH/.test(code)) return "#93c5fd";
-  if (/BR|HZ|FU|DU|SA/.test(code)) return "#d1a054";
+  if (RED_WX.has(code)) return "#ef4444";
+  if (ORANGE_WX.has(code)) return "#f97316";
+  if (/^(BR|HZ)$/.test(code)) return "#d1a054";
   return "#94a3b8";
 }
 
@@ -231,12 +256,12 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
     } else if (/^(VRB|\d{3})\d{2,3}(G\d{2,3})?KT$/.test(t)) {
       const spd = parseInt(t.match(/(?:VRB|\d{3})(\d{2,3})/)?.[1] ?? "0");
       const gst = parseInt(t.match(/G(\d{2,3})/)?.[1] ?? "0");
-      const max = Math.max(spd, gst);
-      // Only highlight moderate+ winds — light winds stay neutral
-      color = max >= 35 ? "#ef4444" : max >= 25 ? "#f97316" : max >= 16 ? "#eab308" : undefined;
-      if (max >= 16) title = `Wind: ${max >= 35 ? "Extreme" : max >= 25 ? "Strong" : "Moderate"}`;
+      if (spd >= 15 || gst >= 25) {
+        color = "#ef4444"; title = `Wind: Dangerous (${spd}kt${gst ? `/G${gst}kt` : ""})`;
+      } else if (spd >= 12 || gst >= 20) {
+        color = "#f97316"; title = `Wind: Strong (${spd}kt${gst ? `/G${gst}kt` : ""})`;
+      }
     } else if (/^(CAVOK|NSC|NCD|SKC|CLR)$/.test(t)) {
-      // Neutral — good conditions, no highlight needed
       color = "#64748b"; title = t === "CAVOK" ? "Ceiling And Visibility OK" : "No Significant Clouds";
     } else if (/^\d{4}$/.test(t) && parseInt(t) <= 9999) {
       const vis = parseInt(t);
@@ -258,11 +283,11 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
       color = "#f59e0b"; bold = true; title = "TAF change group";
     } else if (t === "NOSIG") {
       color = "#64748b"; title = "No Significant Change";
-    } else if (/^(RMK|TEMPO|TX|TN)/.test(t)) {
+    } else if (/^(RMK|TX|TN)/.test(t)) {
       color = "#64748b";
     } else {
       const wx = wxColor(t);
-      if (wx !== "#94a3b8" || /[+-]?(TS|DZ|RA|SN|SG|IC|PL|GR|GS|FG|BR|HZ|FU|VA|DU|SA|VCSH|VCTS)/.test(t)) {
+      if (wx !== "#94a3b8" || /[+-]?(TS|DZ|RA|SN|SG|IC|PL|GR|GS|FG|BR|HZ|FU|VA|DU|SA|VCSH|VCTS|CB|FC|SQ|SS|DS)/.test(t)) {
         color = wx;
         const label = WX_LABELS[t];
         if (label) title = label;
@@ -286,24 +311,22 @@ export function parseTafWorstCategory(rawTaf: string | null): FlightCategory | n
 
   const tokens = rawTaf.split(/\s+/);
   for (const token of tokens) {
-    // Visibility: bare 4-digit meter value (not a validity period DDHH/DDHH which contains /)
     if (/^\d{4}$/.test(token)) {
       const v = parseInt(token);
       let cat: FlightCategory;
-      if (v < 1500)       cat = FlightCategory.LIFR;
-      else if (v <= 4999) cat = FlightCategory.IFR;
-      else if (v <= 8000) cat = FlightCategory.MVFR;
+      if (v < 1600)       cat = FlightCategory.LIFR;
+      else if (v < 4800)  cat = FlightCategory.IFR;
+      else if (v < 8000)  cat = FlightCategory.MVFR;
       else                cat = FlightCategory.VFR;
       if (order.indexOf(cat) > order.indexOf(worst)) worst = cat;
     }
-    // Ceiling: BKN or OVC + 3-digit height in hundreds of feet
     const ceilMatch = token.match(/^(?:BKN|OVC)(\d{3})$/);
     if (ceilMatch) {
       const c = parseInt(ceilMatch[1]) * 100;
       let cat: FlightCategory;
       if (c < 500)        cat = FlightCategory.LIFR;
       else if (c < 1000)  cat = FlightCategory.IFR;
-      else if (c <= 3000) cat = FlightCategory.MVFR;
+      else if (c < 3000)  cat = FlightCategory.MVFR;
       else                cat = FlightCategory.VFR;
       if (order.indexOf(cat) > order.indexOf(worst)) worst = cat;
     }
@@ -317,7 +340,109 @@ export function parseTafWorstCategory(rawTaf: string | null): FlightCategory | n
 export function extractTimeSlots(raw: string): string[] {
   const slots = new Set<string>();
   for (const m of raw.matchAll(/\b\d{6}Z\b/g)) {
-    slots.add(m[0]); // e.g. "221940Z"
+    slots.add(m[0]);
   }
   return [...slots];
+}
+
+// ── TAF time-window analysis (for ANALYZE page) ───────────────────────────────
+
+export interface TafWindowResult {
+  category: FlightCategory | null;
+  critCodes: string[];
+  orangeCodes: string[];
+  visibility: number | null;
+  ceiling: number | null;
+}
+
+/**
+ * Parse a TAF and find the worst conditions in a UTC hour window [fromHour, toHour].
+ * Hours are 0-23. Day matching is based on the TAF validity period day numbers.
+ */
+export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResult {
+  if (!rawTaf) return { category: null, critCodes: [], orangeCodes: [], visibility: null, ceiling: null };
+
+  const windowStart = (etaHour - 1 + 24) % 24;
+  const windowEnd = (etaHour + 1) % 24;
+  const wraps = windowEnd < windowStart;
+
+  function hourInWindow(h: number): boolean {
+    if (wraps) return h >= windowStart || h <= windowEnd;
+    return h >= windowStart && h <= windowEnd;
+  }
+
+  // Split TAF into groups
+  const normalized = rawTaf.replace(/\r?\n/g, " ").replace(/\s{2,}/g, " ");
+  const groupRe = /(?=\b(?:BECMG|TEMPO|PROB\d{2}|FM\d{4,6})\b)/g;
+  const parts = normalized.split(groupRe);
+
+  let worstCat: FlightCategory = FlightCategory.VFR;
+  const order = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
+  const allCrit = new Set<string>();
+  const allOrange = new Set<string>();
+  let worstVis: number | null = null;
+  let worstCeil: number | null = null;
+
+  for (const group of parts) {
+    // Extract period for this group
+    const fmMatch = group.match(/\bFM\d{2}(\d{2})\d{2}\b/);
+    const periodMatch = group.match(/\b\d{2}(\d{2})\/\d{2}(\d{2})\b/);
+
+    let groupHours: number[] = [];
+    if (fmMatch) {
+      const h = parseInt(fmMatch[1]);
+      groupHours = [h];
+    } else if (periodMatch) {
+      const startH = parseInt(periodMatch[1]);
+      const endH = parseInt(periodMatch[2]);
+      groupHours = [startH, (startH + endH) / 2 | 0, endH];
+    } else {
+      // First group (base conditions) — always applies
+      groupHours = Array.from({ length: 24 }, (_, i) => i);
+    }
+
+    const overlaps = groupHours.some((h) => hourInWindow(h));
+    if (!overlaps) continue;
+
+    // Check visibility
+    const visMatch = group.match(/(?:^|\s)(\d{4})(?:\s|$)/);
+    if (visMatch) {
+      const v = parseInt(visMatch[1]);
+      if (worstVis === null || v < worstVis) worstVis = v;
+    }
+    if (/\b(CAVOK|NSC)\b/.test(group)) {
+      if (worstVis === null) worstVis = 9999;
+    }
+
+    // Check ceiling
+    for (const m of group.matchAll(/\b(?:BKN|OVC)(\d{3})\b/g)) {
+      const ft = parseInt(m[1]) * 100;
+      if (worstCeil === null || ft < worstCeil) worstCeil = ft;
+    }
+
+    // Category for this group
+    const cat = categorizeFlight(
+      visMatch ? parseInt(visMatch[1]) : (/\b(CAVOK|NSC)\b/.test(group) ? 9999 : undefined),
+      worstCeil !== null ? { feet: worstCeil } : undefined,
+    );
+    if (order.indexOf(cat) > order.indexOf(worstCat)) worstCat = cat;
+
+    // Check phenomena
+    for (const code of RED_WX) {
+      const escaped = code.replace(/[+]/g, "\\+");
+      if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(group)) allCrit.add(code);
+    }
+    for (const code of ORANGE_WX) {
+      const escaped = code.replace(/[+]/g, "\\+");
+      if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(group)) allOrange.add(code);
+    }
+  }
+
+  return {
+    category: worstCat,
+    critCodes: [...allCrit],
+    orangeCodes: [...allOrange],
+    visibility: worstVis,
+    ceiling: worstCeil,
+  };
 }

@@ -3,16 +3,17 @@ import { Link } from "wouter";
 import {
   useListAlerts, getListAlertsQueryKey,
   useAcknowledgeAlert, getGetAlertsSummaryQueryKey, getGetRecentAlertsQueryKey,
+  useGetAlertsSummary,
 } from "@workspace/api-client-react";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
-import { ClockBadge } from "@/components/ClockDisplay";
+import { ClockCard } from "@/components/ClockDisplay";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertBadge } from "@/components/AlertBadge";
-import { ColoredRawText } from "@/components/ColoredRawText";
+import { TafText } from "@/components/TafText";
 import { formatDistanceToNow, format } from "date-fns";
 
 type AlertType = "TAF_AMD" | "TAF_COR" | "SPECI";
@@ -36,6 +37,32 @@ const DEFAULT_ROUTE: RouteFilter = "ALL";
 const DEFAULT_SORT: SortMode = "newest";
 const DEFAULT_HIDE_ACK = false;
 
+interface StatCardProps { label: string; value: string; highlight?: boolean; color?: "amber" | "red" | "sky" }
+
+function StatCard({ label, value, highlight, color }: StatCardProps) {
+  const textColor =
+    color === "amber" ? "text-amber-400" :
+    color === "red" ? "text-red-400" :
+    color === "sky" ? "text-sky-400" :
+    highlight ? "text-foreground" : "text-foreground";
+  const borderColor =
+    color === "amber" ? "border-amber-400/30" :
+    color === "red" ? "border-red-400/30" :
+    color === "sky" ? "border-sky-400/30" :
+    highlight ? "border-primary/40" : "border-border";
+  const bgColor =
+    color === "amber" ? "bg-amber-400/5" :
+    color === "red" ? "bg-red-400/5" :
+    color === "sky" ? "bg-sky-400/5" :
+    "bg-card";
+  return (
+    <div className={`rounded-lg border px-4 py-3 ${bgColor} ${borderColor}`}>
+      <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">{label}</p>
+      <p className={`text-2xl font-mono font-bold tabular-nums ${textColor}`}>{value}</p>
+    </div>
+  );
+}
+
 export default function Alerts() {
   const [typeFilter, setTypeFilter] = usePersistedState<AlertType | undefined>("as-alerts-type", DEFAULT_TYPE);
   const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-alerts-route", DEFAULT_ROUTE);
@@ -54,6 +81,10 @@ export default function Alerts() {
   const queryClient = useQueryClient();
   const { isWatching } = useWatchlist();
   const { theme, toggleTheme } = useThemeContext();
+
+  const { data: summary, isLoading: summaryLoading } = useGetAlertsSummary({
+    query: { refetchInterval: 30_000 },
+  });
 
   const { data: allAlerts, isLoading } = useListAlerts(
     { limit: 100 },
@@ -97,20 +128,34 @@ export default function Alerts() {
   };
 
   const unackedCount = alerts.filter((a) => !a.acknowledged).length;
+  const dash = summaryLoading ? "—" : undefined;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
-        {/* Top bar: title + clock */}
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Alert Log</h1>
-          <ClockBadge />
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5 space-y-5">
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <StatCard label="TOTAL ALERTS" value={dash ?? String(summary?.totalAlerts ?? 0)} />
+          <StatCard
+            label="UNACKNOWLEDGED"
+            value={dash ?? String(summary?.unacknowledged ?? 0)}
+            highlight={!summaryLoading && (summary?.unacknowledged ?? 0) > 0}
+          />
+          <StatCard label="TAF REVISIONS" value={dash ?? String(summary?.tafRevisions ?? 0)} color="amber" />
+          <StatCard label="SPECI ALERTS" value={dash ?? String(summary?.speciAlerts ?? 0)} color="red" />
+          <ClockCard />
+        </div>
+
+        {/* Top bar */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Alert Log — Bugün UTC</h1>
         </div>
 
         {/* Filter row */}
-        <div className="flex flex-wrap items-center gap-2 mb-6">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
             {TYPE_FILTERS.map((f) => (
               <button key={String(f.value)} onClick={() => setTypeFilter(f.value)}
@@ -157,7 +202,6 @@ export default function Alerts() {
             </button>
           )}
 
-          {/* ACK ALL */}
           {unackedCount > 0 && (
             <button onClick={handleAckAll} disabled={ackingAll}
               className="ml-auto px-3 py-1.5 text-xs font-mono font-bold border border-green-500/40 text-green-400 rounded hover:bg-green-500/10 transition-colors disabled:opacity-50 flex items-center gap-1.5">
@@ -170,6 +214,7 @@ export default function Alerts() {
           </span>
         </div>
 
+        {/* Alert list */}
         {isLoading ? (
           <div className="space-y-2">{[...Array(8)].map((_, i) => <div key={i} className="h-24 rounded-lg bg-card animate-pulse border border-border" />)}</div>
         ) : !alerts.length ? (
@@ -194,7 +239,7 @@ export default function Alerts() {
                         <span className="text-xs text-muted-foreground font-mono">({formatDistanceToNow(new Date(alert.detectedAt), { addSuffix: true })})</span>
                         {alert.acknowledged && <span className="text-xs bg-muted text-muted-foreground font-mono px-2 py-0.5 rounded">ACK</span>}
                       </div>
-                      <ColoredRawText raw={alert.rawText} />
+                      <TafText raw={alert.rawText} />
                     </div>
                   </div>
                   {!alert.acknowledged && (

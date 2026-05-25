@@ -6,12 +6,26 @@ const sonGorulenTaf: Record<string, string> = {};
 const sonGorulenMetar: Record<string, string> = {};
 
 let scanCount = 0;
+let scanCountToday = 0;
+let lastResetDateStr = getUtcDateStr();
 let lastScan: Date | null = null;
 let running = false;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
-const HEADERS = { "User-Agent": "Mozilla/5.0 AERO-SENTINEL/1.5" };
+const HEADERS = { "User-Agent": "Mozilla/5.0 AERO-SENTINEL/1.8" };
 const BASE_URL = "https://aviationweather.gov/api/data";
+
+function getUtcDateStr(): string {
+  return new Date().toISOString().slice(0, 10); // "2024-05-23"
+}
+
+function checkDailyReset() {
+  const today = getUtcDateStr();
+  if (today !== lastResetDateStr) {
+    scanCountToday = 0;
+    lastResetDateStr = today;
+  }
+}
 
 async function fetchJson(url: string): Promise<unknown[]> {
   const res = await fetch(url, { headers: HEADERS });
@@ -22,7 +36,6 @@ async function fetchJson(url: string): Promise<unknown[]> {
 async function refreshIcaoCache(): Promise<string[]> {
   const rows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
   if (rows.length === 0) {
-    // Watchlist is empty — seed default and return it
     await db.insert(watchlistTable).values({ icao: "LTFH" }).onConflictDoNothing();
     cachedIcaos = ["LTFH"];
   } else {
@@ -76,6 +89,7 @@ async function scanMetar(ids: string) {
 
 async function sentinelRadar() {
   try {
+    checkDailyReset();
     const icaos = await refreshIcaoCache();
     const ids = icaos.join(",");
     await Promise.all([scanTaf(ids), scanMetar(ids)]);
@@ -83,6 +97,7 @@ async function sentinelRadar() {
     console.error("Scan error:", err);
   } finally {
     scanCount++;
+    scanCountToday++;
     lastScan = new Date();
   }
 }
@@ -104,7 +119,8 @@ export function stopMonitor() {
 }
 
 export function getMonitorState() {
-  return { running, scanCount, lastScan, monitoredAirports: cachedIcaos.length };
+  checkDailyReset();
+  return { running, scanCount, scanCountToday, lastScan, monitoredAirports: cachedIcaos.length };
 }
 
 export function getAirports(): string[] {
