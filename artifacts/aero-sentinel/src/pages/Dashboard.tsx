@@ -1,19 +1,21 @@
 import { useMemo, useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
-  useGetAlertsSummary, getGetAlertsSummaryQueryKey,
   useGetMonitorStatus, getGetMonitorStatusQueryKey,
 } from "@workspace/api-client-react";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { TafText } from "@/components/TafText";
 import { ColoredRawText } from "@/components/ColoredRawText";
-import { ClockCard } from "@/components/ClockDisplay";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
-import { parseMetar, FlightCategory, CATEGORY_COLOR, extractTimeSlots, parseTafWorstCategory } from "@/lib/metarParser";
+import {
+  parseMetar, FlightCategory, CATEGORY_COLOR,
+  extractTimeSlots, parseTafWorstCategory,
+  hasCritWx, hasOrangeWx,
+} from "@/lib/metarParser";
 
 type RouteFilter = "ALL" | "DOM" | "INT";
 type SortMode = "alpha" | "lifr-first" | "vfr-first";
@@ -27,16 +29,21 @@ const DEFAULT_SORT: SortMode = "alpha";
 
 interface WeatherItem { icao: string; rawTaf: string | null; rawMetar: string | null }
 
+const WEATHER_KEY = (key: string) => ["watchlist", "weather", key];
+
 function useWatchlistWeather(icaos: string[]) {
   const key = icaos.join(",");
-  return useQuery<WeatherItem[]>({
-    queryKey: ["watchlist", "weather", key],
+  const queryClient = useQueryClient();
+  const query = useQuery<WeatherItem[]>({
+    queryKey: WEATHER_KEY(key),
     queryFn: () => fetch(`/api/watchlist/weather?icaos=${key}`).then((r) => r.json()),
     enabled: icaos.length > 0,
     refetchInterval: 60_000,
     refetchIntervalInBackground: true,
     staleTime: 30_000,
   });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: WEATHER_KEY(key) });
+  return { ...query, refresh };
 }
 
 const SORT_OPTIONS: { value: SortMode; label: string }[] = [
@@ -54,12 +61,14 @@ const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
 export default function Dashboard() {
   const { theme, toggleTheme } = useThemeContext();
   const { effectiveIcaos, watchedIcaos } = useWatchlist();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [view, setView] = usePersistedState<ViewMode>("as-dash-view", DEFAULT_VIEW);
   const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-dash-cats", DEFAULT_CATS);
   const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-dash-route", DEFAULT_ROUTE);
   const [sortMode, setSortMode] = usePersistedState<SortMode>("as-dash-sort", DEFAULT_SORT);
   const [timeFilters, setTimeFilters] = usePersistedState<string[]>("as-dash-time-multi", []);
+  const [icaoSearch, setIcaoSearch] = usePersistedState<string>("as-dash-icao-search", "");
   const [timeOpen, setTimeOpen] = useState(false);
   const timeRef = useRef<HTMLDivElement>(null);
 
@@ -70,7 +79,6 @@ export default function Dashboard() {
   const toggleTimeSlot = (slot: string) =>
     setTimeFilters((p) => p.includes(slot) ? p.filter((s) => s !== slot) : [...p, slot]);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     if (!timeOpen) return;
     const handler = (e: MouseEvent) => {
@@ -82,20 +90,22 @@ export default function Dashboard() {
     return () => document.removeEventListener("mousedown", handler);
   }, [timeOpen]);
 
-  const { data: summary, isLoading: summaryLoading } = useGetAlertsSummary({
-    query: { queryKey: getGetAlertsSummaryQueryKey(), refetchInterval: 30_000 },
-  });
   const { data: monitor } = useGetMonitorStatus({
     query: { queryKey: getGetMonitorStatusQueryKey(), refetchInterval: 30_000 },
   });
-  const { data: weatherData, isLoading: weatherLoading } = useWatchlistWeather(effectiveIcaos);
+  const { data: weatherData, isLoading: weatherLoading, refresh: refreshWeather } = useWatchlistWeather(effectiveIcaos);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshWeather();
+    setTimeout(() => setIsRefreshing(false), 600);
+  };
 
   const airports = useMemo(() => {
     if (!weatherData) return [];
     return weatherData.map((w) => ({ ...w, parsed: w.rawMetar ? parseMetar(w.rawMetar) : null }));
   }, [weatherData]);
 
-  // Extract time slots based on active view + routeFilter (DOM→LT only, INT→non-LT only)
   const allTimeSlots = useMemo(() => {
     const slots = new Set<string>();
     for (const a of airports) {
@@ -104,10 +114,9 @@ export default function Dashboard() {
       const raw = view === "METAR" ? (a.rawMetar ?? "") : (a.rawTaf ?? "");
       extractTimeSlots(raw).forEach((s) => slots.add(s));
     }
-    return [...slots].sort().reverse(); // newest first
+    return [...slots].sort().reverse();
   }, [airports, view, routeFilter]);
 
-  // Drop stale time filters when view changes
   useEffect(() => {
     if (timeFilters.length > 0 && allTimeSlots.length > 0) {
       const valid = timeFilters.filter((f) => allTimeSlots.includes(f));
@@ -120,7 +129,8 @@ export default function Dashboard() {
     activeCatsArr.length !== DEFAULT_CATS.length ||
     routeFilter !== DEFAULT_ROUTE ||
     sortMode !== DEFAULT_SORT ||
-    timeFilters.length > 0;
+    timeFilters.length > 0 ||
+    icaoSearch.trim() !== "";
 
   const resetFilters = () => {
     setView(DEFAULT_VIEW);
@@ -128,6 +138,7 @@ export default function Dashboard() {
     setRouteFilter(DEFAULT_ROUTE);
     setSortMode(DEFAULT_SORT);
     setTimeFilters([]);
+    setIcaoSearch("");
   };
 
   const displayed = useMemo(() => {
@@ -135,6 +146,10 @@ export default function Dashboard() {
     list = list.filter((a) => activeCats.has(a.parsed?.flightCategory ?? FlightCategory.VFR));
     if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
     else if (routeFilter === "INT") list = list.filter((a) => !a.icao.startsWith("LT"));
+    if (icaoSearch.trim()) {
+      const q = icaoSearch.trim().toUpperCase();
+      list = list.filter((a) => a.icao.includes(q));
+    }
     if (timeFilters.length > 0) {
       list = list.filter((a) => {
         const raw = view === "METAR" ? (a.rawMetar ?? "") : (a.rawTaf ?? "");
@@ -156,45 +171,61 @@ export default function Dashboard() {
       });
     }
     return sorted;
-  }, [airports, activeCatsArr, routeFilter, sortMode, timeFilters, view]);
+  }, [airports, activeCatsArr, routeFilter, sortMode, timeFilters, icaoSearch, view]);
+
+  const monitorData = monitor as { running?: boolean; scanCount?: number; scanCountToday?: number; monitoredAirports?: number } | undefined;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader monitorStatus={monitor} theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-6 space-y-5">
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <StatCard label="TOTAL ALERTS" value={summaryLoading ? "—" : String(summary?.totalAlerts ?? 0)} />
-          <StatCard label="UNACKNOWLEDGED" value={summaryLoading ? "—" : String(summary?.unacknowledged ?? 0)} highlight={!summaryLoading && (summary?.unacknowledged ?? 0) > 0} />
-          <StatCard label="TAF REVISIONS" value={summaryLoading ? "—" : String(summary?.tafRevisions ?? 0)} color="amber" />
-          <StatCard label="SPECI ALERTS" value={summaryLoading ? "—" : String(summary?.speciAlerts ?? 0)} color="red" />
-          <ClockCard />
-        </div>
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5 space-y-4">
 
         {/* Monitor bar */}
-        <div className="bg-card border border-border rounded-lg px-4 py-2.5 flex items-center justify-between">
-          <div className="flex items-center gap-5 text-xs font-mono flex-wrap">
-            <span className="text-muted-foreground">MONITOR</span>
-            <span className={monitor?.running ? "text-green-400" : "text-red-400"}>{monitor?.running ? "ACTIVE" : "STOPPED"}</span>
-            <span className="text-muted-foreground">|</span>
-            <span className="text-muted-foreground">SCANS</span>
-            <span>{monitor?.scanCount ?? 0}</span>
-            <span className="text-muted-foreground">|</span>
-            <span className="text-muted-foreground">AIRPORTS</span>
-            <span>{monitor?.monitoredAirports ?? 0}</span>
+        <div className="bg-card border border-border rounded-lg px-4 py-2.5 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-4 text-xs font-mono flex-wrap">
+            <span className="text-muted-foreground tracking-widest">MONITOR</span>
+            <span className={monitorData?.running ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
+              {monitorData?.running ? "ACTIVE" : "STOPPED"}
+            </span>
+            <span className="text-border">|</span>
+            <span className="text-muted-foreground">SCANS TODAY</span>
+            <span className="tabular-nums">{monitorData?.scanCountToday ?? monitorData?.scanCount ?? 0}</span>
             {watchedIcaos.length > 0 && (
-              <><span className="text-muted-foreground">|</span>
+              <><span className="text-border">|</span>
               <span className="text-sky-400">WATCHLIST {watchedIcaos.length}</span></>
             )}
           </div>
-          <span className="text-xs text-muted-foreground font-mono hidden sm:block">INTERVAL: 60s</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-muted-foreground font-mono">INTERVAL: 60s</span>
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              title="Hava verisini yenile"
+              className="flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-mono font-bold border transition-all disabled:opacity-50"
+              style={{
+                borderColor: "#38BDF840",
+                color: "#38BDF8",
+                backgroundColor: "#38BDF810",
+              }}
+            >
+              <svg
+                width="10" height="10" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={isRefreshing ? "animate-spin" : ""}
+              >
+                <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+              </svg>
+              {isRefreshing ? "..." : "REFRESH"}
+            </button>
+          </div>
         </div>
 
         {/* Airport Weather Section */}
         <section>
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            {/* Category */}
+            {/* Category filters */}
             <div className="flex items-center gap-1">
               {ALL_CATS.map((cat) => (
                 <button key={cat} onClick={() => toggleCat(cat)}
@@ -243,7 +274,7 @@ export default function Dashboard() {
             </div>
             <span className="text-border text-xs font-mono">|</span>
 
-            {/* TIME multi-select dropdown */}
+            {/* TIME multi-select */}
             {!weatherLoading && allTimeSlots.length > 0 && (
               <div className="relative" ref={timeRef}>
                 <button
@@ -306,6 +337,23 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* ICAO search */}
+            <div className="relative flex items-center">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className="absolute left-2 text-muted-foreground pointer-events-none">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                type="text"
+                placeholder="ICAO..."
+                value={icaoSearch}
+                onChange={(e) => setIcaoSearch(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+                className={`pl-6 pr-2 py-1 w-20 rounded text-xs font-mono border bg-card transition-colors focus:outline-none focus:w-28 focus:border-primary ${
+                  icaoSearch ? "border-primary text-primary" : "border-border text-muted-foreground"
+                }`}
+              />
+            </div>
+
             {/* Reset filters */}
             {isFiltered && (
               <button onClick={resetFilters}
@@ -346,6 +394,8 @@ export default function Dashboard() {
   );
 }
 
+// ── WeatherCard ───────────────────────────────────────────────────────────────
+
 function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
   icao: string; rawTaf: string | null; rawMetar: string | null;
   parsed: ReturnType<typeof parseMetar> | null; view: ViewMode;
@@ -358,68 +408,103 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
 
   const tafWorst = parseTafWorstCategory(rawTaf);
   const order = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
-  const tafIsBadder = tafWorst && rawTaf && order.indexOf(tafWorst) > order.indexOf(cat);
-  const tafWorstColor = tafWorst ? CATEGORY_COLOR[tafWorst] : null;
+
+  // Left border color + label: TAF mode uses TAF worst, METAR mode uses METAR category
+  let borderColor: string;
+  let borderLabel: string;
+  if (view === "METAR") {
+    borderColor = rawMetar ? catColor : "hsl(var(--border))";
+    borderLabel = "METAR";
+  } else {
+    // TAF or BOTH: left border = TAF worst category
+    const effectiveCat = tafWorst && rawTaf
+      ? (order.indexOf(tafWorst) >= order.indexOf(cat) ? tafWorst : cat)
+      : cat;
+    borderColor = rawTaf ? CATEGORY_COLOR[effectiveCat] : (rawMetar ? catColor : "hsl(var(--border))");
+    borderLabel = "TAF";
+  }
+
+  const critTaf = rawTaf ? hasCritWx(rawTaf) : false;
+  const critMetar = rawMetar ? hasCritWx(rawMetar) : false;
+  const orangeTaf = rawTaf ? hasOrangeWx(rawTaf) : false;
 
   return (
     <Link href={`/airports/${icao}`}
-      className="block bg-card border border-border rounded-lg overflow-hidden hover:border-foreground/20 transition-colors cursor-pointer"
-      style={{ borderLeftWidth: "3px", borderLeftColor: rawMetar ? catColor : undefined }}>
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/60">
-        <div className="flex items-center gap-2">
-          <span className="font-mono font-bold text-base tracking-wider">{icao}</span>
-          <span className="text-xs font-mono text-muted-foreground border border-border px-1.5 py-0.5 rounded">{isDom ? "DOM" : "INT"}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {rawMetar ? (
-            <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
-              style={{ color: catColor, borderColor: `${catColor}60`, backgroundColor: `${catColor}18` }}>
-              {cat}
-            </span>
-          ) : (
-            <span className="text-xs font-mono text-muted-foreground">NO DATA</span>
-          )}
-          {tafIsBadder && tafWorst && tafWorstColor && (
-            <span
-              title={`TAF worst forecast: ${tafWorst}`}
-              className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border flex items-center gap-1"
-              style={{ color: tafWorstColor, borderColor: `${tafWorstColor}60`, backgroundColor: `${tafWorstColor}18` }}>
-              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-              TAF {tafWorst}
-            </span>
-          )}
-        </div>
-      </div>
-      {showTaf && (
-        <div className="px-4 py-3">
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1.5">TAF</p>
-          {rawTaf ? (
-            <div className="max-h-36 overflow-y-auto">
-              <TafText raw={rawTaf} />
-            </div>
-          ) : (
-            <p className="text-xs font-mono text-muted-foreground italic">Awaiting TAF data...</p>
-          )}
-        </div>
-      )}
-      {showMetar && (
-        <div className={`px-4 py-3 ${showTaf ? "border-t border-border/60 bg-background/30" : ""}`}>
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1.5">METAR</p>
-          {rawMetar ? <ColoredRawText raw={rawMetar} /> : <p className="text-xs font-mono text-muted-foreground italic">Awaiting METAR...</p>}
-        </div>
-      )}
-    </Link>
-  );
-}
+      className="block bg-card border border-border rounded-lg overflow-hidden hover:border-foreground/20 transition-colors cursor-pointer flex"
+      style={{ borderLeftWidth: "3px", borderLeftColor: borderColor }}>
 
-function StatCard({ label, value, highlight, color }: { label: string; value: string; highlight?: boolean; color?: "amber" | "red" }) {
-  const vc = color === "amber" ? "text-yellow-400" : color === "red" ? "text-red-400" : highlight ? "text-yellow-300" : "text-foreground";
-  return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2">{label}</p>
-      <p className={`text-2xl font-bold font-mono ${vc}`}>{value}</p>
-    </div>
+      {/* Colored left strip with vertical label */}
+      <div
+        className="flex-shrink-0 w-[18px] flex items-center justify-center"
+        style={{ backgroundColor: `${borderColor}12` }}>
+        <span
+          className="text-[7px] font-mono font-bold tracking-[0.15em] select-none"
+          style={{
+            writingMode: "vertical-rl",
+            textOrientation: "mixed",
+            transform: "rotate(180deg)",
+            color: borderColor,
+            opacity: 0.75,
+          }}>
+          {borderLabel}
+        </span>
+      </div>
+
+      {/* Card content */}
+      <div className="flex-1 min-w-0">
+        {/* Header */}
+        <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/60">
+          <div className="flex items-center gap-2">
+            <span className="font-mono font-bold text-base tracking-wider">{icao}</span>
+            <span className="text-xs font-mono text-muted-foreground border border-border px-1.5 py-0.5 rounded">{isDom ? "DOM" : "INT"}</span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            {rawMetar ? (
+              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
+                style={{ color: catColor, borderColor: `${catColor}60`, backgroundColor: `${catColor}18` }}>
+                {cat}
+              </span>
+            ) : (
+              <span className="text-xs font-mono text-muted-foreground">NO DATA</span>
+            )}
+            {critTaf && (
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border text-red-400 border-red-400/50 bg-red-400/10">
+                CRIT TAF
+              </span>
+            )}
+            {critMetar && (
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border text-red-400 border-red-400/50 bg-red-400/10">
+                CRIT METAR
+              </span>
+            )}
+            {!critTaf && orangeTaf && (
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border text-orange-400 border-orange-400/50 bg-orange-400/10">
+                WX TAF
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* TAF section */}
+        {showTaf && (
+          <div className="px-3 py-3">
+            {rawTaf ? (
+              <div className="max-h-36 overflow-y-auto">
+                <TafText raw={rawTaf} />
+              </div>
+            ) : (
+              <p className="text-xs font-mono text-muted-foreground italic">Awaiting TAF data...</p>
+            )}
+          </div>
+        )}
+
+        {/* METAR section */}
+        {showMetar && (
+          <div className={`px-3 py-3 ${showTaf ? "border-t border-border/60 bg-background/30" : ""}`}>
+            {rawMetar ? <ColoredRawText raw={rawMetar} /> : <p className="text-xs font-mono text-muted-foreground italic">Awaiting METAR...</p>}
+          </div>
+        )}
+      </div>
+    </Link>
   );
 }

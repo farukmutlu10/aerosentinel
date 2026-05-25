@@ -7,11 +7,14 @@ const TYPE_LABELS: Record<string, string> = {
   SPECI: "SPECI Alert",
 };
 
+const AUTO_CLOSE_MS = 60_000; // 60 saniye sonra otomatik kapat
+
 export function useAlertNotifications() {
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [dismissed, setDismissed] = useState(false);
   const seenIds = useRef<Set<number>>(new Set());
   const initialized = useRef(false);
+  const openNotifs = useRef<Map<number, Notification>>(new Map());
 
   useEffect(() => {
     if (typeof Notification !== "undefined") {
@@ -41,15 +44,33 @@ export function useAlertNotifications() {
       seenIds.current.add(alert.id);
       try {
         const n = new Notification(
-          `AJET AERO-SENTINEL — ${TYPE_LABELS[alert.type] ?? alert.type}`,
+          `AERO-SENTINEL — ${TYPE_LABELS[alert.type] ?? alert.type}`,
           {
-            body: `${alert.icao}: ${alert.rawText.slice(0, 120)}`,
+            body: `${alert.icao}: ${alert.rawText.slice(0, 120)}\n\nTıklayarak onaylayabilirsiniz.`,
             icon: `${import.meta.env.BASE_URL}ajet-logo.jpeg`,
             tag: `aero-alert-${alert.id}`,
-            requireInteraction: true,
+            requireInteraction: false,
           }
         );
-        n.onclick = () => { window.focus(); n.close(); };
+        openNotifs.current.set(alert.id, n);
+
+        // Auto-dismiss after 60 seconds
+        const timer = setTimeout(() => {
+          n.close();
+          openNotifs.current.delete(alert.id);
+        }, AUTO_CLOSE_MS);
+
+        n.onclick = () => {
+          clearTimeout(timer);
+          window.focus();
+          n.close();
+          openNotifs.current.delete(alert.id);
+        };
+
+        n.onclose = () => {
+          clearTimeout(timer);
+          openNotifs.current.delete(alert.id);
+        };
       } catch {}
     }
   }, [recent, permission]);
