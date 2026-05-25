@@ -46,44 +46,55 @@ export interface MetarParsed {
   valid: boolean;
 }
 
-const WX_LABELS: Record<string, string> = {
+export const WX_LABELS: Record<string, string> = {
   TS: "Thunderstorm", TSRA: "T-storm/Rain", TSGR: "T-storm/Hail",
-  TSSN: "T-storm/Snow", FG: "Fog", FZFG: "Freezing Fog",
+  TSSN: "T-storm/Snow", TSPL: "T-storm/Ice Pellets",
+  FG: "Fog", FZFG: "Freezing Fog",
   FZRA: "Freezing Rain", FZDZ: "Freezing Drizzle",
+  "-FZRA": "Lt Freezing Rain", "+FZRA": "Hvy Freezing Rain",
+  "-FZDZ": "Lt Freezing Drizzle", "+FZDZ": "Hvy Freezing Drizzle",
   BR: "Mist", HZ: "Haze", FU: "Smoke", DU: "Dust", SA: "Sand",
   VA: "Volcanic Ash", GR: "Hail", GS: "Small Hail",
   "-DZ": "Lt Drizzle", DZ: "Drizzle", "+DZ": "Hvy Drizzle",
   "-RA": "Lt Rain", RA: "Rain", "+RA": "Hvy Rain",
   "-SN": "Lt Snow", SN: "Snow", "+SN": "Hvy Snow",
-  "-RASN": "Lt Rain/Snow", RASN: "Rain+Snow",
+  "-RASN": "Lt Rain/Snow", RASN: "Rain/Snow Mix", "+RASN": "Hvy Rain/Snow",
+  BLSN: "Blowing Snow", "+BLSN": "Hvy Blowing Snow",
+  DRSN: "Drifting Snow", BLDU: "Blowing Dust", BLSA: "Blowing Sand",
+  DRDU: "Drifting Dust", DRSA: "Drifting Sand",
   SH: "Showers", SHRA: "Rain Showers", "-SHRA": "Lt Rain Showers",
   "+SHRA": "Hvy Rain Showers", SHSN: "Snow Showers", "-SHSN": "Lt Snow Showers",
-  "+SHSN": "Hvy Snow Showers", SHGR: "Hail Showers",
+  "+SHSN": "Hvy Snow Showers", SHGR: "Hail Showers", SHGS: "Small Hail Showers",
   VCSH: "Vcnty Showers", VCTS: "Vcnty T-storm",
-  BLSN: "Blowing Snow", BLDU: "Blowing Dust", DRSN: "Drifting Snow",
   SS: "Sandstorm", DS: "Duststorm", SG: "Snow Grains",
   IC: "Ice Crystals", PL: "Ice Pellets", FC: "Funnel Cloud", SQ: "Squall",
   NSW: "No Sig Weather", CB: "Cumulonimbus",
   "-TS": "Lt Thunderstorm", "+TS": "Hvy Thunderstorm",
   "-TSRA": "Lt T-storm/Rain", "+TSRA": "Hvy T-storm/Rain",
   "-SH": "Lt Showers", "+SH": "Hvy Showers",
-  "-FZRA": "Lt Freezing Rain", "+FZRA": "Hvy Freezing Rain",
 };
 
 // ── Critical / orange wx sets ─────────────────────────────────────────────────
 
-/** Orange-level phenomena (both TAF and METAR; TAF also includes VCTS/BLDU) */
+/** Orange-level phenomena */
 export const ORANGE_WX = new Set([
   "VCTS", "TS", "-TS", "TSRA", "-TSRA", "CB",
   "DU", "FU", "-SH", "SH", "-RA", "RA", "SHRA", "-SHRA",
-  "SA", "FG", "BLDU",
+  "SA", "FG", "BLDU", "BLSA", "DRDU", "DRSA",
 ]);
 
-/** Red/critical phenomena (TAF and METAR) */
+/** Red/critical phenomena */
 export const RED_WX = new Set([
   "+TS", "+TSRA", "+SH", "+SHRA", "DS", "SS",
   "-SN", "SN", "+SN", "-SHSN", "SHSN", "+SHSN",
-  "-FZRA", "FZRA", "+FZRA", "IC", "PL", "GR", "GS", "VA", "FC", "SQ",
+  "TSSN", "+TSSN", "TSGR", "TSPL",
+  "-FZRA", "FZRA", "+FZRA",
+  "FZDZ", "-FZDZ", "+FZDZ",
+  "FZFG",
+  "BLSN", "+BLSN", "-BLSN", "DRSN",
+  "-RASN", "RASN", "+RASN",
+  "SHGR", "SHGS",
+  "IC", "PL", "GR", "GS", "VA", "FC", "SQ",
 ]);
 
 const DANGER_CODES = [...RED_WX];
@@ -94,6 +105,10 @@ export function hasCritWx(raw: string): boolean {
     const escaped = code.replace(/[+]/g, "\\+");
     if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(raw)) return true;
   }
+  // Also check compound codes not explicitly listed
+  if (/\b(BL|DR)(SN)/.test(raw)) return true;
+  if (/\bFZ(FG|DZ|SN)\b/.test(raw)) return true;
+  if (/\bTS(SN|GR|PL)\b/.test(raw)) return true;
   return false;
 }
 
@@ -115,15 +130,15 @@ function parseWind(raw: string): WindData | undefined {
   const gustKt = m.groups.gst ? parseInt(m.groups.gst) : undefined;
   const g = gustKt ?? 0;
   let dangerColor: string;
-  if (sustainedKt >= 15 || g >= 25) dangerColor = "#ef4444";       // red
-  else if (sustainedKt >= 12 || g >= 20) dangerColor = "#f97316";  // orange
-  else dangerColor = "#22c55e";                                      // green (ok)
+  if (sustainedKt >= 15 || g >= 25) dangerColor = "#ef4444";
+  else if (sustainedKt >= 12 || g >= 20) dangerColor = "#f97316";
+  else dangerColor = "";
   return { direction: m.groups.dir, sustainedKt, gustKt, dangerColor, raw: m[0] };
 }
 
 function parseVisibility(raw: string): { meters?: number; cavok: boolean } {
   if (/\b(CAVOK|NSC|NCD|SKC|CLR)\b/.test(raw)) return { meters: 9999, cavok: true };
-  const m = raw.match(/(?:^|\s)(?<vis>\d{4})(?:\s|$)/);
+  const m = raw.match(/(?:^|\s)(?<vis>\d{4})(?!\/)(?:\s|$)/);
   if (m?.groups) return { meters: parseInt(m.groups.vis), cavok: false };
   return { cavok: false };
 }
@@ -142,7 +157,7 @@ function parseCeiling(raw: string): { feet: number; type: "BKN" | "OVC" | "VV" }
 
 function parsePhenomena(raw: string) {
   const found: Array<{ code: string; label: string; danger: boolean }> = [];
-  const wxPat = /\b(\+?(?:TS|SH|FZ|DR|BL|VC|MI|PR|BC)?(?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS|NSW)[\w+]*|\+SN|GR|TS|FG|VA|VCSH|VCTS)\b/g;
+  const wxPat = /\b(\+?(?:TS|SH|FZ|DR|BL|VC|MI|PR|BC)?(?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS|NSW)[\w]*|\+SN|GR|TS|FG|VA|VCSH|VCTS)\b/g;
   const seen = new Set<string>();
   for (const m of raw.matchAll(wxPat)) {
     const code = m[1];
@@ -155,14 +170,6 @@ function parsePhenomena(raw: string) {
   return found;
 }
 
-/**
- * Categorize flight conditions.
- * Priority: LIFR > IFR > MVFR > VFR
- * VFR:  vis ≥ 8000m AND ceiling ≥ 3000ft
- * MVFR: vis ≥ 4800m but < 8000m  OR  ceiling ≥ 1000ft but < 3000ft
- * IFR:  vis ≥ 1600m but < 4800m  OR  ceiling ≥ 500ft but < 1000ft
- * LIFR: vis < 1600m  OR  ceiling < 500ft
- */
 function categorizeFlight(
   vis?: number,
   ceiling?: { feet: number },
@@ -212,7 +219,6 @@ export interface DisplayToken {
   title?: string;
 }
 
-/** Visibility coloring: LIFR <1600 purple, IFR 1600-4799 red, ≥4800 no highlight */
 function visColor(m?: number): string {
   if (!m) return "";
   if (m < 1600) return "#a855f7";
@@ -220,17 +226,39 @@ function visColor(m?: number): string {
   return "";
 }
 
-/** Ceiling coloring: LIFR <500ft purple, IFR 500-999ft red, ≥1000ft no highlight */
 function ceilColor(ft: number): string {
   if (ft < 500) return "#a855f7";
   if (ft < 1000) return "#ef4444";
   return "";
 }
 
+/**
+ * Returns colour for a wx code token.
+ * Handles both exact codes (in RED_WX/ORANGE_WX) and compound codes
+ * like BLSN, DRSN, TSSN, FZFG, FZDZ that aren't explicitly listed.
+ */
 function wxColor(code: string): string {
   if (RED_WX.has(code)) return "#ef4444";
   if (ORANGE_WX.has(code)) return "#f97316";
   if (/^(BR|HZ)$/.test(code)) return "#d1a054";
+
+  // Compound code fallback: strip leading +/-
+  const base = code.replace(/^[-+]/, "");
+  // Blowing/drifting snow/ice → red
+  if (/^(BL|DR)(SN|RA)/.test(base)) return "#ef4444";
+  // Freezing phenomena → red
+  if (/^FZ(FG|DZ|SN|RA)/.test(base)) return "#ef4444";
+  // Thunderstorm + ice/snow/hail → red
+  if (/^TS(SN|GR|PL|IC)/.test(base)) return "#ef4444";
+  // Rain/Snow mix → red
+  if (/^RA(SN)/.test(base)) return "#ef4444";
+  // Heavy shower with hail → red
+  if (/^SH(GR|GS)/.test(base)) return "#ef4444";
+  // Thunderstorm combos → orange (if not caught above)
+  if (/^TS/.test(base)) return "#f97316";
+  // Shower combos → orange
+  if (/^(SH|VC)/.test(base)) return "#f97316";
+
   return "#94a3b8";
 }
 
@@ -263,11 +291,14 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
       }
     } else if (/^(CAVOK|NSC|NCD|SKC|CLR)$/.test(t)) {
       color = "#64748b"; title = t === "CAVOK" ? "Ceiling And Visibility OK" : "No Significant Clouds";
-    } else if (/^\d{4}$/.test(t) && parseInt(t) <= 9999) {
+    } else if (/^\d{4}$/.test(t) && !t.includes("/")) {
+      // 4-digit number not followed by / → visibility
       const vis = parseInt(t);
-      const c = visColor(vis);
-      if (c) color = c;
-      title = `Visibility: ${vis}m`;
+      if (vis <= 9999) {
+        const c = visColor(vis);
+        if (c) color = c;
+        title = `Visibility: ${vis}m`;
+      }
     } else if (/^(BKN|OVC|VV)\d{3}/.test(t)) {
       const ft = parseInt(t.slice(t.startsWith("VV") ? 2 : 3)) * 100;
       const c = ceilColor(ft);
@@ -286,8 +317,11 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
     } else if (/^(RMK|TX|TN)/.test(t)) {
       color = "#64748b";
     } else {
+      // Weather phenomenon token
       const wx = wxColor(t);
-      if (wx !== "#94a3b8" || /[+-]?(TS|DZ|RA|SN|SG|IC|PL|GR|GS|FG|BR|HZ|FU|VA|DU|SA|VCSH|VCTS|CB|FC|SQ|SS|DS)/.test(t)) {
+      const isWxLike = /^[-+]?(?:TS|SH|FZ|DR|BL|VC|MI|PR|BC|NSW)/.test(t) ||
+        /(?:DZ|RA|SN|SG|IC|PL|GR|GS|BR|FG|FU|VA|DU|SA|HZ|FC|SQ|SS|DS)/.test(t);
+      if (isWxLike || wx !== "#94a3b8") {
         color = wx;
         const label = WX_LABELS[t];
         if (label) title = label;
@@ -303,7 +337,6 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
 
 // ── TAF worst-case category ───────────────────────────────────────────────────
 
-/** Scan all groups in a raw TAF and return the worst FlightCategory found */
 export function parseTafWorstCategory(rawTaf: string | null): FlightCategory | null {
   if (!rawTaf) return null;
   const order = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
@@ -311,6 +344,7 @@ export function parseTafWorstCategory(rawTaf: string | null): FlightCategory | n
 
   const tokens = rawTaf.split(/\s+/);
   for (const token of tokens) {
+    // 4-digit visibility (not part of a period like 2503/2512)
     if (/^\d{4}$/.test(token)) {
       const v = parseInt(token);
       let cat: FlightCategory;
@@ -320,7 +354,7 @@ export function parseTafWorstCategory(rawTaf: string | null): FlightCategory | n
       else                cat = FlightCategory.VFR;
       if (order.indexOf(cat) > order.indexOf(worst)) worst = cat;
     }
-    const ceilMatch = token.match(/^(?:BKN|OVC)(\d{3})$/);
+    const ceilMatch = token.match(/^(?:BKN|OVC|VV)(\d{3})$/);
     if (ceilMatch) {
       const c = parseInt(ceilMatch[1]) * 100;
       let cat: FlightCategory;
@@ -336,7 +370,6 @@ export function parseTafWorstCategory(rawTaf: string | null): FlightCategory | n
 
 // ── Time slot extraction ──────────────────────────────────────────────────────
 
-/** Extract unique full raw timestamps (e.g. "221940Z") from a raw METAR/TAF string */
 export function extractTimeSlots(raw: string): string[] {
   const slots = new Set<string>();
   for (const m of raw.matchAll(/\b\d{6}Z\b/g)) {
@@ -355,10 +388,6 @@ export interface TafWindowResult {
   ceiling: number | null;
 }
 
-/**
- * Parse a TAF and find the worst conditions in a UTC hour window [fromHour, toHour].
- * Hours are 0-23. Day matching is based on the TAF validity period day numbers.
- */
 export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResult {
   if (!rawTaf) return { category: null, critCodes: [], orangeCodes: [], visibility: null, ceiling: null };
 
@@ -371,7 +400,6 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResu
     return h >= windowStart && h <= windowEnd;
   }
 
-  // Split TAF into groups
   const normalized = rawTaf.replace(/\r?\n/g, " ").replace(/\s{2,}/g, " ");
   const groupRe = /(?=\b(?:BECMG|TEMPO|PROB\d{2}|FM\d{4,6})\b)/g;
   const parts = normalized.split(groupRe);
@@ -382,10 +410,11 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResu
   const allOrange = new Set<string>();
   let worstVis: number | null = null;
   let worstCeil: number | null = null;
+  let hasOverlap = false;
 
   for (const group of parts) {
-    // Extract period for this group
     const fmMatch = group.match(/\bFM\d{2}(\d{2})\d{2}\b/);
+    // Match period like 2506/2509 → hours 06 and 09
     const periodMatch = group.match(/\b\d{2}(\d{2})\/\d{2}(\d{2})\b/);
 
     let groupHours: number[] = [];
@@ -395,39 +424,57 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResu
     } else if (periodMatch) {
       const startH = parseInt(periodMatch[1]);
       const endH = parseInt(periodMatch[2]);
-      groupHours = [startH, (startH + endH) / 2 | 0, endH];
+      // Generate all hours in this range
+      const hours: number[] = [];
+      let h = startH;
+      while (true) {
+        hours.push(h % 24);
+        if (h % 24 === endH % 24) break;
+        h++;
+        if (hours.length > 25) break; // safety
+      }
+      groupHours = hours;
     } else {
-      // First group (base conditions) — always applies
+      // Base conditions — always applies
       groupHours = Array.from({ length: 24 }, (_, i) => i);
     }
 
     const overlaps = groupHours.some((h) => hourInWindow(h));
     if (!overlaps) continue;
+    hasOverlap = true;
 
-    // Check visibility
-    const visMatch = group.match(/(?:^|\s)(\d{4})(?:\s|$)/);
+    // Visibility: match 4-digit number NOT part of a period (followed by /)
+    const visMatch = group.match(/(?:^|\s)(\d{4})(?!\/)(?:\s|$)/);
     if (visMatch) {
       const v = parseInt(visMatch[1]);
-      if (worstVis === null || v < worstVis) worstVis = v;
+      if (v <= 9999) {
+        if (worstVis === null || v < worstVis) worstVis = v;
+      }
     }
     if (/\b(CAVOK|NSC)\b/.test(group)) {
       if (worstVis === null) worstVis = 9999;
     }
 
-    // Check ceiling
-    for (const m of group.matchAll(/\b(?:BKN|OVC)(\d{3})\b/g)) {
+    // Ceiling
+    for (const m of group.matchAll(/\b(?:BKN|OVC|VV)(\d{3})\b/g)) {
       const ft = parseInt(m[1]) * 100;
       if (worstCeil === null || ft < worstCeil) worstCeil = ft;
     }
 
     // Category for this group
-    const cat = categorizeFlight(
-      visMatch ? parseInt(visMatch[1]) : (/\b(CAVOK|NSC)\b/.test(group) ? 9999 : undefined),
-      worstCeil !== null ? { feet: worstCeil } : undefined,
-    );
+    const groupVis = visMatch ? parseInt(visMatch[1]) : (/\b(CAVOK|NSC)\b/.test(group) ? 9999 : undefined);
+    const groupCeil = (() => {
+      let lowest: number | null = null;
+      for (const m of group.matchAll(/\b(?:BKN|OVC|VV)(\d{3})\b/g)) {
+        const ft = parseInt(m[1]) * 100;
+        if (lowest === null || ft < lowest) lowest = ft;
+      }
+      return lowest !== null ? { feet: lowest } : undefined;
+    })();
+    const cat = categorizeFlight(groupVis, groupCeil);
     if (order.indexOf(cat) > order.indexOf(worstCat)) worstCat = cat;
 
-    // Check phenomena
+    // Phenomena
     for (const code of RED_WX) {
       const escaped = code.replace(/[+]/g, "\\+");
       if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(group)) allCrit.add(code);
@@ -436,7 +483,13 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResu
       const escaped = code.replace(/[+]/g, "\\+");
       if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(group)) allOrange.add(code);
     }
+    // Check compound codes
+    if (/\b(BL|DR)(SN)\b/.test(group)) allCrit.add("BLSN");
+    if (/\bFZ(FG|DZ)\b/.test(group)) allCrit.add(group.match(/\b(FZFG|FZDZ)\b/)?.[1] ?? "FZFG");
+    if (/\bTS(SN|GR|PL)\b/.test(group)) allCrit.add(group.match(/\b(TSSN|TSGR|TSPL)\b/)?.[1] ?? "TSSN");
   }
+
+  if (!hasOverlap) return { category: null, critCodes: [], orangeCodes: [], visibility: null, ceiling: null };
 
   return {
     category: worstCat,
@@ -446,3 +499,4 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResu
     ceiling: worstCeil,
   };
 }
+

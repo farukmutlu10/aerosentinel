@@ -1,33 +1,10 @@
-import { useRef, useState, useEffect, type KeyboardEvent, type DragEvent } from "react";
+import { useRef, useState, useEffect, useMemo, type KeyboardEvent, type DragEvent } from "react";
 import { Link } from "wouter";
 import * as XLSX from "xlsx";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
-import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
-import { useQuery } from "@tanstack/react-query";
-import { usePersistedState } from "@/hooks/usePersistedState";
 import { parseMetar, FlightCategory, CATEGORY_COLOR, analyzeTafWindow, type TafWindowResult } from "@/lib/metarParser";
-import { normalizeIcao } from "@/lib/icaoUtils";
-
-type Tab = "analyze" | "watchlist";
-type RouteFilter = "ALL" | "DOM" | "INT";
-type SortMode = "alpha" | "lifr-first" | "vfr-first";
-const ALL_CATS = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
-
-interface WeatherItem { icao: string; rawTaf: string | null; rawMetar: string | null }
-
-function useWatchlistWeather(icaos: string[]) {
-  const key = icaos.join(",");
-  return useQuery<WeatherItem[]>({
-    queryKey: ["watchlist", "weather", key],
-    queryFn: () => fetch(`/api/watchlist/weather?icaos=${key}`).then((r) => r.json()),
-    enabled: icaos.length > 0,
-    refetchInterval: 60_000,
-    refetchIntervalInBackground: true,
-    staleTime: 30_000,
-  });
-}
 
 // ── Excel parsing ─────────────────────────────────────────────────────────────
 
@@ -62,28 +39,31 @@ function extractFlightNum(raw: string): string {
 function excelTimeToHHMM(val: unknown): string {
   if (val === null || val === undefined || val === "") return "";
   if (typeof val === "number") {
-    const totalMinutes = Math.round(val * 24 * 60) % (24 * 60);
-    const hh = Math.floor(totalMinutes / 60).toString().padStart(2, "0");
-    const mm = (totalMinutes % 60).toString().padStart(2, "0");
-    return `${hh}:${mm}`;
+    // Excel serial time: fraction of a day
+    const totalMinutes = Math.floor(((val % 1) + 1) % 1 * 24 * 60 + 0.5);
+    const hh = Math.floor(totalMinutes / 60) % 24;
+    const mm = totalMinutes % 60;
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
   }
   const s = String(val).trim();
-  const m = s.match(/^(\d{1,2}):(\d{2})/);
-  if (m) return `${m[1].padStart(2, "0")}:${m[2]}`;
+  // HH:MM or H:MM
+  const m1 = s.match(/^(\d{1,2}):(\d{2})/);
+  if (m1) return `${m1[1].padStart(2, "0")}:${m1[2]}`;
+  // HHMM
   if (/^\d{3,4}$/.test(s)) return `${s.slice(0, -2).padStart(2, "0")}:${s.slice(-2)}`;
   return s;
 }
 
 function parseEtaHour(eta: string): number | null {
   const m = eta.match(/^(\d{1,2}):(\d{2})/);
-  if (m) return parseInt(m[1]);
+  if (m) return parseInt(m[1]) % 24;
   return null;
 }
 
 function parseExcelFile(file: File): Promise<FlightRow[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Dosya okunamadı"));
+    reader.onerror = () => reject(new Error("File could not be read"));
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target!.result as ArrayBuffer);
@@ -94,12 +74,27 @@ function parseExcelFile(file: File): Promise<FlightRow[]> {
         if (!rows.length) { resolve([]); return; }
         const sample = rows[0] as ColMap;
 
-        const flightCol = findCol(sample, ["FLIGHT NO", "FLIGHT NUMBER", "FLT NO", "FLIGHT"]);
-        const regCol = findCol(sample, ["REG", "TAIL", "A/C REG", "AIRCRAFT"]);
-        const fromCol = findCol(sample, ["DEP ICAO", "DEP", "FROM ICAO", "ORIGIN ICAO", "ORIG ICAO", "FROM", "ORIG"]);
-        const toCol = findCol(sample, ["DEST ICAO", "ARR ICAO", "DEST", "TO ICAO", "DESTINATION ICAO", "TO", "DESTN", "ARR"]);
-        const staCol = findCol(sample, ["STA", "SCHED ARR", "SCHEDULED"]);
-        const etaCol = findCol(sample, ["ETA", "EST ARR", "ESTIMATED ARR", "ACT ARR", "ACTUAL ARR"]);
+        const flightCol = findCol(sample, [
+          "FLIGHT NO", "FLIGHT NUMBER", "FLT NO", "SEFER NO", "SEFER", "FLIGHT", "FLT",
+        ]);
+        const regCol = findCol(sample, [
+          "REG", "TAIL", "A/C REG", "AIRCRAFT", "KUYRUK", "TESCIL",
+        ]);
+        const fromCol = findCol(sample, [
+          "DEP ICAO", "FROM ICAO", "ORIGIN ICAO", "ORIG ICAO", "KALKIŞ ICAO", "KALKIS ICAO",
+          "DEP", "FROM", "ORIG", "KALKIŞ", "KALKIS",
+        ]);
+        const toCol = findCol(sample, [
+          "DEST ICAO", "ARR ICAO", "TO ICAO", "DESTINATION ICAO", "VARIŞ ICAO", "VARIS ICAO",
+          "DEST", "TO", "ARR", "DESTN", "VARIŞ", "VARIS",
+        ]);
+        const staCol = findCol(sample, [
+          "STA", "SCHED ARR", "SCHEDULED ARR", "SCH ARR", "PLANLANAN VARIŞ",
+        ]);
+        const etaCol = findCol(sample, [
+          "ETA", "EST ARR", "ESTIMATED ARR", "ACT ARR", "ACTUAL ARR", "BT ARR", "BLOK ARR",
+          "TAHMINI VARIŞ", "GERCEK VARIS",
+        ]);
 
         const parsed: FlightRow[] = rows
           .filter((r) => {
@@ -140,22 +135,23 @@ interface AnalysisState {
 }
 
 async function fetchTafBatch(icaos: string[]): Promise<Record<string, string | null>> {
+  if (icaos.length === 0) return {};
   const results: Record<string, string | null> = {};
-  await Promise.allSettled(
-    icaos.map(async (icao) => {
-      try {
-        const r = await fetch(`/api/airports/${icao}/taf`);
-        if (r.ok) {
-          const d = await r.json();
-          results[icao] = d.rawTaf ?? null;
-        } else {
-          results[icao] = null;
-        }
-      } catch {
-        results[icao] = null;
+  const BATCH = 20;
+  for (let i = 0; i < icaos.length; i += BATCH) {
+    const batch = icaos.slice(i, i + BATCH);
+    try {
+      const r = await fetch(`/api/watchlist/weather?icaos=${batch.join(",")}`);
+      if (r.ok) {
+        const data: Array<{ icao: string; rawTaf: string | null }> = await r.json();
+        for (const item of data) results[item.icao] = item.rawTaf ?? null;
+      } else {
+        for (const icao of batch) results[icao] = null;
       }
-    })
-  );
+    } catch {
+      for (const icao of batch) results[icao] = null;
+    }
+  }
   return results;
 }
 
@@ -174,7 +170,7 @@ function CatBadge({ cat }: { cat: FlightCategory | null }) {
 
 function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }) {
   if (result === undefined) return <span className="text-muted-foreground text-xs">—</span>;
-  if (result === null) return <span className="text-muted-foreground text-xs font-mono">TAF YOK</span>;
+  if (result === null) return <span className="text-muted-foreground text-xs font-mono">NO TAF</span>;
   const { category, visibility, ceiling, critCodes, orangeCodes } = result;
   const codes = [...critCodes, ...orangeCodes.filter((c) => !critCodes.includes(c))].slice(0, 4);
   return (
@@ -182,10 +178,14 @@ function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }
       <div className="flex items-center gap-1.5 flex-wrap">
         <CatBadge cat={category} />
         {visibility !== null && (
-          <span className="text-[10px] font-mono text-muted-foreground">{visibility >= 9999 ? "9999+" : `${visibility}m`}</span>
+          <span className="text-[10px] font-mono text-muted-foreground">
+            {visibility !== null && visibility >= 9999 ? "9999+" : `${visibility}m`}
+          </span>
         )}
         {ceiling !== null && (
-          <span className="text-[10px] font-mono text-muted-foreground">C{String(Math.round(ceiling / 100)).padStart(3, "0")}</span>
+          <span className="text-[10px] font-mono text-muted-foreground">
+            C{String(Math.round((ceiling ?? 0) / 100)).padStart(3, "0")}
+          </span>
         )}
       </div>
       {codes.length > 0 && (
@@ -206,26 +206,128 @@ function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }
   );
 }
 
+// ── Column filter dropdown ────────────────────────────────────────────────────
+
+interface ColFilterProps {
+  label: string;
+  allValues: string[];
+  selected: Set<string>;
+  onChange: (v: Set<string>) => void;
+}
+
+function ColFilterDropdown({ label, allValues, selected, onChange }: ColFilterProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const filtered = allValues.filter((v) =>
+    v.toLowerCase().includes(search.toLowerCase())
+  );
+  const isAllSelected = selected.size === 0;
+  const isActive = selected.size > 0;
+
+  const toggle = (v: string) => {
+    const next = new Set(selected);
+    if (next.has(v)) next.delete(v);
+    else next.add(v);
+    // If all items checked, clear (= select all)
+    onChange(next.size === allValues.length ? new Set<string>() : next);
+  };
+
+  const selectAll = () => onChange(new Set<string>());
+
+  const isChecked = (v: string) => selected.size === 0 ? true : selected.has(v);
+
+  return (
+    <div className="relative inline-flex items-center" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title={`Filter by ${label}`}
+        className={`ml-1.5 p-0.5 rounded transition-colors ${isActive ? "text-primary" : "text-muted-foreground/40 hover:text-muted-foreground"}`}
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill={isActive ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl w-52 flex flex-col overflow-hidden"
+          style={{ maxHeight: "280px" }}>
+          {/* Search */}
+          <div className="p-2 border-b border-border/50">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={`Search ${label}...`}
+              autoFocus
+              className="w-full px-2 py-1 text-xs font-mono border border-border rounded bg-background focus:outline-none focus:border-primary"
+            />
+          </div>
+          {/* Select All */}
+          <div className="border-b border-border/50">
+            <button
+              onClick={selectAll}
+              className="w-full text-left px-2.5 py-1.5 text-xs font-mono hover:bg-muted flex items-center gap-2 transition-colors"
+            >
+              <div className={`w-3 h-3 border rounded flex-shrink-0 flex items-center justify-center ${isAllSelected ? "bg-primary border-primary" : "border-border"}`}>
+                {isAllSelected && (
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                )}
+              </div>
+              <span className={isAllSelected ? "text-foreground font-medium" : "text-muted-foreground"}>Select All</span>
+            </button>
+          </div>
+          {/* Values */}
+          <div className="overflow-y-auto flex-1">
+            {filtered.length === 0 ? (
+              <p className="text-xs font-mono text-muted-foreground px-2.5 py-2">No matches</p>
+            ) : filtered.map((v) => {
+              const checked = isChecked(v);
+              return (
+                <button key={v} onClick={() => toggle(v)}
+                  className="w-full text-left px-2.5 py-1.5 text-xs font-mono hover:bg-muted flex items-center gap-2 transition-colors">
+                  <div className={`w-3 h-3 border rounded flex-shrink-0 flex items-center justify-center ${checked ? "bg-primary border-primary" : "border-border"}`}>
+                    {checked && (
+                      <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    )}
+                  </div>
+                  <span className={checked ? "text-foreground" : "text-muted-foreground"}>{v}</span>
+                </button>
+              );
+            })}
+          </div>
+          {/* Clear */}
+          {isActive && (
+            <div className="p-2 border-t border-border/50">
+              <button onClick={selectAll} className="w-full text-xs font-mono text-primary hover:underline text-center">
+                Clear filter ({selected.size} selected)
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
-const SORT_OPTIONS: { value: SortMode; label: string }[] = [
-  { value: "alpha", label: "A–Z" },
-  { value: "lifr-first", label: "Worst First" },
-  { value: "vfr-first", label: "Best First" },
-];
-
 export default function Airports() {
-  const { watchedIcaos, effectiveIcaos, addIcao, removeIcao, clearWatchlist, hasFilter } = useWatchlist();
   const { theme, toggleTheme } = useThemeContext();
-  const [activeTab, setActiveTab] = usePersistedState<Tab>("as-analyze-tab", "analyze");
-
-  // Watchlist states
-  const [inputVal, setInputVal] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { data: weatherData, isLoading: weatherLoading } = useWatchlistWeather(effectiveIcaos);
-  const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-airports-cats", ALL_CATS as string[]);
-  const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-airports-route", "ALL");
-  const [sortMode, setSortMode] = usePersistedState<SortMode>("as-airports-sort", "alpha");
 
   // Analyze states
   const [flights, setFlights] = useState<FlightRow[]>([]);
@@ -237,89 +339,54 @@ export default function Airports() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const activeCats = new Set<FlightCategory>(activeCatsArr as FlightCategory[]);
-  const toggleCat = (c: FlightCategory) =>
-    setActiveCatsArr((p) => p.includes(c) ? p.filter((x) => x !== c) : [...p, c]);
+  // Column filters
+  const [filterFlight, setFilterFlight] = useState<Set<string>>(new Set());
+  const [filterFrom, setFilterFrom] = useState<Set<string>>(new Set());
+  const [filterTo, setFilterTo] = useState<Set<string>>(new Set());
 
-  const handleAdd = () => {
-    const codes = inputVal.split(/[,\s]+/).filter(Boolean);
-    const skipped: string[] = [];
-    codes.forEach((c) => {
-      const icao = normalizeIcao(c);
-      if (icao.length === 4) addIcao(icao);
-      else if (icao.length > 0) skipped.push(c);
+  // Unique column values
+  const allFlightNums = useMemo(() =>
+    [...new Set(flights.map((f) => f.flight).filter(Boolean))].sort(), [flights]);
+  const allFromIcaos = useMemo(() =>
+    [...new Set(flights.map((f) => f.fromIcao).filter(Boolean))].sort(), [flights]);
+  const allToIcaos = useMemo(() =>
+    [...new Set(flights.map((f) => f.toIcao).filter(Boolean))].sort(), [flights]);
+
+  // Filtered flights
+  const filteredFlights = useMemo(() => {
+    return flights.filter((f) => {
+      if (filterFlight.size > 0 && !filterFlight.has(f.flight)) return false;
+      if (filterFrom.size > 0 && !filterFrom.has(f.fromIcao)) return false;
+      if (filterTo.size > 0 && !filterTo.has(f.toIcao)) return false;
+      return true;
     });
-    setInputVal(skipped.length > 0 ? skipped.join(",") : "");
-    inputRef.current?.focus();
-  };
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") { e.preventDefault(); handleAdd(); }
-    if (e.key === "Backspace" && inputVal === "" && watchedIcaos.length > 0) removeIcao(watchedIcaos[watchedIcaos.length - 1]);
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value
-      .replace(/İ/g, "I").replace(/ı/g, "I")
-      .replace(/Ş/g, "S").replace(/ş/g, "S")
-      .replace(/Ğ/g, "G").replace(/ğ/g, "G")
-      .replace(/Ü/g, "U").replace(/ü/g, "U")
-      .replace(/Ö/g, "O").replace(/ö/g, "O")
-      .replace(/Ç/g, "C").replace(/ç/g, "C")
-      .toUpperCase()
-      .replace(/[^A-Z0-9,\s]/g, "");
-    setInputVal(val);
-  };
-
-  const enriched = effectiveIcaos.map((icao) => {
-    const w = weatherData?.find((d) => d.icao === icao);
-    const parsed = w?.rawMetar ? parseMetar(w.rawMetar) : null;
-    return { icao, rawMetar: w?.rawMetar ?? null, rawTaf: w?.rawTaf ?? null, parsed };
-  });
-
-  const displayedWatchlist = (() => {
-    let list = enriched;
-    list = list.filter((a) => activeCats.has(a.parsed?.flightCategory ?? FlightCategory.VFR));
-    if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
-    else if (routeFilter === "INT") list = list.filter((a) => !a.icao.startsWith("LT"));
-    const sorted = [...list];
-    if (sortMode === "alpha") {
-      sorted.sort((a, b) => a.icao.localeCompare(b.icao));
-    } else {
-      const order = sortMode === "lifr-first"
-        ? [FlightCategory.LIFR, FlightCategory.IFR, FlightCategory.MVFR, FlightCategory.VFR]
-        : [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
-      sorted.sort((a, b) => {
-        const ai = order.indexOf(a.parsed?.flightCategory ?? FlightCategory.VFR);
-        const bi = order.indexOf(b.parsed?.flightCategory ?? FlightCategory.VFR);
-        return ai !== bi ? ai - bi : a.icao.localeCompare(b.icao);
-      });
-    }
-    return sorted;
-  })();
+  }, [flights, filterFlight, filterFrom, filterTo]);
 
   const handleFile = async (file: File) => {
     if (!file.name.match(/\.(xlsx|xls|csv)$/i)) {
-      setParseError("Desteklenen format: .xlsx, .xls, .csv");
+      setParseError("Unsupported format. Supported: .xlsx, .xls, .csv");
       return;
     }
     setParseError(null);
     setFileName(file.name);
     setAnalysis({ tafMap: {}, loading: false, done: false, error: null });
+    setFilterFlight(new Set());
+    setFilterFrom(new Set());
+    setFilterTo(new Set());
     try {
       const rows = await parseExcelFile(file);
       setFlights(rows);
       if (rows.length === 0) {
-        setParseError("Dosyada uçuş verisi bulunamadı veya sütun adları tanınamadı.");
+        setParseError("No flight data found in file or column names not recognised.");
         return;
       }
-      // Auto-run analysis
-      const uniqueIcaos = [...new Set(rows.map((r) => r.toIcao).filter((x) => x.length >= 3 && x.length <= 4))];
+      // Auto-run TAF analysis
+      const uniqueIcaos = [...new Set(rows.map((r) => r.toIcao).filter((x) => x.length === 4))];
       setAnalysis((prev) => ({ ...prev, loading: true }));
       const tafMap = await fetchTafBatch(uniqueIcaos);
       setAnalysis({ tafMap, loading: false, done: true, error: null });
     } catch (err) {
-      setParseError("Dosya ayrıştırılamadı: " + String(err));
+      setParseError("Failed to parse file: " + String(err));
     }
   };
 
@@ -341,15 +408,20 @@ export default function Airports() {
     setFileName(null);
     setAnalysis({ tafMap: {}, loading: false, done: false, error: null });
     setParseError(null);
+    setFilterFlight(new Set());
+    setFilterFrom(new Set());
+    setFilterTo(new Set());
   };
 
-  const analysisResults: (TafWindowResult | null)[] = flights.map((f) => {
-    if (!analysis.done) return undefined as unknown as null;
+  const analysisResults: (TafWindowResult | null | undefined)[] = filteredFlights.map((f) => {
+    if (!analysis.done) return undefined;
     const rawTaf = analysis.tafMap[f.toIcao] ?? null;
     if (f.etaHour === null) return null;
     if (!rawTaf) return null;
     return analyzeTafWindow(rawTaf, f.etaHour);
   });
+
+  const hasActiveFilter = filterFlight.size > 0 || filterFrom.size > 0 || filterTo.size > 0;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -357,326 +429,179 @@ export default function Airports() {
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5">
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1 mb-5 border-b border-border pb-0">
-          <button
-            onClick={() => setActiveTab("analyze")}
-            className={`px-4 py-2 text-xs font-mono font-bold tracking-wider rounded-t border-b-2 transition-colors ${
-              activeTab === "analyze"
-                ? "text-emerald-400 border-emerald-400 bg-emerald-400/5"
-                : "text-muted-foreground border-transparent hover:text-emerald-400/70"
-            }`}>
-            UÇUŞ ANALİZİ
-          </button>
-          <button
-            onClick={() => setActiveTab("watchlist")}
-            className={`px-4 py-2 text-xs font-mono font-bold tracking-wider rounded-t border-b-2 transition-colors ${
-              activeTab === "watchlist"
-                ? "text-sky-400 border-sky-400 bg-sky-400/5"
-                : "text-muted-foreground border-transparent hover:text-sky-400/70"
-            }`}>
-            WATCHLIST
-          </button>
+        {/* Page header */}
+        <div className="flex items-center gap-3 mb-5 border-b border-border pb-3">
+          <span className="text-xs font-mono font-bold text-emerald-400 tracking-widest uppercase border-b-2 border-emerald-400 pb-2 -mb-3">
+            FLIGHT ANALYSIS
+          </span>
+          {flights.length > 0 && (
+            <span className="text-xs font-mono text-muted-foreground ml-auto">
+              {filteredFlights.length} / {flights.length} flights
+              {hasActiveFilter && (
+                <button onClick={() => { setFilterFlight(new Set()); setFilterFrom(new Set()); setFilterTo(new Set()); }}
+                  className="ml-2 text-primary hover:underline">clear filters</button>
+              )}
+            </span>
+          )}
         </div>
 
-        {/* ── ANALYZE TAB ── */}
-        {activeTab === "analyze" && (
-          <div className="space-y-5">
-            {/* Upload area */}
-            {flights.length === 0 && (
-              <div
-                className={`relative border-2 border-dashed rounded-xl p-10 text-center transition-colors cursor-pointer ${
-                  dragOver
-                    ? "border-emerald-400/60 bg-emerald-400/5"
-                    : "border-border hover:border-emerald-400/40 hover:bg-emerald-400/3"
-                }`}
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={onDrop}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={onFileChange} />
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-emerald-400/10 border border-emerald-400/30 flex items-center justify-center">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                      <polyline points="17 8 12 3 7 8"/>
-                      <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm font-mono font-bold text-foreground">Excel dosyasını yükle</p>
-                    <p className="text-xs font-mono text-muted-foreground mt-1">Sürükle-bırak veya tıkla · .xlsx .xls .csv</p>
-                  </div>
-                  <p className="text-[10px] font-mono text-muted-foreground/60 mt-1">
-                    Gerekli sütunlar: Flight · Reg · From ICAO · To ICAO · STA · ETA
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {parseError && (
-              <div className="bg-red-500/10 border border-red-500/40 rounded-lg px-4 py-3 text-sm font-mono text-red-400">
-                {parseError}
-              </div>
-            )}
-
-            {/* File loaded + analysis */}
-            {flights.length > 0 && (
-              <>
-                {/* File info bar */}
-                <div className="flex items-center justify-between bg-card border border-border rounded-lg px-4 py-2.5">
-                  <div className="flex items-center gap-3 text-xs font-mono">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                      <polyline points="14 2 14 8 20 8"/>
-                    </svg>
-                    <span className="text-muted-foreground">{fileName}</span>
-                    <span className="text-emerald-400 font-bold">{flights.length} uçuş</span>
-                    {analysis.loading && (
-                      <span className="text-amber-400 flex items-center gap-1">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="animate-spin">
-                          <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                        </svg>
-                        TAF çekiliyor...
-                      </span>
-                    )}
-                    {analysis.done && <span className="text-emerald-400">✓ TAF analizi tamamlandı</span>}
-                  </div>
-                  <button
-                    onClick={clearAnalysis}
-                    className="text-xs font-mono text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                    Temizle
-                  </button>
-                </div>
-
-                {/* Flight table */}
-                <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full text-xs font-mono">
-                    <thead>
-                      <tr className="border-b border-border bg-muted/40">
-                        <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider whitespace-nowrap">#FLIGHT</th>
-                        <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">REG</th>
-                        <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">FROM</th>
-                        <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">TO</th>
-                        <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">STA</th>
-                        <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">ETA</th>
-                        <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider min-w-[160px]">TAF ANALİZİ (ETA±1h)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {flights.map((f, idx) => {
-                        const result = analysisResults[idx];
-                        const cat = (result as TafWindowResult | null | undefined)?.category;
-                        const rowBg = cat === FlightCategory.LIFR ? "bg-purple-500/5" :
-                                      cat === FlightCategory.IFR ? "bg-red-500/5" :
-                                      cat === FlightCategory.MVFR ? "bg-blue-500/5" : "";
-                        return (
-                          <tr key={f.id} className={`border-b border-border/60 last:border-b-0 hover:bg-muted/20 transition-colors ${rowBg}`}>
-                            <td className="px-3 py-2.5 font-bold text-foreground whitespace-nowrap">{f.flight || "—"}</td>
-                            <td className="px-3 py-2.5 text-muted-foreground">{f.reg || "—"}</td>
-                            <td className="px-3 py-2.5">
-                              {f.fromIcao ? (
-                                <Link href={`/airports/${f.fromIcao}`} className="text-sky-400 hover:underline">{f.fromIcao}</Link>
-                              ) : "—"}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              {f.toIcao ? (
-                                <Link href={`/airports/${f.toIcao}`} className="text-sky-400 hover:underline">{f.toIcao}</Link>
-                              ) : "—"}
-                            </td>
-                            <td className="px-3 py-2.5 text-muted-foreground tabular-nums">{f.sta || "—"}</td>
-                            <td className="px-3 py-2.5 font-bold tabular-nums"
-                              style={{ color: f.eta ? "hsl(45 90% 50%)" : undefined }}>
-                              {f.eta || (f.sta ? <span className="opacity-50">{f.sta}</span> : "—")}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              {analysis.loading ? (
-                                <span className="text-muted-foreground animate-pulse">...</span>
-                              ) : (
-                                <AnalysisCell result={result as TafWindowResult | null | undefined} />
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Upload new file button */}
-                <button
-                  onClick={() => { clearAnalysis(); setTimeout(() => fileInputRef.current?.click(), 50); }}
-                  className="flex items-center gap-2 px-4 py-2 rounded text-xs font-mono border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <div className="space-y-5">
+          {/* Upload area */}
+          {flights.length === 0 && (
+            <div
+              className={`relative border-2 border-dashed rounded-xl p-10 text-center transition-colors cursor-pointer ${
+                dragOver
+                  ? "border-emerald-400/60 bg-emerald-400/5"
+                  : "border-border hover:border-emerald-400/40 hover:bg-emerald-400/3"
+              }`}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDrop}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={onFileChange} />
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-400/10 border border-emerald-400/30 flex items-center justify-center">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                     <polyline points="17 8 12 3 7 8"/>
                     <line x1="12" y1="3" x2="12" y2="15"/>
                   </svg>
-                  Farklı dosya yükle
+                </div>
+                <div>
+                  <p className="text-sm font-mono font-bold text-foreground">Upload Excel flight plan</p>
+                  <p className="text-xs font-mono text-muted-foreground mt-1">Drag & drop or click · .xlsx .xls .csv</p>
+                </div>
+                <p className="text-[10px] font-mono text-muted-foreground/60 mt-1">
+                  Required columns: Flight · Reg · From ICAO · To ICAO · STA · ETA
+                </p>
+              </div>
+            </div>
+          )}
+
+          {parseError && (
+            <div className="bg-red-500/10 border border-red-500/40 rounded-lg px-4 py-3 text-sm font-mono text-red-400">
+              {parseError}
+            </div>
+          )}
+
+          {/* File loaded + analysis */}
+          {flights.length > 0 && (
+            <>
+              {/* File info bar */}
+              <div className="flex items-center justify-between bg-card border border-border rounded-lg px-4 py-2.5">
+                <div className="flex items-center gap-3 text-xs font-mono">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  <span className="text-muted-foreground">{fileName}</span>
+                  <span className="text-emerald-400 font-bold">{flights.length} flights</span>
+                  {analysis.loading && (
+                    <span className="text-amber-400 flex items-center gap-1">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="animate-spin">
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                      </svg>
+                      Fetching TAF data...
+                    </span>
+                  )}
+                  {analysis.done && <span className="text-emerald-400">✓ TAF analysis complete</span>}
+                </div>
+                <button
+                  onClick={clearAnalysis}
+                  className="text-xs font-mono text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                  Clear
                 </button>
+              </div>
 
-                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={onFileChange} />
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ── WATCHLIST TAB ── */}
-        {activeTab === "watchlist" && (
-          <div className="space-y-5">
-            {/* Watchlist input */}
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-mono text-muted-foreground uppercase tracking-widest">
-                  WATCHLIST — Monitored Airports
-                </label>
-                {hasFilter && (
-                  <button onClick={clearWatchlist} className="text-xs font-mono text-muted-foreground hover:text-destructive transition-colors">
-                    Clear All
-                  </button>
-                )}
-              </div>
-              <div
-                className="flex flex-wrap items-center gap-1.5 min-h-[42px] bg-background border border-input rounded-md px-2 py-1.5 cursor-text focus-within:border-primary transition-colors"
-                onClick={() => inputRef.current?.focus()}>
-                {watchedIcaos.map((icao) => (
-                  <span key={icao} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-primary/15 border border-primary/30 text-primary text-xs font-mono font-bold">
-                    {icao}
-                    <button type="button" onClick={(e) => { e.stopPropagation(); removeIcao(icao); }}
-                      className="text-primary/60 hover:text-primary transition-colors leading-none">✕</button>
-                  </span>
-                ))}
-                <input ref={inputRef} type="text" value={inputVal}
-                  onChange={handleInputChange} onKeyDown={handleKeyDown}
-                  placeholder={watchedIcaos.length === 0 ? "ICAO kodunu gir ve Enter'a bas — örn: LTFJ,LTAC,LTFM" : "Ekle (virgülle ayır)..."}
-                  className="flex-1 min-w-[200px] bg-transparent text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none py-0.5"
-                />
-                {inputVal.replace(/[,\s]/g, "").length >= 4 && (
-                  <button type="button" onClick={handleAdd}
-                    className="px-2 py-0.5 text-xs font-mono bg-primary text-primary-foreground rounded hover:opacity-90 transition-opacity">
-                    ADD
-                  </button>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground font-mono mt-2">
-                {hasFilter
-                  ? <span className="text-sky-400">{watchedIcaos.length} meydan izleniyor — sadece bu tarayıcıda.</span>
-                  : <span>Watchlist boş — varsayılan <span className="text-primary font-bold">LTFH</span> gösteriliyor. 4 harfli ICAO kodu ekleyebilirsin.</span>
-                }
-              </p>
-            </div>
-
-            {/* Filters */}
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1">
-                {ALL_CATS.map((cat) => (
-                  <button key={cat} onClick={() => toggleCat(cat)}
-                    className="px-2 py-0.5 rounded text-xs font-mono border transition-colors"
-                    style={activeCats.has(cat) ? {
-                      borderColor: CATEGORY_COLOR[cat] + "99",
-                      color: CATEGORY_COLOR[cat],
-                      backgroundColor: CATEGORY_COLOR[cat] + "18",
-                    } : { borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
-                    {cat}
-                  </button>
-                ))}
-              </div>
-              <span className="text-border text-xs">|</span>
-              <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
-                {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
-                  <button key={f} onClick={() => setRouteFilter(f)}
-                    className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors ${routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-                    {f}
-                  </button>
-                ))}
-              </div>
-              <span className="text-border text-xs">|</span>
-              <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
-                {SORT_OPTIONS.map((s) => (
-                  <button key={s.value} onClick={() => setSortMode(s.value)}
-                    className={`px-2.5 py-1 rounded text-xs font-mono transition-colors ${sortMode === s.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-              <span className="text-muted-foreground text-xs font-mono ml-auto">
-                {weatherLoading ? "loading..." : `${displayedWatchlist.length} airports`}
-              </span>
-            </div>
-
-            {/* Grid */}
-            {weatherLoading ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                {[...Array(12)].map((_, i) => <div key={i} className="h-28 rounded-lg bg-card animate-pulse border border-border" />)}
-              </div>
-            ) : displayedWatchlist.length === 0 ? (
-              <div className="bg-card border border-border rounded-lg p-12 text-center">
-                <p className="text-muted-foreground font-mono text-sm">No airports match current filters</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                {displayedWatchlist.map(({ icao, rawMetar, parsed }) => {
-                  const cat = parsed?.flightCategory ?? null;
-                  const catColor = cat ? CATEGORY_COLOR[cat] : undefined;
-                  const isDom = icao.startsWith("LT");
-                  return (
-                    <Link key={icao} href={`/airports/${icao}`}
-                      className="block bg-card rounded-lg border border-border hover:border-foreground/20 transition-all cursor-pointer overflow-hidden"
-                      style={catColor ? { borderLeftWidth: "3px", borderLeftColor: catColor } : undefined}>
-                      <div className="px-3 py-3">
-                        <div className="flex items-start justify-between mb-2 gap-1">
-                          <span className="font-mono font-bold text-sm leading-tight">{icao}</span>
-                          <div className="flex flex-col items-end gap-1">
-                            {isDom && <span className="text-[9px] font-mono text-muted-foreground">DOM</span>}
-                            {cat && <span className="text-[9px] font-mono font-bold" style={{ color: catColor }}>{cat}</span>}
-                          </div>
-                        </div>
-                        {rawMetar ? (
-                          <div className="space-y-0.5">
-                            {parsed?.cavok ? (
-                              <div className="text-[10px] font-mono text-green-400">CAVOK</div>
+              {/* Flight table */}
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full text-xs font-mono">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40">
+                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider whitespace-nowrap">
+                        <span className="flex items-center">
+                          #FLIGHT
+                          <ColFilterDropdown label="flight" allValues={allFlightNums} selected={filterFlight} onChange={setFilterFlight} />
+                        </span>
+                      </th>
+                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">REG</th>
+                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">
+                        <span className="flex items-center">
+                          FROM
+                          <ColFilterDropdown label="FROM" allValues={allFromIcaos} selected={filterFrom} onChange={setFilterFrom} />
+                        </span>
+                      </th>
+                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">
+                        <span className="flex items-center">
+                          TO
+                          <ColFilterDropdown label="TO" allValues={allToIcaos} selected={filterTo} onChange={setFilterTo} />
+                        </span>
+                      </th>
+                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">STA</th>
+                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">ETA</th>
+                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider min-w-[160px]">TAF ANALYSIS (ETA±1h)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredFlights.map((f, idx) => {
+                      const result = analysisResults[idx];
+                      const cat = (result as TafWindowResult | null | undefined)?.category;
+                      const rowBg = cat === FlightCategory.LIFR ? "bg-purple-500/5" :
+                                    cat === FlightCategory.IFR ? "bg-red-500/5" :
+                                    cat === FlightCategory.MVFR ? "bg-blue-500/5" : "";
+                      return (
+                        <tr key={f.id} className={`border-b border-border/60 last:border-b-0 hover:bg-muted/20 transition-colors ${rowBg}`}>
+                          <td className="px-3 py-2.5 font-bold text-foreground whitespace-nowrap">{f.flight || "—"}</td>
+                          <td className="px-3 py-2.5 text-muted-foreground">{f.reg || "—"}</td>
+                          <td className="px-3 py-2.5">
+                            {f.fromIcao ? (
+                              <Link href={`/airports/${f.fromIcao}`} className="text-sky-400 hover:underline">{f.fromIcao}</Link>
+                            ) : "—"}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            {f.toIcao ? (
+                              <Link href={`/airports/${f.toIcao}`} className="text-sky-400 hover:underline">{f.toIcao}</Link>
+                            ) : "—"}
+                          </td>
+                          <td className="px-3 py-2.5 text-muted-foreground tabular-nums">{f.sta || "—"}</td>
+                          <td className="px-3 py-2.5 font-bold tabular-nums"
+                            style={{ color: f.eta ? "hsl(45 90% 50%)" : undefined }}>
+                            {f.eta || (f.sta ? <span className="opacity-50">{f.sta}</span> : "—")}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            {analysis.loading ? (
+                              <span className="text-muted-foreground animate-pulse">...</span>
                             ) : (
-                              <>
-                                {parsed?.visibility != null && (
-                                  <div className="text-[10px] font-mono">
-                                    <span className="text-muted-foreground">V </span>
-                                    <span style={{ color: parsed.visibility < 1600 ? "#a855f7" : parsed.visibility < 4800 ? "#ef4444" : undefined }}>
-                                      {parsed.visibility >= 9999 ? "9999+" : parsed.visibility}m
-                                    </span>
-                                  </div>
-                                )}
-                                {parsed?.ceiling && (
-                                  <div className="text-[10px] font-mono">
-                                    <span className="text-muted-foreground">C </span>
-                                    <span style={{ color: parsed.ceiling.feet < 500 ? "#a855f7" : parsed.ceiling.feet < 1000 ? "#ef4444" : undefined }}>
-                                      {parsed.ceiling.type}{String(parsed.ceiling.feet / 100).padStart(3, "0")}
-                                    </span>
-                                  </div>
-                                )}
-                                {parsed?.wind && (
-                                  <div className="text-[10px] font-mono">
-                                    <span className="text-muted-foreground">W </span>
-                                    <span style={{ color: parsed.wind.dangerColor }}>{parsed.wind.raw}</span>
-                                  </div>
-                                )}
-                              </>
+                              <AnalysisCell result={result as TafWindowResult | null | undefined} />
                             )}
-                          </div>
-                        ) : (
-                          <div className="text-[10px] text-muted-foreground font-mono">awaiting...</div>
-                        )}
-                      </div>
-                    </Link>
-                  );
-                })}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </div>
-        )}
+
+              {/* Upload new file */}
+              <button
+                onClick={() => { clearAnalysis(); setTimeout(() => fileInputRef.current?.click(), 50); }}
+                className="flex items-center gap-2 px-4 py-2 rounded text-xs font-mono border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                Upload different file
+              </button>
+
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={onFileChange} />
+            </>
+          )}
+        </div>
       </main>
       <Footer />
     </div>

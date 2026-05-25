@@ -7,124 +7,136 @@ interface Props {
 
 const V18_SECTIONS = [
   {
-    title: "Uçuş Kategori Kuralları",
+    title: "Flight Category Rules",
     items: [
-      "LIFR eşiği 1500m'den 1600m'e güncellendi; IFR 1600–4799m, MVFR 4800–7999m, VFR ≥8000m.",
-      "Tavan değerleri: LIFR <500ft, IFR 500–999ft, MVFR 1000–2999ft, VFR ≥3000ft.",
-      "Kural mantığı: LIFR için VIS veya CEIL kriterinden biri yeterli (OR); VFR için her ikisi de sağlanmalı (AND).",
+      "LIFR threshold updated from 1500m to 1600m; IFR 1600–4799m, MVFR 4800–7999m, VFR ≥8000m.",
+      "Ceiling values: LIFR <500ft, IFR 500–999ft, MVFR 1000–2999ft, VFR ≥3000ft.",
+      "Rule logic: for LIFR, either VIS or ceiling criterion is sufficient (OR); for VFR, both must be satisfied (AND).",
     ],
   },
   {
-    title: "Hava Kartları",
+    title: "Weather Cards",
     items: [
-      "Kart sol çerçevesi TAF modunda TAF kategorisine, METAR modunda METAR kategorisine göre renkleniyor.",
-      "Sol çerçeve genişletildi (~18px) ve içine dikey 'TAF' / 'METAR' etiketi eklendi.",
-      "Eski '⚠ TAF LIFR' badge'i kaldırıldı; yerine kırmızı fenomen tespitinde 'CRIT TAF' / 'CRIT METAR' badge'i gösteriliyor.",
-      "Sarı fenomenler için 'WX TAF' uyarı badge'i eklendi.",
-      "TAF ve METAR bölüm etiketleri (TAF / METAR yazıları) kaldırıldı.",
+      "Card left border colour follows TAF category in TAF mode; METAR category in METAR mode.",
+      "In METAR mode the coloured strip moves to the RIGHT side of the card.",
+      "In TAF+METAR mode the card has both a left (TAF) and right (METAR) coloured strip.",
+      "Side strip width ~18px with vertical TAF / METAR label inside.",
+      "Old '⚠ TAF LIFR' badge removed; replaced by 'CRIT TAF' / 'CRIT METAR' badges on critical phenomena.",
+      "VFR/MVFR/IFR/LIFR badge now reflects the active view mode (TAF category in TAF/TAF+METAR, METAR category in METAR).",
+      "DOM/INT badge removed from card header (DOM/INT filter in toolbar is sufficient).",
     ],
   },
   {
-    title: "Rüzgar Renklendirme",
+    title: "Wind Colouring",
     items: [
-      "Sustained ≥12kt veya gust ≥20kt → turuncu renk.",
-      "Sustained ≥15kt veya gust ≥25kt → kırmızı renk.",
-      "Düşük değerler için yeşil renk artık gösterilmiyor (nötr).",
+      "Sustained ≥12 kt or gust ≥20 kt → orange.",
+      "Sustained ≥15 kt or gust ≥25 kt → red.",
+      "Calm/light winds no longer highlighted green (neutral).",
     ],
   },
   {
-    title: "Fenomen Renklendirme",
+    title: "Phenomenon Colouring",
     items: [
-      "TAF/METAR raw text'te turuncu fenomenler: TS, -TS, TSRA, -TSRA, CB, VCTS, SH, RA ve türevleri, FG, DU, FU, SA, BLDU.",
-      "Kırmızı (kritik) fenomenler: +TS, +TSRA, DS, SS, SN ve türevleri, FZRA ve türevleri, GR, GS, VA, FC, SQ, IC, PL.",
-      "Alerts sayfasındaki ham metin artık TafText bileşeniyle (satır başı BECMG/TEMPO) render ediliyor.",
+      "Orange phenomena in TAF/METAR raw text: TS, -TS, TSRA, -TSRA, CB, VCTS, SH, RA and variants, FG, DU, FU, SA, BLDU, BLSA.",
+      "Red (critical) phenomena: +TS, +TSRA, DS, SS, SN and variants, FZRA and variants, FZDZ, FZFG, GR, GS, VA, FC, SQ, IC, PL.",
+      "Compound codes now correctly coloured: BLSN, DRSN, TSSN, TSGR, TSPL, FZFG, FZDZ, RASN and variants.",
+      "Improved tokeniser — compound wx codes that were previously shown in grey now get correct red/orange colouring.",
     ],
   },
   {
-    title: "MONITOR Sayfası",
+    title: "MONITOR Page",
     items: [
-      "Sayfa adı OVERVIEW'dan MONITOR olarak değiştirildi.",
-      "İstatistik kartları (TOTAL, UNACK, TAF REV, SPECI) MONITOR sayfasından kaldırılıp ALERTS sayfasına taşındı.",
-      "ICAO arama filtresi eklendi — meydanlar kısmi kodla filtrelenebiliyor.",
-      "REFRESH butonu eklendi; hava verisi manual olarak yenilenebiliyor.",
-      "Monitor bar'da AIRPORTS sayısı kaldırıldı; SCANS günlük sıfırlanıyor (UTC 00:00).",
+      "Page renamed from OVERVIEW to MONITOR.",
+      "Clock (UTC + IST) restored to the monitor bar.",
+      "Watchlist input moved to MONITOR page as a collapsible panel (below monitor bar).",
+      "ICAO search moved below filter row, full width, supports comma- or space-separated multi-ICAO (e.g. LTFH,LTAC,LTFJ).",
+      "CRIT filter button added alongside VFR/MVFR/IFR/LIFR to show only airports with critical weather.",
+      "Worst First / Best First sorting now uses TAF category in TAF/TAF+METAR mode, METAR category in METAR mode.",
+      "WX TAF badge removed from cards.",
+      "REFRESH button tooltip translated to English.",
     ],
   },
   {
-    title: "ALERTS Sayfası",
+    title: "ALERTS Page",
     items: [
-      "TOTAL / UNACK / TAF REV / SPECI stat kartları eklendi.",
-      "İstatistikler bugün UTC 00:00'dan itibaren ve yalnızca watchlist meydanları için hesaplanıyor.",
-      "Saat kartı (UTC + IST) Alerts sayfasına taşındı.",
+      "TOTAL / UNACK / TAF REV / SPECI stat cards redesigned — larger text, centred layout.",
+      "Stats are calculated from UTC 00:00 today for watchlist airports only.",
+      "Clock card (UTC + IST) added to stats row.",
+      "Alert log title updated to 'Alert Log — Today UTC'.",
     ],
   },
   {
-    title: "ANALYZE Sayfası (Yeni)",
+    title: "ANALYZE Page",
     items: [
-      "Sayfa adı AIRPORTS'tan ANALYZE olarak değiştirildi.",
-      "Excel (.xlsx) dosyası yükleme ile uçuş planı analizi eklendi.",
-      "Flight, Reg, From ICAO, To ICAO, STA, ETA sütunları okunuyor.",
-      "Her uçuş için varış ICAO'sunun ETA ±1 saatlik TAF penceresi analiz ediliyor.",
-      "TAF analizi: görüş, tavan, kritik/turuncu fenomenler ve uçuş kategorisi gösteriliyor.",
-      "Watchlist yönetimi alt sekmeye taşındı.",
+      "Page renamed from AIRPORTS to ANALYZE.",
+      "Excel (.xlsx / .xls / .csv) flight plan upload with TAF analysis per flight.",
+      "Columns read: Flight, Reg, From ICAO, To ICAO, STA, ETA.",
+      "Each flight's destination ICAO is analysed against a TAF window of ETA ±1 h.",
+      "TAF analysis shows visibility, ceiling, critical/orange phenomena, and flight category.",
+      "Excel-style column filters added for #FLIGHT, FROM, and TO columns (search + checkbox dropdown).",
+      "WATCHLIST tab removed — watchlist management moved to MONITOR page.",
+      "All Turkish strings translated to English.",
     ],
   },
   {
-    title: "Navigasyon",
+    title: "Navigation",
     items: [
-      "Her sekme artık farklı renk: MONITOR (cyan), ALERTS (amber), ANALYZE (emerald).",
-      "Logo küçük ekranlarda nav elemanlarının altına düşme sorunu giderildi (3-sütun grid).",
-      "Versiyon rozeti v1.8 olarak güncellendi.",
+      "Logo moved to the left; version badge placed to the right of the logo.",
+      "Logo size reduced by ~30%.",
+      "Each tab uses a distinct colour: MONITOR (cyan), ALERTS (amber), ANALYZE (emerald).",
+      "Version badge opens the changelog modal.",
     ],
   },
   {
-    title: "Bildirimler",
+    title: "Notifications",
     items: [
-      "Masaüstü bildirimler artık 60 saniye sonra otomatik kapanıyor.",
-      "Bildirime tıklamak ekranı öne getiriyor ve bildirimi kapatıyor.",
+      "Desktop notifications auto-close after 60 seconds.",
+      "Clicking a notification brings the window to focus and dismisses the notification.",
     ],
   },
   {
-    title: "Düzeltmeler",
+    title: "Bug Fixes",
     items: [
-      "Raw METAR/TAF metninde uzun token'larda tek harf satır sonuna düşme sorunu giderildi.",
+      "Long token single-character line-break issue in raw METAR/TAF text resolved.",
+      "Visibility 4-digit regex no longer mismatches TAF period numbers (e.g. 2503/2512).",
+      "TAF window analysis generates a full hour range for period groups instead of only start/mid/end.",
     ],
   },
 ];
 
 const V17_SECTIONS = [
   {
-    title: "Arayüz (v1.7)",
+    title: "Interface (v1.7)",
     items: [
-      "Logo yüksek çözünürlüklü renkli versiyona güncellendi ve boyutu küçültüldü.",
-      "Sol üste versiyon rozeti eklendi.",
-      "UTC ve IST (+3) saatini gösteren canlı saat kartı eklendi.",
-      "Açık tema renkleri güçlendirildi; alarm kartları ve ACK uyarılar daha iyi okunuyor.",
+      "Logo updated to high-resolution colour version and resized.",
+      "Version badge added top-left.",
+      "Live clock card added showing UTC and IST (+3).",
+      "Light theme colours strengthened; alert cards and ACK warnings more readable.",
     ],
   },
   {
-    title: "TAF Görüntüleme (v1.7)",
+    title: "TAF Display (v1.7)",
     items: [
-      "PROB30/PROB40 + TEMPO/BECMG satırları doğru gruplandırılıyor.",
-      "Düşük görüş değerleri mor (LIFR) renkte gösteriliyor.",
-      "Her meydan kartında iki rozet: METAR durumu ve TAF en kötü tahmini.",
+      "PROB30/PROB40 + TEMPO/BECMG lines grouped correctly.",
+      "Low visibility values shown in purple (LIFR).",
+      "Each airport card shows two badges: METAR status and TAF worst-case forecast.",
     ],
   },
   {
-    title: "Filtreler (v1.7)",
+    title: "Filters (v1.7)",
     items: [
-      "Görünüm seçici: TAF / METAR / TAF+METAR.",
-      "TIME butonu ile çoklu zaman dilimi seçimi.",
-      "VFR ve MVFR renkleri nötrleştirildi.",
-      "Tüm sayfalarda tek tıkla filtre sıfırlama butonu eklendi.",
+      "View selector: TAF / METAR / TAF+METAR.",
+      "TIME button for multi-slot time filtering.",
+      "VFR and MVFR colours neutralised.",
+      "One-click filter reset button added on all pages.",
     ],
   },
   {
-    title: "İzleme Sistemi (v1.7)",
+    title: "Monitoring System (v1.7)",
     items: [
-      "Sabit meydan listesi kaldırıldı; yalnızca watchlist izleniyor.",
-      "Watchlist tarayıcıya özel olarak saklanıyor.",
-      "Alerts sayfası yalnızca watchlist meydanlarını gösteriyor.",
+      "Fixed airport list removed; only watchlist airports are monitored.",
+      "Watchlist stored per browser.",
+      "Alerts page shows only watchlist airports.",
     ],
   },
 ];
@@ -167,7 +179,7 @@ export function ChangelogModal({ open, onClose }: Props) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/40">
           <div>
             <p className="font-mono text-[10px] text-muted-foreground tracking-widest uppercase mb-0.5">
-              Güncelleme Notları
+              Release Notes
             </p>
             <h2 className="font-mono text-lg font-bold text-foreground tracking-tight">
               AERO-SENTINEL <span className="changelog-version-badge">v1.8</span>
@@ -185,13 +197,11 @@ export function ChangelogModal({ open, onClose }: Props) {
 
         {/* Body */}
         <div className="overflow-y-auto px-6 py-4 space-y-5">
-          {/* v1.8 sections */}
           {renderSections(V18_SECTIONS)}
 
-          {/* v1.7 divider */}
           <div className="border-t border-border/40 pt-4">
             <p className="font-mono text-[10px] text-muted-foreground tracking-widest uppercase mb-4">
-              — Önceki Güncelleme: v1.7 —
+              — Previous Release: v1.7 —
             </p>
             <div className="space-y-5 opacity-60">
               {renderSections(V17_SECTIONS)}
@@ -205,7 +215,7 @@ export function ChangelogModal({ open, onClose }: Props) {
             onClick={onClose}
             className="font-mono text-xs px-4 py-1.5 rounded-md bg-muted hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors tracking-wider"
           >
-            KAPAT
+            CLOSE
           </button>
         </div>
       </div>
