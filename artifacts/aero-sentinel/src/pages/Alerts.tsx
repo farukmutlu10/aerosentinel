@@ -56,9 +56,9 @@ function StatCard({ label, value, highlight, color }: StatCardProps) {
     color === "sky" ? "bg-sky-400/5" :
     "bg-card";
   return (
-    <div className={`rounded-lg border px-4 py-3 ${bgColor} ${borderColor}`}>
-      <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">{label}</p>
-      <p className={`text-2xl font-mono font-bold tabular-nums ${textColor}`}>{value}</p>
+    <div className={`rounded-lg border px-4 py-4 text-center ${bgColor} ${borderColor}`}>
+      <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-2">{label}</p>
+      <p className={`text-3xl font-mono font-bold tabular-nums ${textColor}`}>{value}</p>
     </div>
   );
 }
@@ -151,7 +151,7 @@ export default function Alerts() {
 
         {/* Top bar */}
         <div className="flex items-center justify-between">
-          <h1 className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Alert Log — Bugün UTC</h1>
+          <h1 className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Alert Log — Today UTC</h1>
         </div>
 
         {/* Filter row */}

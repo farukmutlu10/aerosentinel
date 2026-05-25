@@ -45,31 +45,10 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
   return (
     <>
       <header className="border-b border-border bg-card px-4 sm:px-6 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto grid grid-cols-[auto_1fr_auto] items-center h-16 sm:h-20 gap-3">
+        <div className="max-w-7xl mx-auto flex items-center justify-between h-16 sm:h-20 gap-3">
 
-          {/* Left — version badge */}
-          <button
-            className="rgb-badge-wrapper flex-shrink-0"
-            onClick={() => setChangelogOpen(true)}
-            title="Güncelleme notlarını görüntüle"
-          >
-            <div className="rgb-badge-spinner" />
-            <span className="rgb-badge-inner">v1.8</span>
-          </button>
-
-          {/* Center — logo */}
-          <div className="flex justify-center min-w-0">
-            <Link href="/">
-              <img
-                src={`${import.meta.env.BASE_URL}aero-logo.png`}
-                alt="AERO-SENTINEL"
-                className="h-10 sm:h-14 object-contain select-none"
-              />
-            </Link>
-          </div>
-
-          {/* Right — nav + controls */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Left — nav + controls */}
+          <div className="flex items-center gap-1.5 flex-shrink-0 min-w-0">
             <nav className="flex items-center gap-1">
               {NAV_ITEMS.map((item) => (
                 <Link
@@ -119,6 +98,25 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
                 </span>
               </div>
             )}
+          </div>
+
+          {/* Right — logo + version badge */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Link href="/">
+              <img
+                src={`${import.meta.env.BASE_URL}aero-logo.png`}
+                alt="AERO-SENTINEL"
+                className="h-10 sm:h-14 object-contain select-none"
+              />
+            </Link>
+            <button
+              className="rgb-badge-wrapper flex-shrink-0"
+              onClick={() => setChangelogOpen(true)}
+              title="View changelog"
+            >
+              <div className="rgb-badge-spinner" />
+              <span className="rgb-badge-inner">v1.8</span>
+            </button>
           </div>
         </div>
       </header>
