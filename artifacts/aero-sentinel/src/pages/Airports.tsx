@@ -15,7 +15,7 @@ export interface FlightRow {
   reg: string;
   fromIcao: string;
   toIcao: string;
-  sta: string;
+  etd: string;
   eta: string;
   etaHour: number | null;
 }
@@ -81,14 +81,15 @@ function parseExcelFile(file: File): Promise<FlightRow[]> {
           "REG", "TAIL", "A/C REG", "AIRCRAFT", "KUYRUK", "TESCIL",
         ]);
         const fromCol = findCol(sample, [
-          "DEP ICAO", "FROM ICAO", "ORIGIN ICAO", "ORIG ICAO", "KALKIŞ ICAO", "KALKIS ICAO",
-          "DEP", "FROM", "ORIG", "KALKIŞ", "KALKIS",
+          "FROM (S) ICAO", "FROM S ICAO", "DEP ICAO", "FROM ICAO", "ORIGIN ICAO", "ORIG ICAO",
+          "KALKIŞ ICAO", "KALKIS ICAO", "DEP", "FROM", "ORIG", "KALKIŞ", "KALKIS",
         ]);
         const toCol = findCol(sample, [
-          "DEST ICAO", "ARR ICAO", "TO ICAO", "DESTINATION ICAO", "VARIŞ ICAO", "VARIS ICAO",
-          "DEST", "TO", "ARR", "DESTN", "VARIŞ", "VARIS",
+          "TO (S) ICAO", "TO S ICAO", "DEST ICAO", "ARR ICAO", "TO ICAO", "DESTINATION ICAO",
+          "VARIŞ ICAO", "VARIS ICAO", "DEST", "TO", "ARR", "DESTN", "VARIŞ", "VARIS",
         ]);
-        const staCol = findCol(sample, [
+        const etdCol = findCol(sample, [
+          "ETD", "EST DEP", "ESTIMATED DEP", "STD", "DEP TIME", "KALKIŞ SAATİ",
           "STA", "SCHED ARR", "SCHEDULED ARR", "SCH ARR", "PLANLANAN VARIŞ",
         ]);
         const etaCol = findCol(sample, [
@@ -108,12 +109,12 @@ function parseExcelFile(file: File): Promise<FlightRow[]> {
             const reg = String(r[regCol ?? ""] ?? "").trim();
             const fromIcao = String(r[fromCol ?? ""] ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
             const toIcao = String(r[toCol ?? ""] ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-            const staRaw = r[staCol ?? ""];
+            const etdRaw = r[etdCol ?? ""];
             const etaRaw = r[etaCol ?? ""];
-            const sta = excelTimeToHHMM(staRaw);
+            const etd = excelTimeToHHMM(etdRaw);
             const eta = excelTimeToHHMM(etaRaw);
-            const etaHour = parseEtaHour(eta || sta);
-            return { id: idx, flightRaw, flight, reg, fromIcao, toIcao, sta, eta, etaHour };
+            const etaHour = parseEtaHour(eta || etd);
+            return { id: idx, flightRaw, flight, reg, fromIcao, toIcao, etd, eta, etaHour };
           });
 
         resolve(parsed);
@@ -169,39 +170,39 @@ function CatBadge({ cat }: { cat: FlightCategory | null }) {
 }
 
 function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }) {
-  if (result === undefined) return <span className="text-muted-foreground text-xs">—</span>;
-  if (result === null) return <span className="text-muted-foreground text-xs font-mono">NO TAF</span>;
+  if (result === undefined) return <span className="text-muted-foreground text-xs font-mono">—</span>;
+  if (result === null) return <span className="text-[10px] font-mono text-muted-foreground/60">NO TAF</span>;
   const { category, visibility, ceiling, critCodes, orangeCodes } = result;
-  const codes = [...critCodes, ...orangeCodes.filter((c) => !critCodes.includes(c))].slice(0, 4);
+  // All significant wx codes → orange
+  const allCodes = [...new Set([...critCodes, ...orangeCodes])].slice(0, 5);
+  const hasWeather = allCodes.length > 0 || (visibility !== null && visibility < 9999) || (ceiling !== null && ceiling < 3000);
+  if (!hasWeather && category === FlightCategory.VFR) {
+    return <span className="text-[10px] font-mono text-muted-foreground/50">VFR</span>;
+  }
   return (
-    <div className="flex flex-col gap-1 min-w-[120px]">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <CatBadge cat={category} />
-        {visibility !== null && (
-          <span className="text-[10px] font-mono text-muted-foreground">
-            {visibility !== null && visibility >= 9999 ? "9999+" : `${visibility}m`}
-          </span>
-        )}
-        {ceiling !== null && (
-          <span className="text-[10px] font-mono text-muted-foreground">
-            C{String(Math.round((ceiling ?? 0) / 100)).padStart(3, "0")}
-          </span>
-        )}
-      </div>
-      {codes.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {codes.map((code) => (
-            <span key={code}
-              className="text-[9px] font-mono px-1 py-0.5 rounded"
-              style={{
-                color: critCodes.includes(code) ? "#ef4444" : "#f97316",
-                backgroundColor: critCodes.includes(code) ? "#ef444415" : "#f9731615",
-              }}>
-              {code}
-            </span>
-          ))}
-        </div>
+    <div className="flex flex-wrap items-center gap-1.5 min-w-[120px]">
+      <CatBadge cat={category} />
+      {/* Visibility — purple when low */}
+      {visibility !== null && visibility < 9999 && (
+        <span className="text-[11px] font-mono font-bold"
+          style={{ color: "#a855f7" }}>
+          {String(visibility).padStart(4, "0")}
+        </span>
       )}
+      {/* Ceiling — shown when below 3000ft */}
+      {ceiling !== null && ceiling < 3000 && (
+        <span className="text-[10px] font-mono" style={{ color: "#a855f7", opacity: 0.75 }}>
+          C{String(Math.round(ceiling / 100)).padStart(3, "0")}
+        </span>
+      )}
+      {/* Wx codes — all orange */}
+      {allCodes.map((code) => (
+        <span key={code}
+          className="text-[10px] font-mono font-semibold px-1 py-0.5 rounded"
+          style={{ color: "#f97316", backgroundColor: "#f9731618" }}>
+          {code}
+        </span>
+      ))}
     </div>
   );
 }
@@ -473,7 +474,7 @@ export default function Airports() {
                   <p className="text-xs font-mono text-muted-foreground mt-1">Drag & drop or click · .xlsx .xls .csv</p>
                 </div>
                 <p className="text-[10px] font-mono text-muted-foreground/60 mt-1">
-                  Required columns: Flight · Reg · From ICAO · To ICAO · STA · ETA
+                  Required columns: Flight · Reg · From (S) ICAO · To (S) ICAO · ETD · ETA
                 </p>
               </div>
             </div>
@@ -541,7 +542,7 @@ export default function Airports() {
                           <ColFilterDropdown label="TO" allValues={allToIcaos} selected={filterTo} onChange={setFilterTo} />
                         </span>
                       </th>
-                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">STA</th>
+                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">ETD</th>
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">ETA</th>
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider min-w-[160px]">TAF ANALYSIS (ETA±1h)</th>
                     </tr>
@@ -567,10 +568,10 @@ export default function Airports() {
                               <Link href={`/airports/${f.toIcao}`} className="text-sky-400 hover:underline">{f.toIcao}</Link>
                             ) : "—"}
                           </td>
-                          <td className="px-3 py-2.5 text-muted-foreground tabular-nums">{f.sta || "—"}</td>
+                          <td className="px-3 py-2.5 text-muted-foreground tabular-nums">{f.etd || "—"}</td>
                           <td className="px-3 py-2.5 font-bold tabular-nums"
                             style={{ color: f.eta ? "hsl(45 90% 50%)" : undefined }}>
-                            {f.eta || (f.sta ? <span className="opacity-50">{f.sta}</span> : "—")}
+                            {f.eta || (f.etd ? <span className="opacity-50">{f.etd}</span> : "—")}
                           </td>
                           <td className="px-3 py-2.5">
                             {analysis.loading ? (
