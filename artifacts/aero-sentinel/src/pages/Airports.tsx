@@ -728,22 +728,23 @@ export default function Airports() {
                     onClick={refreshTaf}
                     disabled={analysis.loading}
                     title="Re-fetch TAF data"
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-border text-[11px] font-mono text-muted-foreground hover:text-emerald-400 hover:border-emerald-400/40 transition-colors disabled:opacity-40">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-mono font-bold border transition-all disabled:opacity-50"
+                    style={{ borderColor: "#38BDF840", color: "#38BDF8", backgroundColor: "#38BDF810" }}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
                       className={analysis.loading ? "animate-spin" : ""}>
-                      <polyline points="23 4 23 10 17 10"/>
-                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                      <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                      <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
                     </svg>
-                    Refresh
+                    {analysis.loading ? "..." : "REFRESH"}
                   </button>
                   {/* Hide CLEAR */}
                   <button
                     onClick={() => setHideClear((v) => !v)}
                     title={hideClear ? "Show CLEAR rows" : "Hide CLEAR rows"}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-[11px] font-mono transition-colors ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-[11px] font-mono font-bold transition-colors ${
                       hideClear
                         ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
-                        : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                        : "border-border text-muted-foreground hover:border-foreground/30"
                     }`}>
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       {hideClear
@@ -751,7 +752,10 @@ export default function Airports() {
                         : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>
                       }
                     </svg>
-                    {hideClear ? `Hide CLEAR (${clearCount})` : "Hide CLEAR"}
+                    {hideClear
+                      ? <span>HIDE <span className="text-emerald-400">CLEAR</span> ({clearCount})</span>
+                      : <span>HIDE <span className="text-emerald-400">CLEAR</span></span>
+                    }
                   </button>
                 </div>
               </div>
