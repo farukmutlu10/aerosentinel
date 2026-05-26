@@ -22,16 +22,15 @@ import {
 type RouteFilter = "ALL" | "DOM" | "INT";
 type SortMode = "alpha" | "lifr-first" | "vfr-first";
 type ViewMode = "TAF" | "METAR" | "BOTH";
+
 const ALL_CATS = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
 const CRIT_KEY = "CRIT";
-
-// CRIT starts active by default (= crit airports are shown)
+// v2 key — forces fresh default, clears any stale localStorage state
 const DEFAULT_CATS = [...ALL_CATS, CRIT_KEY] as string[];
 const DEFAULT_VIEW: ViewMode = "TAF";
 const DEFAULT_ROUTE: RouteFilter = "ALL";
 const DEFAULT_SORT: SortMode = "alpha";
 
-// Severity order — higher index = worse
 const CAT_ORDER = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
 
 interface WeatherItem { icao: string; rawTaf: string | null; rawMetar: string | null }
@@ -65,6 +64,12 @@ const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
   { value: "BOTH",  label: "TAF+METAR" },
 ];
 
+/** True when airport has critical weather or extreme wind */
+function airportIsCrit(rawTaf: string | null, rawMetar: string | null): boolean {
+  return hasCritWx(rawTaf ?? "") || hasCritWx(rawMetar ?? "")
+    || hasBadgeWind(rawTaf) || hasBadgeWind(rawMetar);
+}
+
 function getEffectiveCat(
   rawTaf: string | null,
   metar: ReturnType<typeof parseMetar> | null,
@@ -75,35 +80,29 @@ function getEffectiveCat(
   return tafCat ?? metar?.flightCategory ?? FlightCategory.VFR;
 }
 
-/** Return worst of two flight categories */
 function worstOf(a: FlightCategory, b: FlightCategory): FlightCategory {
   return CAT_ORDER.indexOf(a) >= CAT_ORDER.indexOf(b) ? a : b;
 }
 
 export default function Dashboard() {
   const { theme, toggleTheme } = useThemeContext();
-  const {
-    effectiveIcaos, watchedIcaos,
-    addIcao, removeIcao, clearWatchlist, hasFilter,
-  } = useWatchlist();
+  const { effectiveIcaos, watchedIcaos, addIcao, removeIcao, clearWatchlist, hasFilter } = useWatchlist();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // v2 key — avoids stale localStorage with old format (without CRIT)
+  const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-dash-cats-v2", DEFAULT_CATS);
   const [view, setView] = usePersistedState<ViewMode>("as-dash-view", DEFAULT_VIEW);
-  const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-dash-cats", DEFAULT_CATS);
   const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-dash-route", DEFAULT_ROUTE);
   const [sortMode, setSortMode] = usePersistedState<SortMode>("as-dash-sort", DEFAULT_SORT);
   const [timeFilters, setTimeFilters] = usePersistedState<string[]>("as-dash-time-multi", []);
   const [icaoSearch, setIcaoSearch] = usePersistedState<string>("as-dash-icao-search", "");
-  // Watchlist panel open by default
   const [watchlistOpen, setWatchlistOpen] = usePersistedState<boolean>("as-dash-watchlist-open", true);
   const [timeOpen, setTimeOpen] = useState(false);
   const timeRef = useRef<HTMLDivElement>(null);
-
-  // Watchlist input
   const [wlInput, setWlInput] = useState("");
   const wlInputRef = useRef<HTMLInputElement>(null);
 
-  // For CRIT notification: track previous weather
+  // Notification tracking
   const prevWeatherRef = useRef<Map<string, { rawMetar: string | null; rawTaf: string | null }>>(new Map());
   const notifInitRef = useRef(false);
 
@@ -119,7 +118,6 @@ export default function Dashboard() {
   const toggleTimeSlot = (slot: string) =>
     setTimeFilters((p) => p.includes(slot) ? p.filter((s) => s !== slot) : [...p, slot]);
 
-  // Watchlist add
   const handleWlAdd = () => {
     const codes = wlInput.split(/[,\s]+/).filter(Boolean);
     const skipped: string[] = [];
@@ -140,12 +138,8 @@ export default function Dashboard() {
 
   const handleWlInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
-      .replace(/İ/g, "I").replace(/ı/g, "I")
-      .replace(/Ş/g, "S").replace(/ş/g, "S")
-      .replace(/Ğ/g, "G").replace(/ğ/g, "G")
-      .replace(/Ü/g, "U").replace(/ü/g, "U")
-      .replace(/Ö/g, "O").replace(/ö/g, "O")
-      .replace(/Ç/g, "C").replace(/ç/g, "C")
+      .replace(/[İı]/g, "I").replace(/[Şş]/g, "S").replace(/[Ğğ]/g, "G")
+      .replace(/[Üü]/g, "U").replace(/[Öö]/g, "O").replace(/[Çç]/g, "C")
       .toUpperCase().replace(/[^A-Z0-9,\s]/g, "");
     setWlInput(val);
   };
@@ -170,49 +164,44 @@ export default function Dashboard() {
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
-  // ── CRIT METAR notification ──────────────────────────────────────────────
+  // ── CRIT / Wind notifications ─────────────────────────────────────────────
   useEffect(() => {
     if (!weatherData) return;
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") {
-      // Still update the ref so we have baseline data
-      for (const w of weatherData) {
-        prevWeatherRef.current.set(w.icao, { rawMetar: w.rawMetar, rawTaf: w.rawTaf });
-      }
-      notifInitRef.current = true;
-      return;
-    }
+    const permGranted = typeof Notification !== "undefined" && Notification.permission === "granted";
 
     if (!notifInitRef.current) {
-      for (const w of weatherData) {
+      for (const w of weatherData)
         prevWeatherRef.current.set(w.icao, { rawMetar: w.rawMetar, rawTaf: w.rawTaf });
-      }
       notifInitRef.current = true;
       return;
     }
 
     for (const w of weatherData) {
       const prev = prevWeatherRef.current.get(w.icao);
-      const newCritMetar = hasCritWx(w.rawMetar ?? "");
-      const prevHadCrit = prev ? (hasCritWx(prev.rawMetar ?? "") || hasCritWx(prev.rawTaf ?? "")) : false;
+      const nowCrit = airportIsCrit(w.rawTaf, w.rawMetar);
+      const prevCrit = prev ? airportIsCrit(prev.rawTaf, prev.rawMetar) : false;
 
-      if (newCritMetar && !prevHadCrit) {
-        // Find specific codes
-        const newCodes = [...RED_WX].filter((code) => {
+      if (permGranted && nowCrit && !prevCrit) {
+        const critCodes = [...RED_WX].filter((code) => {
           const esc = code.replace(/[+]/g, "\\+");
           return new RegExp(`(?:^|\\s)${esc}(?=\\s|$)`).test(w.rawMetar ?? "");
         });
+        const windAlert = hasBadgeWind(w.rawMetar) || hasBadgeWind(w.rawTaf);
+        const body = [
+          critCodes.length ? critCodes.slice(0, 5).join(", ") : windAlert ? "EXTREME WIND" : "Critical condition",
+          (w.rawMetar ?? "").slice(0, 120),
+        ].filter(Boolean).join("\n");
         try {
-          const n = new Notification(`⚠ CRITICAL WEATHER — ${w.icao}`, {
-            body: `${newCodes.slice(0, 5).join(", ")} detected\n${(w.rawMetar ?? "").slice(0, 120)}`,
+          const n = new Notification(`⚠ CRITICAL — ${w.icao}`, {
+            body,
             icon: `${import.meta.env.BASE_URL}ajet-logo.jpeg`,
-            tag: `crit-metar-${w.icao}-${Date.now()}`,
+            tag: `crit-${w.icao}-${Date.now()}`,
             requireInteraction: false,
           });
           setTimeout(() => n.close(), 60_000);
           n.onclick = () => { window.focus(); n.close(); };
-        } catch { /* notification may be blocked */ }
+        } catch { /* blocked */ }
       }
-
       prevWeatherRef.current.set(w.icao, { rawMetar: w.rawMetar, rawTaf: w.rawTaf });
     }
   }, [weatherData]);
@@ -227,8 +216,7 @@ export default function Dashboard() {
     for (const a of airports) {
       if (routeFilter === "DOM" && !a.icao.startsWith("LT")) continue;
       if (routeFilter === "INT" && a.icao.startsWith("LT")) continue;
-      const raw = view === "METAR" ? (a.rawMetar ?? "") : (a.rawTaf ?? "");
-      extractTimeSlots(raw).forEach((s) => slots.add(s));
+      extractTimeSlots(view === "METAR" ? (a.rawMetar ?? "") : (a.rawTaf ?? "")).forEach((s) => slots.add(s));
     }
     return [...slots].sort().reverse();
   }, [airports, view, routeFilter]);
@@ -241,17 +229,14 @@ export default function Dashboard() {
   }, [allTimeSlots]);
 
   const isFiltered =
-    view !== DEFAULT_VIEW ||
     DEFAULT_CATS.some((c) => !activeCatsArr.includes(c)) ||
     activeCatsArr.some((c) => !DEFAULT_CATS.includes(c)) ||
-    routeFilter !== DEFAULT_ROUTE ||
-    sortMode !== DEFAULT_SORT ||
-    timeFilters.length > 0 ||
-    icaoSearch.trim() !== "";
+    view !== DEFAULT_VIEW || routeFilter !== DEFAULT_ROUTE ||
+    sortMode !== DEFAULT_SORT || timeFilters.length > 0 || icaoSearch.trim() !== "";
 
   const resetFilters = () => {
-    setView(DEFAULT_VIEW);
     setActiveCatsArr(DEFAULT_CATS);
+    setView(DEFAULT_VIEW);
     setRouteFilter(DEFAULT_ROUTE);
     setSortMode(DEFAULT_SORT);
     setTimeFilters([]);
@@ -259,15 +244,12 @@ export default function Dashboard() {
   };
 
   const displayed = useMemo(() => {
-    let list = airports;
-
-    // Category filter (VFR/MVFR/IFR/LIFR) — uses effective category per view mode
     const activeFlightCats = ALL_CATS.filter((c) => activeCats.has(c));
-    list = list.filter((a) => activeFlightCats.includes(getEffectiveCat(a.rawTaf, a.parsed, view)));
+    let list = airports.filter((a) => activeFlightCats.includes(getEffectiveCat(a.rawTaf, a.parsed, view)));
 
-    // CRIT filter: if CRIT is inactive, hide airports that have critical conditions
+    // CRIT filter: when inactive → hide airports with critical/extreme-wind conditions
     if (!critActive) {
-      list = list.filter((a) => !hasCritWx(a.rawTaf ?? "") && !hasCritWx(a.rawMetar ?? ""));
+      list = list.filter((a) => !airportIsCrit(a.rawTaf, a.rawMetar));
     }
 
     if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
@@ -275,9 +257,8 @@ export default function Dashboard() {
 
     if (icaoSearch.trim()) {
       const queries = icaoSearch.trim().toUpperCase().split(/[,\s]+/).filter((q) => q.length >= 2);
-      if (queries.length > 0) {
+      if (queries.length > 0)
         list = list.filter((a) => queries.some((q) => a.icao.startsWith(q) || a.icao.includes(q)));
-      }
     }
 
     if (timeFilters.length > 0) {
@@ -303,7 +284,7 @@ export default function Dashboard() {
     return sorted;
   }, [airports, activeCatsArr, routeFilter, sortMode, timeFilters, icaoSearch, view, critActive]);
 
-  const monitorData = monitor as { running?: boolean; scanCount?: number; scanCountToday?: number } | undefined;
+  const monitorData = monitor as { running?: boolean; scanCountToday?: number; scanCount?: number } | undefined;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -311,7 +292,7 @@ export default function Dashboard() {
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5 space-y-3">
 
-        {/* Monitor bar — left: status info; right: INTERVAL + Clock */}
+        {/* Monitor bar */}
         <div className="bg-card border border-border rounded-lg px-4 py-2 flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-4 text-xs font-mono flex-wrap">
             <span className="text-muted-foreground tracking-widest">MONITOR</span>
@@ -326,14 +307,13 @@ export default function Dashboard() {
               <span className="text-sky-400">WATCHLIST {watchedIcaos.length}</span></>
             )}
           </div>
-          {/* Right: INTERVAL then Clock */}
           <div className="flex items-center gap-3">
             <span className="text-[10px] text-muted-foreground font-mono">INTERVAL: 60s</span>
             <ClockBadge />
           </div>
         </div>
 
-        {/* Collapsible watchlist panel — open by default */}
+        {/* Collapsible watchlist */}
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <button
             onClick={() => setWatchlistOpen((o) => !o)}
@@ -348,10 +328,8 @@ export default function Dashboard() {
                 {watchedIcaos.length > 0 ? `${watchedIcaos.length} airports` : "default: LTFH"}
               </span>
             </div>
-            <svg
-              width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-              className={`text-muted-foreground transition-transform duration-200 ${watchlistOpen ? "rotate-180" : ""}`}
-            >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className={`text-muted-foreground transition-transform duration-200 ${watchlistOpen ? "rotate-180" : ""}`}>
               <polyline points="6 9 12 15 18 9"/>
             </svg>
           </button>
@@ -359,13 +337,9 @@ export default function Dashboard() {
           {watchlistOpen && (
             <div className="border-t border-border/60 px-4 py-3">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
-                  WATCHLIST — Monitored Airports
-                </span>
+                <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">WATCHLIST — Monitored Airports</span>
                 {hasFilter && (
-                  <button onClick={clearWatchlist} className="text-xs font-mono text-muted-foreground hover:text-destructive transition-colors">
-                    Clear All
-                  </button>
+                  <button onClick={clearWatchlist} className="text-xs font-mono text-muted-foreground hover:text-destructive transition-colors">Clear All</button>
                 )}
               </div>
               <div
@@ -386,16 +360,13 @@ export default function Dashboard() {
                 />
                 {wlInput.replace(/[,\s]/g, "").length >= 4 && (
                   <button type="button" onClick={handleWlAdd}
-                    className="px-2 py-0.5 text-xs font-mono bg-primary text-primary-foreground rounded hover:opacity-90 transition-opacity">
-                    ADD
-                  </button>
+                    className="px-2 py-0.5 text-xs font-mono bg-primary text-primary-foreground rounded hover:opacity-90 transition-opacity">ADD</button>
                 )}
               </div>
               <p className="text-xs text-muted-foreground font-mono mt-2">
                 {hasFilter
                   ? <span className="text-sky-400">{watchedIcaos.length} airports monitored — this browser only.</span>
-                  : <span>Watchlist empty — showing default <span className="text-primary font-bold">LTFH</span>. Add any 4-letter ICAO code.</span>
-                }
+                  : <span>Watchlist empty — showing default <span className="text-primary font-bold">LTFH</span>. Add any 4-letter ICAO code.</span>}
               </p>
             </div>
           )}
@@ -405,7 +376,7 @@ export default function Dashboard() {
         <section>
           {/* Filter row */}
           <div className="flex flex-wrap items-center gap-2 mb-2">
-            {/* Category + CRIT filters (same logic: active = shown, inactive = hidden) */}
+            {/* Category filters — all same toggle logic */}
             <div className="flex items-center gap-1">
               {ALL_CATS.map((cat) => {
                 const isActive = activeCats.has(cat);
@@ -421,14 +392,11 @@ export default function Dashboard() {
                   </button>
                 );
               })}
-              {/* CRIT — same toggle behaviour as category buttons */}
-              <button
-                onClick={toggleCritFilter}
+              {/* CRIT — same toggle logic: active = crit shown, inactive = crit hidden */}
+              <button onClick={toggleCritFilter}
                 className="px-2 py-0.5 rounded text-xs font-mono border transition-colors"
                 style={critActive ? {
-                  borderColor: "#ef444499",
-                  color: "#ef4444",
-                  backgroundColor: "#ef444418",
+                  borderColor: "#ef444499", color: "#ef4444", backgroundColor: "#ef444418",
                 } : { borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
                 CRIT
               </button>
@@ -471,11 +439,8 @@ export default function Dashboard() {
             {/* TIME multi-select */}
             {!weatherLoading && allTimeSlots.length > 0 && (
               <div className="relative" ref={timeRef}>
-                <button
-                  onClick={() => setTimeOpen((o) => !o)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-medium border transition-colors ${
-                    timeFilters.length > 0 ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"
-                  }`}>
+                <button onClick={() => setTimeOpen((o) => !o)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-medium border transition-colors ${timeFilters.length > 0 ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"}`}>
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                   </svg>
@@ -483,8 +448,7 @@ export default function Dashboard() {
                   {timeFilters.length > 0 && (
                     <span className="bg-primary text-primary-foreground rounded-full text-[9px] font-bold px-1 leading-tight">{timeFilters.length}</span>
                   )}
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                    className={`transition-transform ${timeOpen ? "rotate-180" : ""}`}>
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${timeOpen ? "rotate-180" : ""}`}>
                     <polyline points="6 9 12 15 18 9"/>
                   </svg>
                 </button>
@@ -534,38 +498,33 @@ export default function Dashboard() {
             </span>
           </div>
 
-          {/* ICAO multi-search + REFRESH button */}
-          <div className="relative flex items-center gap-2 mb-3">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-              className="absolute left-3 text-muted-foreground pointer-events-none">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              type="text"
-              placeholder="Filter airports — e.g. LTFH,LTAC,LTFJ or LTFH LTAC LTFJ"
-              value={icaoSearch}
-              onChange={(e) => setIcaoSearch(e.target.value.toUpperCase().replace(/[^A-Z0-9,\s]/g, ""))}
-              className={`flex-1 pl-8 pr-8 py-1.5 rounded-lg text-xs font-mono border bg-card transition-colors focus:outline-none focus:border-primary ${
-                icaoSearch ? "border-primary text-primary" : "border-border text-muted-foreground"
-              }`}
-            />
-            {icaoSearch && (
-              <button onClick={() => setIcaoSearch("")}
-                className="absolute left-auto right-[88px] text-muted-foreground hover:text-foreground transition-colors text-sm leading-none">
-                ×
-              </button>
-            )}
-            {/* REFRESH — right side of search bar */}
+          {/* ICAO search + REFRESH (same height) */}
+          <div className="flex items-center gap-2 mb-3">
+            <div className="relative flex-1">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                type="text"
+                placeholder="Filter airports — e.g. LTFH,LTAC,LTFJ or LTFH LTAC LTFJ"
+                value={icaoSearch}
+                onChange={(e) => setIcaoSearch(e.target.value.toUpperCase().replace(/[^A-Z0-9,\s]/g, ""))}
+                className={`w-full h-[34px] pl-8 pr-7 rounded-lg text-xs font-mono border bg-card transition-colors focus:outline-none focus:border-primary ${icaoSearch ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
+              />
+              {icaoSearch && (
+                <button onClick={() => setIcaoSearch("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors text-sm leading-none">×</button>
+              )}
+            </div>
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
               title="Refresh weather data"
-              className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-mono font-bold border transition-all disabled:opacity-50"
+              className="h-[34px] flex items-center gap-1.5 px-3 rounded-lg text-[11px] font-mono font-bold border transition-all disabled:opacity-50 flex-shrink-0"
               style={{ borderColor: "#38BDF840", color: "#38BDF8", backgroundColor: "#38BDF810" }}
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                className={isRefreshing ? "animate-spin" : ""}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={isRefreshing ? "animate-spin" : ""}>
                 <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
                 <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
               </svg>
@@ -603,7 +562,6 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
 }) {
   const metarCat = parsed?.flightCategory ?? FlightCategory.VFR;
   const metarColor = CATEGORY_COLOR[metarCat];
-
   const tafWorst = parseTafWorstCategory(rawTaf);
   const tafCat = tafWorst ?? metarCat;
   const tafColor = rawTaf ? CATEGORY_COLOR[tafCat] : "hsl(var(--border))";
@@ -614,11 +572,9 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
 
   const critTaf = rawTaf ? hasCritWx(rawTaf) : false;
   const critMetar = rawMetar ? hasCritWx(rawMetar) : false;
+  // CRIT badge also includes extreme wind
+  const critAny = airportIsCrit(rawTaf, rawMetar);
 
-  // Wind badge
-  const windBadge = hasBadgeWind(rawMetar) || hasBadgeWind(rawTaf);
-
-  // In BOTH mode: show only the single worst badge (no duplicate VFR+LIFR problem)
   const bothWorst = worstOf(tafCat, metarCat);
   const bothWorstColor = CATEGORY_COLOR[bothWorst];
 
@@ -626,29 +582,36 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
   if (showLeftStrip) { borderStyle.borderLeftWidth = "3px"; borderStyle.borderLeftColor = tafColor; }
   if (showRightStrip) { borderStyle.borderRightWidth = "3px"; borderStyle.borderRightColor = metarBorderColor; }
 
+  // Vertical strip text style — upright letters, top→bottom, 2× readable size
+  const stripTextStyle: React.CSSProperties = {
+    writingMode: "vertical-lr",
+    textOrientation: "upright",
+    fontSize: "11px",
+    fontFamily: "monospace",
+    fontWeight: "700",
+    letterSpacing: "0.12em",
+    lineHeight: 1,
+    userSelect: "none",
+  };
+
   return (
     <Link href={`/airports/${icao}`}
       className="block bg-card border border-border rounded-lg overflow-hidden hover:border-foreground/20 transition-colors cursor-pointer flex"
       style={borderStyle}>
 
-      {/* Left strip — TAF or BOTH: letters upright, top→bottom */}
+      {/* Left strip — TAF */}
       {showLeftStrip && (
-        <div className="flex-shrink-0 w-[18px] flex items-center justify-center" style={{ backgroundColor: `${tafColor}12` }}>
-          <span className="text-[7px] font-mono font-bold select-none"
-            style={{ writingMode: "vertical-lr", textOrientation: "upright", letterSpacing: "0.05em", color: tafColor, opacity: 0.85 }}>
-            TAF
-          </span>
+        <div className="flex-shrink-0 w-[26px] flex items-center justify-center" style={{ backgroundColor: `${tafColor}12` }}>
+          <span style={{ ...stripTextStyle, color: tafColor, opacity: 0.9 }}>TAF</span>
         </div>
       )}
 
-      {/* Card content */}
       <div className="flex-1 min-w-0">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/60">
           <span className="font-mono font-bold text-base tracking-wider">{icao}</span>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
-
-            {/* Category badge — always single, reflects view mode */}
+            {/* Single category badge — worst in BOTH mode */}
             {view === "TAF" && rawTaf && tafWorst && (
               <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
                 style={{ color: CATEGORY_COLOR[tafCat], borderColor: `${CATEGORY_COLOR[tafCat]}60`, backgroundColor: `${CATEGORY_COLOR[tafCat]}18` }}>
@@ -667,20 +630,10 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
                 {bothWorst}
               </span>
             )}
-
             {!rawMetar && !rawTaf && (
               <span className="text-xs font-mono text-muted-foreground">NO DATA</span>
             )}
-
-            {/* Wind badge — extreme wind */}
-            {windBadge && (
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border"
-                style={{ color: "#fb923c", borderColor: "#fb923c70", backgroundColor: "#fb923c15" }}>
-                WIND
-              </span>
-            )}
-
-            {/* CRIT badges */}
+            {/* CRIT badges (wx codes) */}
             {critTaf && (
               <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border text-red-400 border-red-400/50 bg-red-400/10">
                 CRIT TAF
@@ -691,6 +644,12 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
                 CRIT METAR
               </span>
             )}
+            {/* Extreme wind included in CRIT, badge only when no wx-code CRIT */}
+            {!critTaf && !critMetar && critAny && (
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border text-red-400 border-red-400/50 bg-red-400/10">
+                CRIT WIND
+              </span>
+            )}
           </div>
         </div>
 
@@ -698,9 +657,7 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
         {(view === "TAF" || view === "BOTH") && (
           <div className="px-3 py-3">
             {rawTaf ? (
-              <div className="max-h-36 overflow-y-auto">
-                <TafText raw={rawTaf} />
-              </div>
+              <div className="max-h-36 overflow-y-auto"><TafText raw={rawTaf} /></div>
             ) : (
               <p className="text-xs font-mono text-muted-foreground italic">Awaiting TAF data...</p>
             )}
@@ -715,13 +672,10 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
         )}
       </div>
 
-      {/* Right strip — METAR or BOTH: letters upright, top→bottom */}
+      {/* Right strip — METAR */}
       {showRightStrip && (
-        <div className="flex-shrink-0 w-[18px] flex items-center justify-center" style={{ backgroundColor: `${metarBorderColor}12` }}>
-          <span className="text-[7px] font-mono font-bold select-none"
-            style={{ writingMode: "vertical-lr", textOrientation: "upright", letterSpacing: "0.05em", color: metarBorderColor, opacity: 0.85 }}>
-            METAR
-          </span>
+        <div className="flex-shrink-0 w-[26px] flex items-center justify-center" style={{ backgroundColor: `${metarBorderColor}12` }}>
+          <span style={{ ...stripTextStyle, color: metarBorderColor, opacity: 0.9 }}>METAR</span>
         </div>
       )}
     </Link>
