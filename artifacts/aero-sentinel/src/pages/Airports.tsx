@@ -264,11 +264,12 @@ interface ColFilterProps {
   allValues: string[];
   selected: Set<string>;
   onChange: (v: Set<string>) => void;
+  searchText: string;
+  onSearchChange: (v: string) => void;
 }
 
-function ColFilterDropdown({ label, allValues, selected, onChange }: ColFilterProps) {
+function ColFilterDropdown({ label, allValues, selected, onChange, searchText, onSearchChange }: ColFilterProps) {
   const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -280,14 +281,14 @@ function ColFilterDropdown({ label, allValues, selected, onChange }: ColFilterPr
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const searchTokens = splitTokens(search).map((t) => stripPrefix(t).toLowerCase());
+  const searchTokens = splitTokens(searchText ?? "").map((t) => stripPrefix(t).toLowerCase());
   const filtered = allValues.filter((v) => {
     if (searchTokens.length === 0) return true;
     const lv = v.toLowerCase();
     return searchTokens.some((t) => lv.includes(t));
   });
   const isAllSelected = selected.size === 0;
-  const isActive = selected.size > 0;
+  const isActive = selected.size > 0 || searchText.trim() !== "";
 
   const toggle = (v: string) => {
     const next = new Set(selected);
@@ -320,8 +321,8 @@ function ColFilterDropdown({ label, allValues, selected, onChange }: ColFilterPr
           <div className="p-2 border-b border-border/50">
             <input
               type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchText}
+              onChange={(e) => onSearchChange(e.target.value)}
               placeholder={`Search ${label}...`}
               autoFocus
               className="w-full px-2 py-1 text-xs font-mono border border-border rounded bg-background focus:outline-none focus:border-primary"
@@ -393,11 +394,16 @@ export default function Airports() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Column filters
+  // Column filters — checkbox sets
   const [filterFlight, setFilterFlight] = useState<Set<string>>(new Set());
   const [filterReg, setFilterReg] = useState<Set<string>>(new Set());
   const [filterFrom, setFilterFrom] = useState<Set<string>>(new Set());
   const [filterTo, setFilterTo] = useState<Set<string>>(new Set());
+  // Column filter search texts (live-filter as user types)
+  const [flightSearch, setFlightSearch] = useState("");
+  const [regSearch, setRegSearch] = useState("");
+  const [fromSearch, setFromSearch] = useState("");
+  const [toSearch, setToSearch] = useState("");
 
   // Unique column values for dropdown filters
   const allFlightNums = useMemo(() =>
@@ -409,16 +415,30 @@ export default function Airports() {
   const allToIcaos = useMemo(() =>
     [...new Set(flights.map((f) => f.toIcao).filter(Boolean))].sort(), [flights]);
 
-  // Filtered flights
+  // Filtered flights — checkbox filter AND live text search applied together
   const filteredFlights = useMemo(() => {
+    const flightTokens = splitTokens(flightSearch).map((t) => stripPrefix(t).replace(/\D/g, "")).filter(Boolean);
+    const regTokens    = splitTokens(regSearch).map((t) => stripPrefix(t).toLowerCase()).filter(Boolean);
+    const fromTokens   = splitTokens(fromSearch).map((t) => t.toUpperCase()).filter(Boolean);
+    const toTokens     = splitTokens(toSearch).map((t) => t.toUpperCase()).filter(Boolean);
+
     return flights.filter((f) => {
+      // Checkbox filters (exact Set membership)
       if (filterFlight.size > 0 && !filterFlight.has(f.flight)) return false;
       if (filterReg.size > 0 && !filterReg.has(f.reg)) return false;
       if (filterFrom.size > 0 && !filterFrom.has(f.fromIcao)) return false;
       if (filterTo.size > 0 && !filterTo.has(f.toIcao)) return false;
+      // Live text search (OR across tokens)
+      if (flightTokens.length > 0) {
+        const num = f.flight.replace(/\D/g, "");
+        if (!flightTokens.some((t) => num.includes(t))) return false;
+      }
+      if (regTokens.length > 0 && !regTokens.some((t) => f.reg.toLowerCase().includes(t))) return false;
+      if (fromTokens.length > 0 && !fromTokens.some((t) => f.fromIcao.includes(t))) return false;
+      if (toTokens.length > 0 && !toTokens.some((t) => f.toIcao.includes(t))) return false;
       return true;
     });
-  }, [flights, filterFlight, filterReg, filterFrom, filterTo]);
+  }, [flights, filterFlight, filterReg, filterFrom, filterTo, flightSearch, regSearch, fromSearch, toSearch]);
 
   const handleFile = async (file: File) => {
     if (!file.name.match(/\.(xlsx|xls|csv)$/i)) {
@@ -428,10 +448,10 @@ export default function Airports() {
     setParseError(null);
     setFileName(file.name);
     setAnalysis({ tafMap: {}, loading: false, done: false, error: null });
-    setFilterFlight(new Set());
-    setFilterReg(new Set());
-    setFilterFrom(new Set());
-    setFilterTo(new Set());
+    setFilterFlight(new Set()); setFlightSearch("");
+    setFilterReg(new Set());   setRegSearch("");
+    setFilterFrom(new Set());  setFromSearch("");
+    setFilterTo(new Set());    setToSearch("");
     try {
       const rows = await parseExcelFile(file);
       setFlights(rows);
@@ -467,10 +487,10 @@ export default function Airports() {
     setFileName(null);
     setAnalysis({ tafMap: {}, loading: false, done: false, error: null });
     setParseError(null);
-    setFilterFlight(new Set());
-    setFilterReg(new Set());
-    setFilterFrom(new Set());
-    setFilterTo(new Set());
+    setFilterFlight(new Set()); setFlightSearch("");
+    setFilterReg(new Set());   setRegSearch("");
+    setFilterFrom(new Set());  setFromSearch("");
+    setFilterTo(new Set());    setToSearch("");
   };
 
   const analysisResults: (TafWindowResult | null | undefined)[] = filteredFlights.map((f) => {
@@ -481,7 +501,8 @@ export default function Airports() {
     return analyzeTafWindow(rawTaf, f.etaHour);
   });
 
-  const hasActiveFilter = filterFlight.size > 0 || filterReg.size > 0 || filterFrom.size > 0 || filterTo.size > 0;
+  const hasActiveFilter = filterFlight.size > 0 || filterReg.size > 0 || filterFrom.size > 0 || filterTo.size > 0
+    || flightSearch.trim() !== "" || regSearch.trim() !== "" || fromSearch.trim() !== "" || toSearch.trim() !== "";
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -498,7 +519,7 @@ export default function Airports() {
             <span className="text-xs font-mono text-muted-foreground ml-auto">
               {filteredFlights.length} / {flights.length} flights
               {hasActiveFilter && (
-                <button onClick={() => { setFilterFlight(new Set()); setFilterReg(new Set()); setFilterFrom(new Set()); setFilterTo(new Set()); }}
+                <button onClick={() => { setFilterFlight(new Set()); setFlightSearch(""); setFilterReg(new Set()); setRegSearch(""); setFilterFrom(new Set()); setFromSearch(""); setFilterTo(new Set()); setToSearch(""); }}
                   className="ml-2 text-primary hover:underline">clear filters</button>
               )}
             </span>
@@ -585,25 +606,25 @@ export default function Airports() {
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider whitespace-nowrap">
                         <span className="flex items-center">
                           #FLIGHT
-                          <ColFilterDropdown label="flight" allValues={allFlightNums} selected={filterFlight} onChange={setFilterFlight} />
+                          <ColFilterDropdown label="flight" allValues={allFlightNums} selected={filterFlight} onChange={setFilterFlight} searchText={flightSearch} onSearchChange={setFlightSearch} />
                         </span>
                       </th>
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">
                         <span className="flex items-center">
                           REG
-                          <ColFilterDropdown label="REG" allValues={allRegs} selected={filterReg} onChange={setFilterReg} />
+                          <ColFilterDropdown label="REG" allValues={allRegs} selected={filterReg} onChange={setFilterReg} searchText={regSearch} onSearchChange={setRegSearch} />
                         </span>
                       </th>
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">
                         <span className="flex items-center">
                           FROM
-                          <ColFilterDropdown label="FROM" allValues={allFromIcaos} selected={filterFrom} onChange={setFilterFrom} />
+                          <ColFilterDropdown label="FROM" allValues={allFromIcaos} selected={filterFrom} onChange={setFilterFrom} searchText={fromSearch} onSearchChange={setFromSearch} />
                         </span>
                       </th>
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">
                         <span className="flex items-center">
                           TO
-                          <ColFilterDropdown label="TO" allValues={allToIcaos} selected={filterTo} onChange={setFilterTo} />
+                          <ColFilterDropdown label="TO" allValues={allToIcaos} selected={filterTo} onChange={setFilterTo} searchText={toSearch} onSearchChange={setToSearch} />
                         </span>
                       </th>
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">ETD</th>
