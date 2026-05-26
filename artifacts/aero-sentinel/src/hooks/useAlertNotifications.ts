@@ -47,7 +47,7 @@ export function useAlertNotifications() {
           `AERO-SENTINEL — ${TYPE_LABELS[alert.type] ?? alert.type}`,
           {
             body: `${alert.icao}: ${alert.rawText.slice(0, 120)}\n\nTıklayarak onaylayabilirsiniz.`,
-            icon: `${import.meta.env.BASE_URL}ajet-logo.jpeg`,
+            icon: `${import.meta.env.BASE_URL}alert-icon.svg`,
             tag: `aero-alert-${alert.id}`,
             requireInteraction: false,
           }
