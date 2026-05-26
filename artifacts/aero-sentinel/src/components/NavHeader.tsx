@@ -1,7 +1,5 @@
-import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useGetAlertsSummary } from "@workspace/api-client-react";
-import { ChangelogModal } from "./ChangelogModal";
 
 interface Props {
   monitorStatus?: { running: boolean };
@@ -32,7 +30,6 @@ const NAV_ITEMS = [
 
 export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
   const [location] = useLocation();
-  const [changelogOpen, setChangelogOpen] = useState(false);
 
   const { data: summary } = useGetAlertsSummary({
     query: { refetchInterval: 30_000, refetchIntervalInBackground: true },
@@ -47,8 +44,8 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
       <header className="border-b border-border bg-card px-4 sm:px-6 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-between h-14 sm:h-16 gap-3">
 
-          {/* Left — logo + version badge */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Left — logo */}
+          <div className="flex items-center flex-shrink-0">
             <Link href="/">
               <img
                 src={`${import.meta.env.BASE_URL}aero-logo.png`}
@@ -56,14 +53,6 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
                 className="h-7 sm:h-9 object-contain select-none"
               />
             </Link>
-            <button
-              className="rgb-badge-wrapper flex-shrink-0"
-              onClick={() => setChangelogOpen(true)}
-              title="View changelog"
-            >
-              <div className="rgb-badge-spinner" />
-              <span className="rgb-badge-inner">v1.8</span>
-            </button>
           </div>
 
           {/* Right — nav + controls */}
@@ -113,7 +102,6 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
         </div>
       </header>
 
-      <ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
     </>
   );
 }
