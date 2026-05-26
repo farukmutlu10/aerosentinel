@@ -60,6 +60,26 @@ function parseEtaHour(eta: string): number | null {
   return null;
 }
 
+// Keywords to detect the header row (any match is enough)
+const HEADER_KEYWORDS = [
+  "FLIGHT", "FLT", "SEFER",
+  "REG", "TAIL",
+  "ICAO", "DEP", "FROM", "TO", "DEST", "ORIG",
+  "ETD", "ETA", "STA", "STD",
+];
+
+function scoreHeaderRow(row: unknown[]): number {
+  let score = 0;
+  for (const cell of row) {
+    const v = String(cell ?? "").trim().toUpperCase();
+    if (!v) continue;
+    for (const kw of HEADER_KEYWORDS) {
+      if (v.includes(kw)) { score++; break; }
+    }
+  }
+  return score;
+}
+
 function parseExcelFile(file: File): Promise<FlightRow[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -70,50 +90,65 @@ function parseExcelFile(file: File): Promise<FlightRow[]> {
         const wb = XLSX.read(data, { type: "array", cellDates: false });
         const sheetName = wb.SheetNames[0];
         const sheet = wb.Sheets[sheetName];
-        const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-        if (!rows.length) { resolve([]); return; }
-        const sample = rows[0] as ColMap;
 
-        const flightCol = findCol(sample, [
-          "FLIGHT NO", "FLIGHT NUMBER", "FLT NO", "SEFER NO", "SEFER", "FLIGHT", "FLT",
-        ]);
-        const regCol = findCol(sample, [
-          "REG", "TAIL", "A/C REG", "AIRCRAFT", "KUYRUK", "TESCIL",
-        ]);
-        const fromCol = findCol(sample, [
-          "FROM (S) ICAO", "FROM S ICAO", "DEP ICAO", "FROM ICAO", "ORIGIN ICAO", "ORIG ICAO",
-          "KALKIŞ ICAO", "KALKIS ICAO", "DEP", "FROM", "ORIG", "KALKIŞ", "KALKIS",
-        ]);
-        const toCol = findCol(sample, [
-          "TO (S) ICAO", "TO S ICAO", "DEST ICAO", "ARR ICAO", "TO ICAO", "DESTINATION ICAO",
-          "VARIŞ ICAO", "VARIS ICAO", "DEST", "TO", "ARR", "DESTN", "VARIŞ", "VARIS",
-        ]);
-        const etdCol = findCol(sample, [
-          "ETD", "EST DEP", "ESTIMATED DEP", "STD", "DEP TIME", "KALKIŞ SAATİ",
-          "STA", "SCHED ARR", "SCHEDULED ARR", "SCH ARR", "PLANLANAN VARIŞ",
-        ]);
-        const etaCol = findCol(sample, [
-          "ETA", "EST ARR", "ESTIMATED ARR", "ACT ARR", "ACTUAL ARR", "BT ARR", "BLOK ARR",
-          "TAHMINI VARIŞ", "GERCEK VARIS",
-        ]);
+        // Read as raw 2D array to locate the real header row
+        const raw: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+        if (!raw.length) { resolve([]); return; }
 
-        const parsed: FlightRow[] = rows
-          .filter((r) => {
-            const f = String(r[flightCol ?? ""] ?? "").trim();
-            const t = String(r[toCol ?? ""] ?? "").trim();
+        // Scan first 40 rows — pick the one with most header keyword hits
+        let bestRow = 0;
+        let bestScore = 0;
+        const scanLimit = Math.min(40, raw.length);
+        for (let i = 0; i < scanLimit; i++) {
+          const s = scoreHeaderRow(raw[i]);
+          if (s > bestScore) { bestScore = s; bestRow = i; }
+        }
+
+        // Build column name → index map from the detected header row
+        const headerRow = raw[bestRow];
+        const colIndex: Record<string, number> = {};
+        headerRow.forEach((cell, idx) => {
+          const v = String(cell ?? "").trim();
+          if (v) colIndex[v] = idx;
+        });
+
+        // Helper: find first matching column index
+        const findIdx = (patterns: string[]): number | undefined => {
+          const keys = Object.keys(colIndex);
+          for (const p of patterns) {
+            const key = keys.find((k) => k.toUpperCase().includes(p.toUpperCase()));
+            if (key !== undefined) return colIndex[key];
+          }
+          return undefined;
+        };
+
+        const flightIdx = findIdx(["FLIGHT NO", "FLIGHT NUMBER", "FLT NO", "SEFER NO", "SEFER", "FLIGHT", "FLT"]);
+        const regIdx    = findIdx(["REG", "TAIL", "A/C REG", "AIRCRAFT", "KUYRUK", "TESCIL"]);
+        const fromIdx   = findIdx(["FROM (S) ICAO", "FROM S ICAO", "DEP ICAO", "FROM ICAO", "ORIGIN ICAO", "ORIG ICAO", "KALKIŞ ICAO", "KALKIS ICAO", "DEP", "FROM", "ORIG", "KALKIŞ", "KALKIS"]);
+        const toIdx     = findIdx(["TO (S) ICAO", "TO S ICAO", "DEST ICAO", "ARR ICAO", "TO ICAO", "DESTINATION ICAO", "VARIŞ ICAO", "VARIS ICAO", "DEST", "TO", "ARR", "DESTN", "VARIŞ", "VARIS"]);
+        const etdIdx    = findIdx(["ETD", "EST DEP", "ESTIMATED DEP", "STD", "DEP TIME", "KALKIŞ SAATİ", "STA", "SCHED ARR", "SCHEDULED ARR"]);
+        const etaIdx    = findIdx(["ETA", "EST ARR", "ESTIMATED ARR", "ACT ARR", "ACTUAL ARR", "BT ARR", "BLOK ARR", "TAHMINI VARIŞ"]);
+
+        const getCell = (row: unknown[], idx: number | undefined): unknown =>
+          idx !== undefined ? row[idx] : "";
+
+        // Data rows start right after the header row
+        const parsed: FlightRow[] = raw
+          .slice(bestRow + 1)
+          .filter((row) => {
+            const f = String(getCell(row, flightIdx) ?? "").trim();
+            const t = String(getCell(row, toIdx) ?? "").trim();
             return f || t;
           })
-          .map((r, idx) => {
-            const flightRaw = String(r[flightCol ?? ""] ?? "").trim();
-            const flight = flightRaw ? extractFlightNum(flightRaw) : "";
-            const reg = String(r[regCol ?? ""] ?? "").trim();
-            const fromIcao = String(r[fromCol ?? ""] ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-            const toIcao = String(r[toCol ?? ""] ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-            const etdRaw = r[etdCol ?? ""];
-            const etaRaw = r[etaCol ?? ""];
-            const etd = excelTimeToHHMM(etdRaw);
-            const eta = excelTimeToHHMM(etaRaw);
-            const etaHour = parseEtaHour(eta || etd);
+          .map((row, idx) => {
+            const flightRaw = String(getCell(row, flightIdx) ?? "").trim();
+            const flight    = flightRaw ? extractFlightNum(flightRaw) : "";
+            const reg       = String(getCell(row, regIdx) ?? "").trim();
+            const fromIcao  = String(getCell(row, fromIdx) ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+            const toIcao    = String(getCell(row, toIdx) ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+            const etd       = excelTimeToHHMM(getCell(row, etdIdx));
+            const eta       = excelTimeToHHMM(getCell(row, etaIdx));
+            const etaHour   = parseEtaHour(eta || etd);
             return { id: idx, flightRaw, flight, reg, fromIcao, toIcao, etd, eta, etaHour };
           });
 
