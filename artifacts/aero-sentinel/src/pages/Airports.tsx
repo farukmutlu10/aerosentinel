@@ -445,6 +445,8 @@ export default function Airports() {
   // ETD time range filter (HHMM strings, e.g. "1345")
   const [etdFrom, setEtdFrom] = useState("");
   const [etdTo, setEtdTo] = useState("");
+  // Hide CLEAR rows toggle
+  const [hideClear, setHideClear] = useState(false);
 
   // Unique column values for dropdown filters
   const allFlightNums = useMemo(() =>
@@ -546,6 +548,14 @@ export default function Airports() {
     setEtdFrom(""); setEtdTo("");
   };
 
+  const refreshTaf = async () => {
+    if (flights.length === 0 || analysis.loading) return;
+    const uniqueIcaos = [...new Set(flights.map((r) => r.toIcao).filter((x) => x.length === 4))];
+    setAnalysis((prev) => ({ ...prev, loading: true, done: false }));
+    const tafMap = await fetchTafBatch(uniqueIcaos);
+    setAnalysis({ tafMap, loading: false, done: true, error: null });
+  };
+
   const analysisResults: (TafWindowResult | null | undefined)[] = filteredFlights.map((f) => {
     if (!analysis.done) return undefined;
     const rawTaf = analysis.tafMap[f.toIcao] ?? null;
@@ -553,6 +563,27 @@ export default function Airports() {
     if (!rawTaf) return null;
     return analyzeTafWindow(rawTaf, f.etaHour);
   });
+
+  // Determine if a TAF result is CLEAR (no significant conditions)
+  function isClearResult(r: TafWindowResult | null | undefined): boolean {
+    if (!r || r.category === null) return false;
+    const isLifrVis  = r.visibility !== null && r.visibility < 1600;
+    const isIfrVis   = r.visibility !== null && r.visibility >= 1600 && r.visibility < 4800;
+    const isLifrCeil = r.ceiling !== null && r.ceiling < 500;
+    const isIfrCeil  = r.ceiling !== null && r.ceiling >= 500 && r.ceiling < 1000;
+    return r.critCodes.length === 0 && !r.critWind && !isLifrVis && !isIfrVis && !isLifrCeil && !isIfrCeil;
+  }
+
+  // Pairs of (flight, result) — optionally filtered by hideClear
+  const displayPairs: Array<{ f: FlightRow; result: TafWindowResult | null | undefined }> = (() => {
+    const pairs = filteredFlights.map((f, i) => ({ f, result: analysisResults[i] }));
+    if (!hideClear || !analysis.done) return pairs;
+    return pairs.filter(({ result }) => !isClearResult(result));
+  })();
+
+  const clearCount = analysis.done
+    ? analysisResults.filter((r) => isClearResult(r)).length
+    : 0;
 
   const hasActiveFilter = filterFlight.size > 0 || filterReg.size > 0 || filterFrom.size > 0 || filterTo.size > 0
     || flightSearch.trim() !== "" || regSearch.trim() !== "" || fromSearch.trim() !== "" || toSearch.trim() !== ""
@@ -642,14 +673,45 @@ export default function Airports() {
                   )}
                   {analysis.done && <span className="text-emerald-400">✓ TAF analysis complete</span>}
                 </div>
-                <button
-                  onClick={clearAnalysis}
-                  className="text-xs font-mono text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                  </svg>
-                  Clear
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* Refresh TAF */}
+                  <button
+                    onClick={refreshTaf}
+                    disabled={analysis.loading}
+                    title="Re-fetch TAF data"
+                    className="text-xs font-mono text-muted-foreground hover:text-emerald-400 transition-colors flex items-center gap-1 disabled:opacity-40">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                      className={analysis.loading ? "animate-spin" : ""}>
+                      <polyline points="23 4 23 10 17 10"/>
+                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                    </svg>
+                    Refresh
+                  </button>
+                  {/* Hide CLEAR rows */}
+                  {analysis.done && (
+                    <button
+                      onClick={() => setHideClear((v) => !v)}
+                      title={hideClear ? "Show all rows" : "Hide CLEAR rows"}
+                      className={`text-xs font-mono flex items-center gap-1 transition-colors ${hideClear ? "text-emerald-400" : "text-muted-foreground hover:text-foreground"}`}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        {hideClear
+                          ? <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>
+                          : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>
+                        }
+                      </svg>
+                      {hideClear ? `CLEAR hidden (${clearCount})` : "Hide CLEAR"}
+                    </button>
+                  )}
+                  {/* Clear file */}
+                  <button
+                    onClick={clearAnalysis}
+                    className="text-xs font-mono text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                    Clear
+                  </button>
+                </div>
               </div>
 
               {/* ETD Time range filter */}
@@ -725,8 +787,7 @@ export default function Airports() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredFlights.map((f, idx) => {
-                      const result = analysisResults[idx];
+                    {displayPairs.map(({ f, result }) => {
                       const cat = (result as TafWindowResult | null | undefined)?.category;
                       const rowBg = cat === FlightCategory.LIFR ? "bg-purple-500/5" :
                                     cat === FlightCategory.IFR ? "bg-red-500/5" :
