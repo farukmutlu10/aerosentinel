@@ -352,8 +352,11 @@ export default function Alerts() {
                   </div>
                   {!alert.acknowledged && (
                     <button onClick={() => acknowledge({ id: alert.id })} disabled={isPending}
-                      className="flex-shrink-0 ml-auto text-sm font-mono font-black px-5 py-2.5 border-2 border-muted-foreground/50 text-foreground rounded-lg hover:border-primary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50 tracking-widest">
-                      ACK
+                      className="flex-shrink-0 self-center ml-4 flex flex-col items-center justify-center gap-0.5 px-3 py-2 rounded-lg border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-400 transition-all disabled:opacity-50 group">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                      <span className="text-[9px] font-mono font-bold tracking-widest leading-none">ACK</span>
                     </button>
                   )}
                 </div>
