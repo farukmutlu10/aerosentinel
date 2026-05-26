@@ -198,7 +198,7 @@ export default function Alerts() {
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5 space-y-5">
 
         {/* Stats — redesigned */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <StatCard
             label="Total Alerts"
             value={dash ?? String(summary?.totalAlerts ?? 0)}
@@ -224,10 +224,29 @@ export default function Alerts() {
             accent="#ef4444"
             icon={<IconSpeci />}
           />
+          <ClockCard />
         </div>
 
         {/* Filter row */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* REFRESH — far left */}
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            title="Refresh alerts"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border transition-all disabled:opacity-50"
+            style={{ borderColor: "#38BDF840", color: "#38BDF8", backgroundColor: "#38BDF810" }}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className={isRefreshing ? "animate-spin" : ""}>
+              <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+              <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+            </svg>
+            {isRefreshing ? "..." : "REFRESH"}
+          </button>
+
+          <span className="text-border text-xs">|</span>
+
           {/* Type filters — toggle inclusion, all active by default */}
           <div className="flex items-center gap-1">
             {ALL_ALERT_TYPES.map((t) => {
@@ -289,22 +308,6 @@ export default function Alerts() {
             </button>
           )}
 
-          {/* REFRESH button */}
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            title="Refresh alerts"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border transition-all disabled:opacity-50"
-            style={{ borderColor: "#38BDF840", color: "#38BDF8", backgroundColor: "#38BDF810" }}
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-              className={isRefreshing ? "animate-spin" : ""}>
-              <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
-              <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-            </svg>
-            {isRefreshing ? "..." : "REFRESH"}
-          </button>
-
           {unackedCount > 0 && (
             <button onClick={handleAckAll} disabled={ackingAll}
               className="ml-auto px-3 py-1.5 text-xs font-mono font-bold border border-green-500/40 text-green-400 rounded hover:bg-green-500/10 transition-colors disabled:opacity-50 flex items-center gap-1.5">
@@ -349,7 +352,7 @@ export default function Alerts() {
                   </div>
                   {!alert.acknowledged && (
                     <button onClick={() => acknowledge({ id: alert.id })} disabled={isPending}
-                      className="flex-shrink-0 text-xs font-mono px-3 py-1.5 border border-border rounded hover:border-primary hover:text-primary transition-colors disabled:opacity-50">
+                      className="flex-shrink-0 text-xs font-mono font-bold px-3 py-1.5 border border-muted-foreground/40 text-muted-foreground rounded hover:border-primary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50">
                       ACK
                     </button>
                   )}

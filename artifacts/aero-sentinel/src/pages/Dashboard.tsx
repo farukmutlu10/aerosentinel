@@ -245,12 +245,13 @@ export default function Dashboard() {
 
   const displayed = useMemo(() => {
     const activeFlightCats = ALL_CATS.filter((c) => activeCats.has(c));
-    let list = airports.filter((a) => activeFlightCats.includes(getEffectiveCat(a.rawTaf, a.parsed, view)));
-
-    // CRIT filter: when inactive → hide airports with critical/extreme-wind conditions
-    if (!critActive) {
-      list = list.filter((a) => !airportIsCrit(a.rawTaf, a.rawMetar));
-    }
+    // CRIT airports bypass the category filter when CRIT is active.
+    // A non-crit airport is shown only if its category button is active.
+    let list = airports.filter((a) => {
+      const cat = getEffectiveCat(a.rawTaf, a.parsed, view);
+      const isCrit = airportIsCrit(a.rawTaf, a.rawMetar);
+      return activeFlightCats.includes(cat) || (critActive && isCrit);
+    });
 
     if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
     else if (routeFilter === "INT") list = list.filter((a) => !a.icao.startsWith("LT"));
@@ -586,7 +587,7 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
   const stripTextStyle: React.CSSProperties = {
     writingMode: "vertical-lr",
     textOrientation: "upright",
-    fontSize: "11px",
+    fontSize: "9px",
     fontFamily: "monospace",
     fontWeight: "700",
     letterSpacing: "0.12em",
