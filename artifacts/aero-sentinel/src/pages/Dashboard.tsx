@@ -297,8 +297,10 @@ export default function Dashboard() {
         <div className="bg-card border border-border rounded-lg px-4 py-2 flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-4 text-xs font-mono flex-wrap">
             <span className="text-muted-foreground tracking-widest">MONITOR</span>
-            <span className={monitorData?.running ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
-              {monitorData?.running ? "ACTIVE" : "STOPPED"}
+            <span className={monitorData?.running ? "text-green-400 font-bold flex items-center gap-1.5" : "text-red-400 font-bold"}>
+              {monitorData?.running
+                ? <><div className="w-1.5 h-1.5 rounded-full bg-green-400 sentinel-pulse flex-shrink-0" />LIVE</>
+                : "STOPPED"}
             </span>
             <span className="text-border">|</span>
             <span className="text-muted-foreground">SCANS TODAY</span>

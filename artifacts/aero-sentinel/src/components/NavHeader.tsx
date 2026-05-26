@@ -109,14 +109,6 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
               </button>
             )}
 
-            {monitorStatus !== undefined && (
-              <div className="flex items-center gap-1.5 border-l border-border pl-2 ml-0.5">
-                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${monitorStatus.running ? "bg-green-400 sentinel-pulse" : "bg-red-500"}`} />
-                <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-widest hidden sm:block">
-                  {monitorStatus.running ? "LIVE" : "OFFLINE"}
-                </span>
-              </div>
-            )}
           </div>
         </div>
       </header>
