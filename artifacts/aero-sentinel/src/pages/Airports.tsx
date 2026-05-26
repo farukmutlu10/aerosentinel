@@ -60,6 +60,19 @@ function parseEtaHour(eta: string): number | null {
   return null;
 }
 
+/** Split a search string by commas and whitespace into non-empty tokens */
+function splitTokens(s: string): string[] {
+  return s.split(/[,\s]+/).map((t) => t.trim()).filter(Boolean);
+}
+
+/**
+ * Strip 2-letter country prefix + optional dash from a registration or flight term.
+ * "TC-OHV" → "OHV", "TCAYT" → "AYT", "XX-3205" → "3205", "TK3205" → "3205"
+ */
+function stripPrefix(s: string): string {
+  return s.replace(/^[A-Za-z]{2}-?/, "").trim();
+}
+
 // Keywords to detect the header row (any match is enough)
 const HEADER_KEYWORDS = [
   "FLIGHT", "FLT", "SEFER",
@@ -143,7 +156,9 @@ function parseExcelFile(file: File): Promise<FlightRow[]> {
           .map((row, idx) => {
             const flightRaw = String(getCell(row, flightIdx) ?? "").trim();
             const flight    = flightRaw ? extractFlightNum(flightRaw) : "";
-            const reg       = String(getCell(row, regIdx) ?? "").trim();
+            const regRaw    = String(getCell(row, regIdx) ?? "").trim();
+            // Strip 2-letter country prefix + optional dash: "TC-OHV" → "OHV", "TCAYT" → "AYT"
+            const reg       = regRaw.replace(/^[A-Za-z]{2}-?/, "").trim();
             const fromIcao  = String(getCell(row, fromIdx) ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
             const toIcao    = String(getCell(row, toIdx) ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
             const etd       = excelTimeToHHMM(getCell(row, etdIdx));
@@ -265,9 +280,12 @@ function ColFilterDropdown({ label, allValues, selected, onChange }: ColFilterPr
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const filtered = allValues.filter((v) =>
-    v.toLowerCase().includes(search.toLowerCase())
-  );
+  const searchTokens = splitTokens(search).map((t) => stripPrefix(t).toLowerCase());
+  const filtered = allValues.filter((v) => {
+    if (searchTokens.length === 0) return true;
+    const lv = v.toLowerCase();
+    return searchTokens.some((t) => lv.includes(t));
+  });
   const isAllSelected = selected.size === 0;
   const isActive = selected.size > 0;
 
@@ -376,13 +394,14 @@ export default function Airports() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Column filters
-  const [filterFlight, setFilterFlight] = useState<Set<string>>(new Set());
+  const [filterFlightText, setFilterFlightText] = useState("");
+  const [filterReg, setFilterReg] = useState<Set<string>>(new Set());
   const [filterFrom, setFilterFrom] = useState<Set<string>>(new Set());
   const [filterTo, setFilterTo] = useState<Set<string>>(new Set());
 
-  // Unique column values
-  const allFlightNums = useMemo(() =>
-    [...new Set(flights.map((f) => f.flight).filter(Boolean))].sort(), [flights]);
+  // Unique column values for dropdown filters
+  const allRegs = useMemo(() =>
+    [...new Set(flights.map((f) => f.reg).filter(Boolean))].sort(), [flights]);
   const allFromIcaos = useMemo(() =>
     [...new Set(flights.map((f) => f.fromIcao).filter(Boolean))].sort(), [flights]);
   const allToIcaos = useMemo(() =>
@@ -390,13 +409,24 @@ export default function Airports() {
 
   // Filtered flights
   const filteredFlights = useMemo(() => {
+    // Parse flight text: split, strip prefix, keep digits only
+    const flightTokens = splitTokens(filterFlightText)
+      .map((t) => stripPrefix(t).replace(/\D/g, ""))
+      .filter(Boolean);
+
     return flights.filter((f) => {
-      if (filterFlight.size > 0 && !filterFlight.has(f.flight)) return false;
+      // Flight text filter: match number portion
+      if (flightTokens.length > 0) {
+        const num = f.flight.replace(/\D/g, "");
+        if (!flightTokens.some((t) => num.includes(t) || f.flight.toLowerCase().includes(t))) return false;
+      }
+      // Reg dropdown filter (values already prefix-stripped)
+      if (filterReg.size > 0 && !filterReg.has(f.reg)) return false;
       if (filterFrom.size > 0 && !filterFrom.has(f.fromIcao)) return false;
       if (filterTo.size > 0 && !filterTo.has(f.toIcao)) return false;
       return true;
     });
-  }, [flights, filterFlight, filterFrom, filterTo]);
+  }, [flights, filterFlightText, filterReg, filterFrom, filterTo]);
 
   const handleFile = async (file: File) => {
     if (!file.name.match(/\.(xlsx|xls|csv)$/i)) {
@@ -406,7 +436,8 @@ export default function Airports() {
     setParseError(null);
     setFileName(file.name);
     setAnalysis({ tafMap: {}, loading: false, done: false, error: null });
-    setFilterFlight(new Set());
+    setFilterFlightText("");
+    setFilterReg(new Set());
     setFilterFrom(new Set());
     setFilterTo(new Set());
     try {
@@ -444,7 +475,8 @@ export default function Airports() {
     setFileName(null);
     setAnalysis({ tafMap: {}, loading: false, done: false, error: null });
     setParseError(null);
-    setFilterFlight(new Set());
+    setFilterFlightText("");
+    setFilterReg(new Set());
     setFilterFrom(new Set());
     setFilterTo(new Set());
   };
@@ -457,7 +489,7 @@ export default function Airports() {
     return analyzeTafWindow(rawTaf, f.etaHour);
   });
 
-  const hasActiveFilter = filterFlight.size > 0 || filterFrom.size > 0 || filterTo.size > 0;
+  const hasActiveFilter = filterFlightText.trim() !== "" || filterReg.size > 0 || filterFrom.size > 0 || filterTo.size > 0;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -474,7 +506,7 @@ export default function Airports() {
             <span className="text-xs font-mono text-muted-foreground ml-auto">
               {filteredFlights.length} / {flights.length} flights
               {hasActiveFilter && (
-                <button onClick={() => { setFilterFlight(new Set()); setFilterFrom(new Set()); setFilterTo(new Set()); }}
+                <button onClick={() => { setFilterFlightText(""); setFilterReg(new Set()); setFilterFrom(new Set()); setFilterTo(new Set()); }}
                   className="ml-2 text-primary hover:underline">clear filters</button>
               )}
             </span>
@@ -559,12 +591,23 @@ export default function Airports() {
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider whitespace-nowrap">
+                        <div className="flex flex-col gap-1">
+                          <span className="tracking-wider">#FLIGHT</span>
+                          <input
+                            type="text"
+                            value={filterFlightText}
+                            onChange={(e) => setFilterFlightText(e.target.value)}
+                            placeholder="3205, TK4157…"
+                            className="w-28 px-1.5 py-0.5 text-[10px] font-mono border border-border/60 rounded bg-background/60 focus:outline-none focus:border-primary placeholder:text-muted-foreground/40"
+                          />
+                        </div>
+                      </th>
+                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">
                         <span className="flex items-center">
-                          #FLIGHT
-                          <ColFilterDropdown label="flight" allValues={allFlightNums} selected={filterFlight} onChange={setFilterFlight} />
+                          REG
+                          <ColFilterDropdown label="REG" allValues={allRegs} selected={filterReg} onChange={setFilterReg} />
                         </span>
                       </th>
-                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">REG</th>
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">
                         <span className="flex items-center">
                           FROM
