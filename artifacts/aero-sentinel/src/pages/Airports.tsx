@@ -564,14 +564,15 @@ export default function Airports() {
     return analyzeTafWindow(rawTaf, f.etaHour);
   });
 
-  // Determine if a TAF result is CLEAR (no significant conditions)
+  // Determine if a TAF result is CLEAR — must exactly match AnalysisCell's !hasSignificant logic
   function isClearResult(r: TafWindowResult | null | undefined): boolean {
-    if (!r || r.category === null) return false;
+    if (r === undefined || r === null) return false; // no TAF / no ETA → keep row
     const isLifrVis  = r.visibility !== null && r.visibility < 1600;
     const isIfrVis   = r.visibility !== null && r.visibility >= 1600 && r.visibility < 4800;
     const isLifrCeil = r.ceiling !== null && r.ceiling < 500;
     const isIfrCeil  = r.ceiling !== null && r.ceiling >= 500 && r.ceiling < 1000;
-    return r.critCodes.length === 0 && !r.critWind && !isLifrVis && !isIfrVis && !isLifrCeil && !isIfrCeil;
+    const showCeil   = (isLifrCeil || isIfrCeil) && !!r.rawCeil;
+    return r.critCodes.length === 0 && !r.critWind && !isLifrVis && !isIfrVis && !showCeil;
   }
 
   // Pairs of (flight, result) — optionally filtered by hideClear
@@ -673,48 +674,17 @@ export default function Airports() {
                   )}
                   {analysis.done && <span className="text-emerald-400">✓ TAF analysis complete</span>}
                 </div>
-                <div className="flex items-center gap-2">
-                  {/* Refresh TAF */}
-                  <button
-                    onClick={refreshTaf}
-                    disabled={analysis.loading}
-                    title="Re-fetch TAF data"
-                    className="text-xs font-mono text-muted-foreground hover:text-emerald-400 transition-colors flex items-center gap-1 disabled:opacity-40">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                      className={analysis.loading ? "animate-spin" : ""}>
-                      <polyline points="23 4 23 10 17 10"/>
-                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                    </svg>
-                    Refresh
-                  </button>
-                  {/* Hide CLEAR rows */}
-                  {analysis.done && (
-                    <button
-                      onClick={() => setHideClear((v) => !v)}
-                      title={hideClear ? "Show all rows" : "Hide CLEAR rows"}
-                      className={`text-xs font-mono flex items-center gap-1 transition-colors ${hideClear ? "text-emerald-400" : "text-muted-foreground hover:text-foreground"}`}>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        {hideClear
-                          ? <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>
-                          : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>
-                        }
-                      </svg>
-                      {hideClear ? `CLEAR hidden (${clearCount})` : "Hide CLEAR"}
-                    </button>
-                  )}
-                  {/* Clear file */}
-                  <button
-                    onClick={clearAnalysis}
-                    className="text-xs font-mono text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                    Clear
-                  </button>
-                </div>
+                <button
+                  onClick={clearAnalysis}
+                  className="text-xs font-mono text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                  Clear
+                </button>
               </div>
 
-              {/* ETD Time range filter */}
+              {/* ETD Time range filter + action buttons */}
               <div className="flex items-center gap-3 px-1">
                 <span className="text-[10px] font-mono text-muted-foreground tracking-widest uppercase">ETD Range</span>
                 <div className="flex items-center gap-1.5">
@@ -750,6 +720,40 @@ export default function Airports() {
                     {filteredFlights.length} / {flights.length} shown
                   </span>
                 )}
+
+                {/* Refresh + Hide CLEAR — pinned to right */}
+                <div className="ml-auto flex items-center gap-1.5">
+                  {/* Refresh TAF */}
+                  <button
+                    onClick={refreshTaf}
+                    disabled={analysis.loading}
+                    title="Re-fetch TAF data"
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-border text-[11px] font-mono text-muted-foreground hover:text-emerald-400 hover:border-emerald-400/40 transition-colors disabled:opacity-40">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                      className={analysis.loading ? "animate-spin" : ""}>
+                      <polyline points="23 4 23 10 17 10"/>
+                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                    </svg>
+                    Refresh
+                  </button>
+                  {/* Hide CLEAR */}
+                  <button
+                    onClick={() => setHideClear((v) => !v)}
+                    title={hideClear ? "Show CLEAR rows" : "Hide CLEAR rows"}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-[11px] font-mono transition-colors ${
+                      hideClear
+                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
+                        : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                    }`}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      {hideClear
+                        ? <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>
+                        : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>
+                      }
+                    </svg>
+                    {hideClear ? `Hide CLEAR (${clearCount})` : "Hide CLEAR"}
+                  </button>
+                </div>
               </div>
 
               {/* Flight table */}
