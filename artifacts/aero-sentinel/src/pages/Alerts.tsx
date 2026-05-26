@@ -352,7 +352,7 @@ export default function Alerts() {
                   </div>
                   {!alert.acknowledged && (
                     <button onClick={() => acknowledge({ id: alert.id })} disabled={isPending}
-                      className="flex-shrink-0 text-xs font-mono font-bold px-3 py-1.5 border border-muted-foreground/40 text-muted-foreground rounded hover:border-primary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50">
+                      className="flex-shrink-0 ml-auto text-sm font-mono font-black px-5 py-2.5 border-2 border-muted-foreground/50 text-foreground rounded-lg hover:border-primary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50 tracking-widest">
                       ACK
                     </button>
                   )}
