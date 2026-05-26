@@ -390,10 +390,12 @@ export interface TafWindowResult {
   orangeCodes: string[];
   visibility: number | null;
   ceiling: number | null;
+  rawCeil: string | null;
+  critWind: string | null;
 }
 
 export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResult {
-  if (!rawTaf) return { category: null, critCodes: [], orangeCodes: [], visibility: null, ceiling: null };
+  if (!rawTaf) return { category: null, critCodes: [], orangeCodes: [], visibility: null, ceiling: null, rawCeil: null, critWind: null };
 
   const windowStart = (etaHour - 1 + 24) % 24;
   const windowEnd = (etaHour + 1) % 24;
@@ -414,6 +416,8 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResu
   const allOrange = new Set<string>();
   let worstVis: number | null = null;
   let worstCeil: number | null = null;
+  let worstCeilRaw: string | null = null;
+  let critWindRaw: string | null = null;
   let hasOverlap = false;
 
   for (const group of parts) {
@@ -452,7 +456,7 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResu
 
     for (const m of group.matchAll(/\b(?:BKN|OVC|VV)(\d{3})\b/g)) {
       const ft = parseInt(m[1]) * 100;
-      if (worstCeil === null || ft < worstCeil) worstCeil = ft;
+      if (worstCeil === null || ft < worstCeil) { worstCeil = ft; worstCeilRaw = m[0]; }
     }
 
     const groupVis = visMatch ? parseInt(visMatch[1]) : (/\b(CAVOK|NSC)\b/.test(group) ? 9999 : undefined);
@@ -478,8 +482,20 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResu
     if (/\b(BL|DR)(SN)\b/.test(group)) allCrit.add("BLSN");
     if (/\bFZ(FG|DZ)\b/.test(group)) { const r = group.match(/\b(FZFG|FZDZ)\b/)?.[1]; if (r) allCrit.add(r); }
     if (/\bTS(SN|GR|PL)\b/.test(group)) { const r = group.match(/\b(TSSN|TSGR|TSPL)\b/)?.[1]; if (r) allCrit.add(r); }
+
+    // CRIT wind detection within this TAF group
+    if (!critWindRaw) {
+      for (const m of group.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/g)) {
+        if (parseInt(m[1]) >= 25 || (m[2] && parseInt(m[2]) >= 29)) { critWindRaw = m[0]; break; }
+      }
+    }
+    if (!critWindRaw) {
+      for (const m of group.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?MPS\b/g)) {
+        if (parseInt(m[1]) >= 13 || (m[2] && parseInt(m[2]) >= 15)) { critWindRaw = m[0]; break; }
+      }
+    }
   }
 
-  if (!hasOverlap) return { category: null, critCodes: [], orangeCodes: [], visibility: null, ceiling: null };
-  return { category: worstCat, critCodes: [...allCrit], orangeCodes: [...allOrange], visibility: worstVis, ceiling: worstCeil };
+  if (!hasOverlap) return { category: null, critCodes: [], orangeCodes: [], visibility: null, ceiling: null, rawCeil: null, critWind: null };
+  return { category: worstCat, critCodes: [...allCrit], orangeCodes: [...allOrange], visibility: worstVis, ceiling: worstCeil, rawCeil: worstCeilRaw, critWind: critWindRaw };
 }

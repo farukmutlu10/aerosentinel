@@ -222,37 +222,50 @@ function CatBadge({ cat }: { cat: FlightCategory | null }) {
 function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }) {
   if (result === undefined) return <span className="text-muted-foreground text-xs font-mono">—</span>;
   if (result === null) return <span className="text-[10px] font-mono text-muted-foreground/60">NO TAF</span>;
-  const { category, visibility, ceiling, critCodes, orangeCodes } = result;
-  // All significant wx codes → orange
-  const allCodes = [...new Set([...critCodes, ...orangeCodes])].slice(0, 5);
-  const hasWeather = allCodes.length > 0 || (visibility !== null && visibility < 9999) || (ceiling !== null && ceiling < 3000);
-  if (!hasWeather && category === FlightCategory.VFR) {
-    return <span className="text-[10px] font-mono text-muted-foreground/50">VFR</span>;
+
+  const { visibility, ceiling, rawCeil, critCodes, critWind } = result;
+
+  const isLifrVis  = visibility !== null && visibility < 1600;
+  const isIfrVis   = visibility !== null && visibility >= 1600 && visibility < 4800;
+  const showVis    = isLifrVis || isIfrVis;
+
+  const isLifrCeil = ceiling !== null && ceiling < 500;
+  const isIfrCeil  = ceiling !== null && ceiling >= 500 && ceiling < 1000;
+  const showCeil   = (isLifrCeil || isIfrCeil) && !!rawCeil;
+
+  const hasSignificant = critCodes.length > 0 || !!critWind || showVis || showCeil;
+
+  if (!hasSignificant) {
+    return <span className="text-[10px] font-mono font-bold" style={{ color: "#22c55e" }}>CLEAR</span>;
   }
+
   return (
-    <div className="flex flex-wrap items-center gap-1.5 min-w-[120px]">
-      <CatBadge cat={category} />
-      {/* Visibility — purple when low */}
-      {visibility !== null && visibility < 9999 && (
+    <div className="flex flex-wrap items-center gap-1 min-w-[80px]">
+      {showVis && (
         <span className="text-[11px] font-mono font-bold"
-          style={{ color: "#a855f7" }}>
-          {String(visibility).padStart(4, "0")}
+          style={{ color: isLifrVis ? "#a855f7" : "#ef4444" }}>
+          {String(visibility!).padStart(4, "0")}
         </span>
       )}
-      {/* Ceiling — shown when below 3000ft */}
-      {ceiling !== null && ceiling < 3000 && (
-        <span className="text-[10px] font-mono" style={{ color: "#a855f7", opacity: 0.75 }}>
-          C{String(Math.round(ceiling / 100)).padStart(3, "0")}
+      {showCeil && (
+        <span className="text-[11px] font-mono font-bold"
+          style={{ color: isLifrCeil ? "#a855f7" : "#ef4444" }}>
+          {rawCeil}
         </span>
       )}
-      {/* Wx codes — all orange */}
-      {allCodes.map((code) => (
+      {critCodes.map((code) => (
         <span key={code}
           className="text-[10px] font-mono font-semibold px-1 py-0.5 rounded"
-          style={{ color: "#f97316", backgroundColor: "#f9731618" }}>
+          style={{ color: "#ef4444", backgroundColor: "#ef444415" }}>
           {code}
         </span>
       ))}
+      {critWind && (
+        <span className="text-[10px] font-mono font-semibold px-1 py-0.5 rounded"
+          style={{ color: "#ef4444", backgroundColor: "#ef444415" }}>
+          {critWind}
+        </span>
+      )}
     </div>
   );
 }
@@ -270,12 +283,24 @@ interface ColFilterProps {
 
 function ColFilterDropdown({ label, allValues, selected, onChange, searchText, onSearchChange }: ColFilterProps) {
   const [open, setOpen] = useState(false);
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setDropPos({ top: r.bottom + 4, left: r.left });
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (ref.current?.contains(t) || dropRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -294,17 +319,18 @@ function ColFilterDropdown({ label, allValues, selected, onChange, searchText, o
     const next = new Set(selected);
     if (next.has(v)) next.delete(v);
     else next.add(v);
-    // If all items checked, clear (= select all)
     onChange(next.size === allValues.length ? new Set<string>() : next);
   };
 
   const selectAll = () => onChange(new Set<string>());
+  const clearFilter = () => { onChange(new Set<string>()); onSearchChange(""); };
 
   const isChecked = (v: string) => selected.size === 0 ? true : selected.has(v);
 
   return (
-    <div className="relative inline-flex items-center" ref={ref}>
+    <div className="inline-flex items-center" ref={ref}>
       <button
+        ref={btnRef}
         onClick={() => setOpen((o) => !o)}
         title={`Filter by ${label}`}
         className={`ml-1.5 p-0.5 rounded transition-colors ${isActive ? "text-primary" : "text-muted-foreground/70 hover:text-foreground"}`}
@@ -315,18 +341,30 @@ function ColFilterDropdown({ label, allValues, selected, onChange, searchText, o
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl w-52 flex flex-col overflow-hidden"
-          style={{ maxHeight: "280px" }}>
+        <div ref={dropRef}
+          className="z-[9999] bg-card border border-border rounded-lg shadow-xl w-52 flex flex-col overflow-hidden"
+          style={{ position: "fixed", top: dropPos.top, left: dropPos.left, maxHeight: "280px" }}>
           {/* Search */}
           <div className="p-2 border-b border-border/50">
-            <input
-              type="text"
-              value={searchText}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder={`Search ${label}...`}
-              autoFocus
-              className="w-full px-2 py-1 text-xs font-mono border border-border rounded bg-background focus:outline-none focus:border-primary"
-            />
+            <div className="relative flex items-center">
+              <input
+                type="text"
+                value={searchText}
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder={`Search ${label}...`}
+                autoFocus
+                className="w-full pr-6 px-2 py-1 text-xs font-mono border border-border rounded bg-background focus:outline-none focus:border-primary"
+              />
+              {searchText && (
+                <button
+                  onClick={() => onSearchChange("")}
+                  className="absolute right-1.5 text-muted-foreground hover:text-foreground transition-colors">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              )}
+            </div>
           </div>
           {/* Select All */}
           <div className="border-b border-border/50">
@@ -368,8 +406,8 @@ function ColFilterDropdown({ label, allValues, selected, onChange, searchText, o
           {/* Clear */}
           {isActive && (
             <div className="p-2 border-t border-border/50">
-              <button onClick={selectAll} className="w-full text-xs font-mono text-primary hover:underline text-center">
-                Clear filter ({selected.size} selected)
+              <button onClick={clearFilter} className="w-full text-xs font-mono text-primary hover:underline text-center">
+                Clear filter
               </button>
             </div>
           )}
@@ -404,6 +442,9 @@ export default function Airports() {
   const [regSearch, setRegSearch] = useState("");
   const [fromSearch, setFromSearch] = useState("");
   const [toSearch, setToSearch] = useState("");
+  // ETD time range filter (HHMM strings, e.g. "1345")
+  const [etdFrom, setEtdFrom] = useState("");
+  const [etdTo, setEtdTo] = useState("");
 
   // Unique column values for dropdown filters
   const allFlightNums = useMemo(() =>
@@ -422,6 +463,10 @@ export default function Airports() {
     const fromTokens   = splitTokens(fromSearch).map((t) => t.toUpperCase()).filter(Boolean);
     const toTokens     = splitTokens(toSearch).map((t) => t.toUpperCase()).filter(Boolean);
 
+    // Parse ETD time range (HHMM → integer, e.g. "1345" → 1345)
+    const etdFromNum = etdFrom.replace(":", "").length >= 3 ? parseInt(etdFrom.replace(":", "").padStart(4, "0")) : null;
+    const etdToNum   = etdTo.replace(":", "").length >= 3   ? parseInt(etdTo.replace(":", "").padStart(4, "0"))   : null;
+
     return flights.filter((f) => {
       // Checkbox filters (exact Set membership)
       if (filterFlight.size > 0 && !filterFlight.has(f.flight)) return false;
@@ -431,14 +476,21 @@ export default function Airports() {
       // Live text search (OR across tokens)
       if (flightTokens.length > 0) {
         const num = f.flight.replace(/\D/g, "");
-        if (!flightTokens.some((t) => num.includes(t))) return false;
+        if (!flightTokens.some((t) => num === t)) return false;
       }
       if (regTokens.length > 0 && !regTokens.some((t) => f.reg.toLowerCase().includes(t))) return false;
       if (fromTokens.length > 0 && !fromTokens.some((t) => f.fromIcao.includes(t))) return false;
       if (toTokens.length > 0 && !toTokens.some((t) => f.toIcao.includes(t))) return false;
+      // ETD time range filter
+      if (etdFromNum !== null || etdToNum !== null) {
+        const etdNum = f.etd ? parseInt(f.etd.replace(":", "").padStart(4, "0")) : null;
+        if (etdNum === null) return false;
+        if (etdFromNum !== null && etdNum < etdFromNum) return false;
+        if (etdToNum   !== null && etdNum > etdToNum)   return false;
+      }
       return true;
     });
-  }, [flights, filterFlight, filterReg, filterFrom, filterTo, flightSearch, regSearch, fromSearch, toSearch]);
+  }, [flights, filterFlight, filterReg, filterFrom, filterTo, flightSearch, regSearch, fromSearch, toSearch, etdFrom, etdTo]);
 
   const handleFile = async (file: File) => {
     if (!file.name.match(/\.(xlsx|xls|csv)$/i)) {
@@ -491,6 +543,7 @@ export default function Airports() {
     setFilterReg(new Set());   setRegSearch("");
     setFilterFrom(new Set());  setFromSearch("");
     setFilterTo(new Set());    setToSearch("");
+    setEtdFrom(""); setEtdTo("");
   };
 
   const analysisResults: (TafWindowResult | null | undefined)[] = filteredFlights.map((f) => {
@@ -502,7 +555,8 @@ export default function Airports() {
   });
 
   const hasActiveFilter = filterFlight.size > 0 || filterReg.size > 0 || filterFrom.size > 0 || filterTo.size > 0
-    || flightSearch.trim() !== "" || regSearch.trim() !== "" || fromSearch.trim() !== "" || toSearch.trim() !== "";
+    || flightSearch.trim() !== "" || regSearch.trim() !== "" || fromSearch.trim() !== "" || toSearch.trim() !== ""
+    || etdFrom.trim() !== "" || etdTo.trim() !== "";
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -598,6 +652,44 @@ export default function Airports() {
                 </button>
               </div>
 
+              {/* ETD Time range filter */}
+              <div className="flex items-center gap-3 px-1">
+                <span className="text-[10px] font-mono text-muted-foreground tracking-widest uppercase">ETD Range</span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={etdFrom}
+                    onChange={(e) => setEtdFrom(e.target.value.replace(/[^0-9:]/g, "").slice(0, 5))}
+                    placeholder="0000"
+                    maxLength={5}
+                    className="w-16 px-2 py-1 text-xs font-mono border border-border rounded bg-background focus:outline-none focus:border-primary text-center tabular-nums"
+                  />
+                  <span className="text-muted-foreground text-xs font-mono">–</span>
+                  <input
+                    type="text"
+                    value={etdTo}
+                    onChange={(e) => setEtdTo(e.target.value.replace(/[^0-9:]/g, "").slice(0, 5))}
+                    placeholder="2359"
+                    maxLength={5}
+                    className="w-16 px-2 py-1 text-xs font-mono border border-border rounded bg-background focus:outline-none focus:border-primary text-center tabular-nums"
+                  />
+                  {(etdFrom || etdTo) && (
+                    <button
+                      onClick={() => { setEtdFrom(""); setEtdTo(""); }}
+                      className="text-muted-foreground hover:text-destructive transition-colors ml-0.5">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                {hasActiveFilter && (
+                  <span className="text-[10px] font-mono text-muted-foreground">
+                    {filteredFlights.length} / {flights.length} shown
+                  </span>
+                )}
+              </div>
+
               {/* Flight table */}
               <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-xs font-mono">
@@ -628,8 +720,8 @@ export default function Airports() {
                         </span>
                       </th>
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">ETD</th>
-                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">ETA</th>
-                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider min-w-[160px]">TAF ANALYSIS (ETA±1h)</th>
+                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider whitespace-nowrap">ETA <span className="text-muted-foreground/50 text-[9px] font-normal">+1/-1</span></th>
+                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider min-w-[160px]">TAF ANALYSIS</th>
                     </tr>
                   </thead>
                   <tbody>
