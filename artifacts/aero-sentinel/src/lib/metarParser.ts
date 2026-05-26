@@ -24,7 +24,9 @@ export interface WindData {
   sustainedKt: number;
   gustKt?: number;
   dangerColor: string;
+  windBadge: boolean; // extreme wind — sustained ≥25 KT / ≥13 MPS or gust ≥29 KT / ≥15 MPS
   raw: string;
+  isMps?: boolean;
 }
 
 export interface CloudLayer {
@@ -74,16 +76,12 @@ export const WX_LABELS: Record<string, string> = {
   "-SH": "Lt Showers", "+SH": "Hvy Showers",
 };
 
-// ── Critical / orange wx sets ─────────────────────────────────────────────────
-
-/** Orange-level phenomena */
 export const ORANGE_WX = new Set([
   "VCTS", "TS", "-TS", "TSRA", "-TSRA", "CB",
   "DU", "FU", "-SH", "SH", "-RA", "RA", "SHRA", "-SHRA",
   "SA", "FG", "BLDU", "BLSA", "DRDU", "DRSA",
 ]);
 
-/** Red/critical phenomena */
 export const RED_WX = new Set([
   "+TS", "+TSRA", "+SH", "+SHRA", "DS", "SS",
   "-SN", "SN", "+SN", "-SHSN", "SHSN", "+SHSN",
@@ -99,20 +97,17 @@ export const RED_WX = new Set([
 
 const DANGER_CODES = [...RED_WX];
 
-/** Returns true if raw text contains any red (critical) weather code */
 export function hasCritWx(raw: string): boolean {
   for (const code of RED_WX) {
     const escaped = code.replace(/[+]/g, "\\+");
     if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(raw)) return true;
   }
-  // Also check compound codes not explicitly listed
-  if (/\b(BL|DR)(SN)/.test(raw)) return true;
+  if (/\b(BL|DR)(SN)\b/.test(raw)) return true;
   if (/\bFZ(FG|DZ|SN)\b/.test(raw)) return true;
   if (/\bTS(SN|GR|PL)\b/.test(raw)) return true;
   return false;
 }
 
-/** Returns true if raw text contains any orange weather code */
 export function hasOrangeWx(raw: string): boolean {
   for (const code of ORANGE_WX) {
     const escaped = code.replace(/[+]/g, "\\+");
@@ -121,19 +116,58 @@ export function hasOrangeWx(raw: string): boolean {
   return false;
 }
 
+/** True if raw text contains extreme wind (wind badge threshold) */
+export function hasBadgeWind(raw: string | null): boolean {
+  if (!raw) return false;
+  for (const m of raw.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/g)) {
+    const spd = parseInt(m[1]);
+    const gst = m[2] ? parseInt(m[2]) : 0;
+    if (spd >= 25 || gst >= 29) return true;
+  }
+  for (const m of raw.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?MPS\b/g)) {
+    const spd = parseInt(m[1]);
+    const gst = m[2] ? parseInt(m[2]) : 0;
+    if (spd >= 13 || gst >= 15) return true;
+  }
+  return false;
+}
+
 // ── Internal parsers ──────────────────────────────────────────────────────────
 
 function parseWind(raw: string): WindData | undefined {
-  const m = raw.match(/\b(?<dir>\d{3}|VRB)(?<spd>\d{2,3})(?:G(?<gst>\d{2,3}))?KT\b/);
-  if (!m?.groups) return undefined;
-  const sustainedKt = parseInt(m.groups.spd);
-  const gustKt = m.groups.gst ? parseInt(m.groups.gst) : undefined;
-  const g = gustKt ?? 0;
-  let dangerColor: string;
-  if (sustainedKt >= 15 || g >= 25) dangerColor = "#ef4444";
-  else if (sustainedKt >= 12 || g >= 20) dangerColor = "#f97316";
-  else dangerColor = "";
-  return { direction: m.groups.dir, sustainedKt, gustKt, dangerColor, raw: m[0] };
+  // Try KT first
+  const ktM = raw.match(/\b(?<dir>\d{3}|VRB)(?<spd>\d{2,3})(?:G(?<gst>\d{2,3}))?KT\b/);
+  if (ktM?.groups) {
+    const sustainedKt = parseInt(ktM.groups.spd);
+    const gustKt = ktM.groups.gst ? parseInt(ktM.groups.gst) : undefined;
+    const g = gustKt ?? 0;
+    let dangerColor: string;
+    if (sustainedKt >= 15 || g >= 25) dangerColor = "#ef4444";
+    else if (sustainedKt >= 12 || g >= 20) dangerColor = "#f97316";
+    else dangerColor = "";
+    return { direction: ktM.groups.dir, sustainedKt, gustKt, dangerColor, windBadge: sustainedKt >= 25 || g >= 29, raw: ktM[0] };
+  }
+  // Try MPS
+  const mpsM = raw.match(/\b(?<dir>\d{3}|VRB)(?<spd>\d{2,3})(?:G(?<gst>\d{2,3}))?MPS\b/);
+  if (mpsM?.groups) {
+    const sustainedMPS = parseInt(mpsM.groups.spd);
+    const gustMPS = mpsM.groups.gst ? parseInt(mpsM.groups.gst) : undefined;
+    const g = gustMPS ?? 0;
+    let dangerColor: string;
+    if (sustainedMPS >= 8 || g >= 12) dangerColor = "#ef4444";
+    else if (sustainedMPS >= 6 || g >= 10) dangerColor = "#f97316";
+    else dangerColor = "";
+    return {
+      direction: mpsM.groups.dir,
+      sustainedKt: Math.round(sustainedMPS * 1.944),
+      gustKt: gustMPS ? Math.round(gustMPS * 1.944) : undefined,
+      dangerColor,
+      windBadge: sustainedMPS >= 13 || g >= 15,
+      raw: mpsM[0],
+      isMps: true,
+    };
+  }
+  return undefined;
 }
 
 function parseVisibility(raw: string): { meters?: number; cavok: boolean } {
@@ -170,13 +204,9 @@ function parsePhenomena(raw: string) {
   return found;
 }
 
-function categorizeFlight(
-  vis?: number,
-  ceiling?: { feet: number },
-): FlightCategory {
+function categorizeFlight(vis?: number, ceiling?: { feet: number }): FlightCategory {
   const v = vis ?? 9999;
   const c = ceiling?.feet ?? 99999;
-
   if (v < 1600 || c < 500) return FlightCategory.LIFR;
   if (v < 4800 || c < 1000) return FlightCategory.IFR;
   if (v < 8000 || c < 3000) return FlightCategory.MVFR;
@@ -187,30 +217,20 @@ export function parseMetar(raw: string): MetarParsed {
   if (!raw || raw.trim().length < 4) {
     return { stationId: "???", raw, flightCategory: FlightCategory.VFR, categoryColor: CATEGORY_COLOR[FlightCategory.VFR], cavok: false, phenomena: [], valid: false };
   }
-
   const tokens = raw.trim().split(/\s+/);
   let stationId = "???";
   for (const t of tokens) {
-    if (/^[A-Z]{4}$/.test(t) && !["METAR", "SPECI", "AUTO", "CORR"].includes(t)) {
-      stationId = t;
-      break;
-    }
+    if (/^[A-Z]{4}$/.test(t) && !["METAR", "SPECI", "AUTO", "CORR"].includes(t)) { stationId = t; break; }
   }
-
   const wind = parseWind(raw);
   const { meters: vis, cavok } = parseVisibility(raw);
   const ceiling = parseCeiling(raw);
   const phenomena = parsePhenomena(raw);
   const flightCategory = categorizeFlight(vis, ceiling);
-
-  return {
-    stationId, raw, flightCategory,
-    categoryColor: CATEGORY_COLOR[flightCategory],
-    visibility: vis, cavok, ceiling, wind, phenomena, valid: true,
-  };
+  return { stationId, raw, flightCategory, categoryColor: CATEGORY_COLOR[flightCategory], visibility: vis, cavok, ceiling, wind, phenomena, valid: true };
 }
 
-// ── Tokenizer for colored display ─────────────────────────────────────────────
+// ── Tokenizer ─────────────────────────────────────────────────────────────────
 
 export interface DisplayToken {
   text: string;
@@ -232,33 +252,18 @@ function ceilColor(ft: number): string {
   return "";
 }
 
-/**
- * Returns colour for a wx code token.
- * Handles both exact codes (in RED_WX/ORANGE_WX) and compound codes
- * like BLSN, DRSN, TSSN, FZFG, FZDZ that aren't explicitly listed.
- */
 function wxColor(code: string): string {
   if (RED_WX.has(code)) return "#ef4444";
   if (ORANGE_WX.has(code)) return "#f97316";
   if (/^(BR|HZ)$/.test(code)) return "#d1a054";
-
-  // Compound code fallback: strip leading +/-
   const base = code.replace(/^[-+]/, "");
-  // Blowing/drifting snow/ice → red
   if (/^(BL|DR)(SN|RA)/.test(base)) return "#ef4444";
-  // Freezing phenomena → red
   if (/^FZ(FG|DZ|SN|RA)/.test(base)) return "#ef4444";
-  // Thunderstorm + ice/snow/hail → red
   if (/^TS(SN|GR|PL|IC)/.test(base)) return "#ef4444";
-  // Rain/Snow mix → red
   if (/^RA(SN)/.test(base)) return "#ef4444";
-  // Heavy shower with hail → red
   if (/^SH(GR|GS)/.test(base)) return "#ef4444";
-  // Thunderstorm combos → orange (if not caught above)
   if (/^TS/.test(base)) return "#f97316";
-  // Shower combos → orange
   if (/^(SH|VC)/.test(base)) return "#f97316";
-
   return "#94a3b8";
 }
 
@@ -285,14 +290,21 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
       const spd = parseInt(t.match(/(?:VRB|\d{3})(\d{2,3})/)?.[1] ?? "0");
       const gst = parseInt(t.match(/G(\d{2,3})/)?.[1] ?? "0");
       if (spd >= 15 || gst >= 25) {
-        color = "#ef4444"; title = `Wind: Dangerous (${spd}kt${gst ? `/G${gst}kt` : ""})`;
+        color = "#ef4444"; title = `Wind: Dangerous (${spd} kt${gst ? `/G${gst} kt` : ""})`;
       } else if (spd >= 12 || gst >= 20) {
-        color = "#f97316"; title = `Wind: Strong (${spd}kt${gst ? `/G${gst}kt` : ""})`;
+        color = "#f97316"; title = `Wind: Strong (${spd} kt${gst ? `/G${gst} kt` : ""})`;
+      }
+    } else if (/^(VRB|\d{3})\d{2,3}(G\d{2,3})?MPS$/.test(t)) {
+      const spd = parseInt(t.match(/(?:VRB|\d{3})(\d{2,3})/)?.[1] ?? "0");
+      const gst = parseInt(t.match(/G(\d{2,3})/)?.[1] ?? "0");
+      if (spd >= 8 || gst >= 12) {
+        color = "#ef4444"; title = `Wind: Dangerous (${spd} MPS${gst ? `/G${gst} MPS` : ""})`;
+      } else if (spd >= 6 || gst >= 10) {
+        color = "#f97316"; title = `Wind: Strong (${spd} MPS${gst ? `/G${gst} MPS` : ""})`;
       }
     } else if (/^(CAVOK|NSC|NCD|SKC|CLR)$/.test(t)) {
       color = "#64748b"; title = t === "CAVOK" ? "Ceiling And Visibility OK" : "No Significant Clouds";
     } else if (/^\d{4}$/.test(t) && !t.includes("/")) {
-      // 4-digit number not followed by / → visibility
       const vis = parseInt(t);
       if (vis <= 9999) {
         const c = visColor(vis);
@@ -317,7 +329,6 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
     } else if (/^(RMK|TX|TN)/.test(t)) {
       color = "#64748b";
     } else {
-      // Weather phenomenon token
       const wx = wxColor(t);
       const isWxLike = /^[-+]?(?:TS|SH|FZ|DR|BL|VC|MI|PR|BC|NSW)/.test(t) ||
         /(?:DZ|RA|SN|SG|IC|PL|GR|GS|BR|FG|FU|VA|DU|SA|HZ|FC|SQ|SS|DS)/.test(t);
@@ -331,54 +342,47 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
     tokens.push({ text: part, color, bold, title });
     nonSpaceIdx++;
   }
-
   return tokens;
 }
 
-// ── TAF worst-case category ───────────────────────────────────────────────────
+// ── TAF worst-case ────────────────────────────────────────────────────────────
 
 export function parseTafWorstCategory(rawTaf: string | null): FlightCategory | null {
   if (!rawTaf) return null;
   const order = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
   let worst: FlightCategory = FlightCategory.VFR;
-
   const tokens = rawTaf.split(/\s+/);
   for (const token of tokens) {
-    // 4-digit visibility (not part of a period like 2503/2512)
     if (/^\d{4}$/.test(token)) {
       const v = parseInt(token);
       let cat: FlightCategory;
-      if (v < 1600)       cat = FlightCategory.LIFR;
-      else if (v < 4800)  cat = FlightCategory.IFR;
-      else if (v < 8000)  cat = FlightCategory.MVFR;
-      else                cat = FlightCategory.VFR;
+      if (v < 1600) cat = FlightCategory.LIFR;
+      else if (v < 4800) cat = FlightCategory.IFR;
+      else if (v < 8000) cat = FlightCategory.MVFR;
+      else cat = FlightCategory.VFR;
       if (order.indexOf(cat) > order.indexOf(worst)) worst = cat;
     }
     const ceilMatch = token.match(/^(?:BKN|OVC|VV)(\d{3})$/);
     if (ceilMatch) {
       const c = parseInt(ceilMatch[1]) * 100;
       let cat: FlightCategory;
-      if (c < 500)        cat = FlightCategory.LIFR;
-      else if (c < 1000)  cat = FlightCategory.IFR;
-      else if (c < 3000)  cat = FlightCategory.MVFR;
-      else                cat = FlightCategory.VFR;
+      if (c < 500) cat = FlightCategory.LIFR;
+      else if (c < 1000) cat = FlightCategory.IFR;
+      else if (c < 3000) cat = FlightCategory.MVFR;
+      else cat = FlightCategory.VFR;
       if (order.indexOf(cat) > order.indexOf(worst)) worst = cat;
     }
   }
   return worst;
 }
 
-// ── Time slot extraction ──────────────────────────────────────────────────────
-
 export function extractTimeSlots(raw: string): string[] {
   const slots = new Set<string>();
-  for (const m of raw.matchAll(/\b\d{6}Z\b/g)) {
-    slots.add(m[0]);
-  }
+  for (const m of raw.matchAll(/\b\d{6}Z\b/g)) slots.add(m[0]);
   return [...slots];
 }
 
-// ── TAF time-window analysis (for ANALYZE page) ───────────────────────────────
+// ── TAF window analysis ───────────────────────────────────────────────────────
 
 export interface TafWindowResult {
   category: FlightCategory | null;
@@ -414,28 +418,24 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResu
 
   for (const group of parts) {
     const fmMatch = group.match(/\bFM\d{2}(\d{2})\d{2}\b/);
-    // Match period like 2506/2509 → hours 06 and 09
     const periodMatch = group.match(/\b\d{2}(\d{2})\/\d{2}(\d{2})\b/);
 
     let groupHours: number[] = [];
     if (fmMatch) {
-      const h = parseInt(fmMatch[1]);
-      groupHours = [h];
+      groupHours = [parseInt(fmMatch[1])];
     } else if (periodMatch) {
       const startH = parseInt(periodMatch[1]);
       const endH = parseInt(periodMatch[2]);
-      // Generate all hours in this range
       const hours: number[] = [];
       let h = startH;
       while (true) {
         hours.push(h % 24);
         if (h % 24 === endH % 24) break;
         h++;
-        if (hours.length > 25) break; // safety
+        if (hours.length > 25) break;
       }
       groupHours = hours;
     } else {
-      // Base conditions — always applies
       groupHours = Array.from({ length: 24 }, (_, i) => i);
     }
 
@@ -443,25 +443,18 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResu
     if (!overlaps) continue;
     hasOverlap = true;
 
-    // Visibility: match 4-digit number NOT part of a period (followed by /)
     const visMatch = group.match(/(?:^|\s)(\d{4})(?!\/)(?:\s|$)/);
     if (visMatch) {
       const v = parseInt(visMatch[1]);
-      if (v <= 9999) {
-        if (worstVis === null || v < worstVis) worstVis = v;
-      }
+      if (v <= 9999 && (worstVis === null || v < worstVis)) worstVis = v;
     }
-    if (/\b(CAVOK|NSC)\b/.test(group)) {
-      if (worstVis === null) worstVis = 9999;
-    }
+    if (/\b(CAVOK|NSC)\b/.test(group) && worstVis === null) worstVis = 9999;
 
-    // Ceiling
     for (const m of group.matchAll(/\b(?:BKN|OVC|VV)(\d{3})\b/g)) {
       const ft = parseInt(m[1]) * 100;
       if (worstCeil === null || ft < worstCeil) worstCeil = ft;
     }
 
-    // Category for this group
     const groupVis = visMatch ? parseInt(visMatch[1]) : (/\b(CAVOK|NSC)\b/.test(group) ? 9999 : undefined);
     const groupCeil = (() => {
       let lowest: number | null = null;
@@ -474,29 +467,19 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResu
     const cat = categorizeFlight(groupVis, groupCeil);
     if (order.indexOf(cat) > order.indexOf(worstCat)) worstCat = cat;
 
-    // Phenomena
     for (const code of RED_WX) {
-      const escaped = code.replace(/[+]/g, "\\+");
-      if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(group)) allCrit.add(code);
+      const esc = code.replace(/[+]/g, "\\+");
+      if (new RegExp(`(?:^|\\s)${esc}(?=\\s|$)`).test(group)) allCrit.add(code);
     }
     for (const code of ORANGE_WX) {
-      const escaped = code.replace(/[+]/g, "\\+");
-      if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(group)) allOrange.add(code);
+      const esc = code.replace(/[+]/g, "\\+");
+      if (new RegExp(`(?:^|\\s)${esc}(?=\\s|$)`).test(group)) allOrange.add(code);
     }
-    // Check compound codes
     if (/\b(BL|DR)(SN)\b/.test(group)) allCrit.add("BLSN");
-    if (/\bFZ(FG|DZ)\b/.test(group)) allCrit.add(group.match(/\b(FZFG|FZDZ)\b/)?.[1] ?? "FZFG");
-    if (/\bTS(SN|GR|PL)\b/.test(group)) allCrit.add(group.match(/\b(TSSN|TSGR|TSPL)\b/)?.[1] ?? "TSSN");
+    if (/\bFZ(FG|DZ)\b/.test(group)) { const r = group.match(/\b(FZFG|FZDZ)\b/)?.[1]; if (r) allCrit.add(r); }
+    if (/\bTS(SN|GR|PL)\b/.test(group)) { const r = group.match(/\b(TSSN|TSGR|TSPL)\b/)?.[1]; if (r) allCrit.add(r); }
   }
 
   if (!hasOverlap) return { category: null, critCodes: [], orangeCodes: [], visibility: null, ceiling: null };
-
-  return {
-    category: worstCat,
-    critCodes: [...allCrit],
-    orangeCodes: [...allOrange],
-    visibility: worstVis,
-    ceiling: worstCeil,
-  };
+  return { category: worstCat, critCodes: [...allCrit], orangeCodes: [...allOrange], visibility: worstVis, ceiling: worstCeil };
 }
-
