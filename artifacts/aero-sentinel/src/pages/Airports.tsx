@@ -223,7 +223,7 @@ function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }
   if (result === undefined) return <span className="text-muted-foreground text-xs font-mono">—</span>;
   if (result === null) return <span className="text-[10px] font-mono text-muted-foreground/60">NO TAF</span>;
 
-  const { visibility, ceiling, rawCeil, critCodes, critWind } = result;
+  const { visibility, ceiling, rawCeil, critCodes, orangeCodes, critWind, orangeWind } = result;
 
   const isLifrVis  = visibility !== null && visibility < 1600;
   const isIfrVis   = visibility !== null && visibility >= 1600 && visibility < 4800;
@@ -233,7 +233,7 @@ function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }
   const isIfrCeil  = ceiling !== null && ceiling >= 500 && ceiling < 1000;
   const showCeil   = (isLifrCeil || isIfrCeil) && !!rawCeil;
 
-  const hasSignificant = critCodes.length > 0 || !!critWind || showVis || showCeil;
+  const hasSignificant = critCodes.length > 0 || orangeCodes.length > 0 || !!critWind || !!orangeWind || showVis || showCeil;
 
   if (!hasSignificant) {
     return <span className="text-[10px] font-mono font-bold" style={{ color: "#22c55e" }}>CLEAR</span>;
@@ -260,10 +260,23 @@ function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }
           {code}
         </span>
       ))}
+      {orangeCodes.map((code) => (
+        <span key={code}
+          className="text-[10px] font-mono font-semibold px-1 py-0.5 rounded"
+          style={{ color: "#f97316", backgroundColor: "#f9731615" }}>
+          {code}
+        </span>
+      ))}
       {critWind && (
         <span className="text-[10px] font-mono font-semibold px-1 py-0.5 rounded"
           style={{ color: "#ef4444", backgroundColor: "#ef444415" }}>
           {critWind}
+        </span>
+      )}
+      {orangeWind && (
+        <span className="text-[10px] font-mono font-semibold px-1 py-0.5 rounded"
+          style={{ color: "#f97316", backgroundColor: "#f9731615" }}>
+          {orangeWind}
         </span>
       )}
     </div>
@@ -572,7 +585,7 @@ export default function Airports() {
     const isLifrCeil = r.ceiling !== null && r.ceiling < 500;
     const isIfrCeil  = r.ceiling !== null && r.ceiling >= 500 && r.ceiling < 1000;
     const showCeil   = (isLifrCeil || isIfrCeil) && !!r.rawCeil;
-    return r.critCodes.length === 0 && !r.critWind && !isLifrVis && !isIfrVis && !showCeil;
+    return r.critCodes.length === 0 && r.orangeCodes.length === 0 && !r.critWind && !r.orangeWind && !isLifrVis && !isIfrVis && !showCeil;
   }
 
   // Pairs of (flight, result) — optionally filtered by hideClear
