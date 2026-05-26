@@ -442,6 +442,32 @@ export default function Airports() {
   const [analysis, setAnalysis] = useState<AnalysisState>({
     tafMap: {}, loading: false, done: false, error: null,
   });
+
+  // ── Persist analysis across navigation ──────────────────────────────────────
+  const ANALYZE_KEY = "as-analyze-v1";
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(ANALYZE_KEY);
+      if (!raw) return;
+      const { flights: f, fileName: fn, tafMap: tm } = JSON.parse(raw) as {
+        flights: FlightRow[]; fileName: string | null; tafMap: Record<string, string | null>;
+      };
+      if (Array.isArray(f) && f.length > 0) {
+        setFlights(f);
+        setFileName(fn ?? null);
+        setAnalysis({ tafMap: tm ?? {}, loading: false, done: Object.keys(tm ?? {}).length > 0, error: null });
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (flights.length === 0) { localStorage.removeItem(ANALYZE_KEY); return; }
+    try {
+      localStorage.setItem(ANALYZE_KEY, JSON.stringify({ flights, fileName, tafMap: analysis.tafMap }));
+    } catch {}
+  }, [flights, fileName, analysis.tafMap]);
+
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -550,6 +576,7 @@ export default function Airports() {
   };
 
   const clearAnalysis = () => {
+    localStorage.removeItem(ANALYZE_KEY);
     setFlights([]);
     setFileName(null);
     setAnalysis({ tafMap: {}, loading: false, done: false, error: null });
