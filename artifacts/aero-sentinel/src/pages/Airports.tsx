@@ -306,9 +306,9 @@ function ColFilterDropdown({ label, allValues, selected, onChange }: ColFilterPr
       <button
         onClick={() => setOpen((o) => !o)}
         title={`Filter by ${label}`}
-        className={`ml-1.5 p-0.5 rounded transition-colors ${isActive ? "text-primary" : "text-muted-foreground/40 hover:text-muted-foreground"}`}
+        className={`ml-1.5 p-0.5 rounded transition-colors ${isActive ? "text-primary" : "text-muted-foreground/70 hover:text-foreground"}`}
       >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill={isActive ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill={isActive ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
         </svg>
       </button>
@@ -394,12 +394,14 @@ export default function Airports() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Column filters
-  const [filterFlightText, setFilterFlightText] = useState("");
+  const [filterFlight, setFilterFlight] = useState<Set<string>>(new Set());
   const [filterReg, setFilterReg] = useState<Set<string>>(new Set());
   const [filterFrom, setFilterFrom] = useState<Set<string>>(new Set());
   const [filterTo, setFilterTo] = useState<Set<string>>(new Set());
 
   // Unique column values for dropdown filters
+  const allFlightNums = useMemo(() =>
+    [...new Set(flights.map((f) => f.flight).filter(Boolean))].sort(), [flights]);
   const allRegs = useMemo(() =>
     [...new Set(flights.map((f) => f.reg).filter(Boolean))].sort(), [flights]);
   const allFromIcaos = useMemo(() =>
@@ -409,24 +411,14 @@ export default function Airports() {
 
   // Filtered flights
   const filteredFlights = useMemo(() => {
-    // Parse flight text: split, strip prefix, keep digits only
-    const flightTokens = splitTokens(filterFlightText)
-      .map((t) => stripPrefix(t).replace(/\D/g, ""))
-      .filter(Boolean);
-
     return flights.filter((f) => {
-      // Flight text filter: match number portion
-      if (flightTokens.length > 0) {
-        const num = f.flight.replace(/\D/g, "");
-        if (!flightTokens.some((t) => num.includes(t) || f.flight.toLowerCase().includes(t))) return false;
-      }
-      // Reg dropdown filter (values already prefix-stripped)
+      if (filterFlight.size > 0 && !filterFlight.has(f.flight)) return false;
       if (filterReg.size > 0 && !filterReg.has(f.reg)) return false;
       if (filterFrom.size > 0 && !filterFrom.has(f.fromIcao)) return false;
       if (filterTo.size > 0 && !filterTo.has(f.toIcao)) return false;
       return true;
     });
-  }, [flights, filterFlightText, filterReg, filterFrom, filterTo]);
+  }, [flights, filterFlight, filterReg, filterFrom, filterTo]);
 
   const handleFile = async (file: File) => {
     if (!file.name.match(/\.(xlsx|xls|csv)$/i)) {
@@ -436,7 +428,7 @@ export default function Airports() {
     setParseError(null);
     setFileName(file.name);
     setAnalysis({ tafMap: {}, loading: false, done: false, error: null });
-    setFilterFlightText("");
+    setFilterFlight(new Set());
     setFilterReg(new Set());
     setFilterFrom(new Set());
     setFilterTo(new Set());
@@ -475,7 +467,7 @@ export default function Airports() {
     setFileName(null);
     setAnalysis({ tafMap: {}, loading: false, done: false, error: null });
     setParseError(null);
-    setFilterFlightText("");
+    setFilterFlight(new Set());
     setFilterReg(new Set());
     setFilterFrom(new Set());
     setFilterTo(new Set());
@@ -489,7 +481,7 @@ export default function Airports() {
     return analyzeTafWindow(rawTaf, f.etaHour);
   });
 
-  const hasActiveFilter = filterFlightText.trim() !== "" || filterReg.size > 0 || filterFrom.size > 0 || filterTo.size > 0;
+  const hasActiveFilter = filterFlight.size > 0 || filterReg.size > 0 || filterFrom.size > 0 || filterTo.size > 0;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -506,7 +498,7 @@ export default function Airports() {
             <span className="text-xs font-mono text-muted-foreground ml-auto">
               {filteredFlights.length} / {flights.length} flights
               {hasActiveFilter && (
-                <button onClick={() => { setFilterFlightText(""); setFilterReg(new Set()); setFilterFrom(new Set()); setFilterTo(new Set()); }}
+                <button onClick={() => { setFilterFlight(new Set()); setFilterReg(new Set()); setFilterFrom(new Set()); setFilterTo(new Set()); }}
                   className="ml-2 text-primary hover:underline">clear filters</button>
               )}
             </span>
@@ -591,16 +583,10 @@ export default function Airports() {
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider whitespace-nowrap">
-                        <div className="flex flex-col gap-1">
-                          <span className="tracking-wider">#FLIGHT</span>
-                          <input
-                            type="text"
-                            value={filterFlightText}
-                            onChange={(e) => setFilterFlightText(e.target.value)}
-                            placeholder="3205, TK4157…"
-                            className="w-28 px-1.5 py-0.5 text-[10px] font-mono border border-border/60 rounded bg-background/60 focus:outline-none focus:border-primary placeholder:text-muted-foreground/40"
-                          />
-                        </div>
+                        <span className="flex items-center">
+                          #FLIGHT
+                          <ColFilterDropdown label="flight" allValues={allFlightNums} selected={filterFlight} onChange={setFilterFlight} />
+                        </span>
                       </th>
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">
                         <span className="flex items-center">
