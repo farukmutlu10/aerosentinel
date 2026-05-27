@@ -111,6 +111,7 @@ export default function Alerts() {
   const [hideAcknowledged, setHideAcknowledged] = usePersistedState<boolean>("as-alerts-hide-ack", DEFAULT_HIDE_ACK);
   const [ackingAll, setAckingAll] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [displayLimit, setDisplayLimit] = useState(20);
 
   const activeTypesSet = new Set<string>(activeTypesArr);
 
@@ -318,7 +319,7 @@ export default function Alerts() {
           )}
 
           <span className={`text-xs text-muted-foreground font-mono ${unackedCount > 0 ? "" : "ml-auto"}`}>
-            {alerts.length} / {allAlerts?.length ?? 0} alerts
+            {Math.min(displayLimit, alerts.length)} / {alerts.length} alerts
           </span>
         </div>
 
@@ -333,11 +334,12 @@ export default function Alerts() {
           </div>
         ) : (
           <div className="space-y-2">
-            {alerts.map((alert) => (
+            {alerts.slice(0, displayLimit).map((alert) => (
               <div key={alert.id}
                 className={`border rounded-lg px-4 py-4 transition-opacity ${alert.acknowledged ? "opacity-65 dark:opacity-40" : ""} ${
                   alert.type === "SPECI" ? "alert-speci" : alert.type === "TAF_AMD" ? "alert-taf-amd" : "alert-taf-cor"
                 }`}>
+
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-3 flex-1 min-w-0">
                     <div className="flex-shrink-0 pt-0.5"><AlertBadge type={alert.type as AlertType} /></div>
@@ -361,6 +363,17 @@ export default function Alerts() {
                 </div>
               </div>
             ))}
+
+            {displayLimit < alerts.length && (
+              <div className="pt-2 flex justify-center">
+                <button
+                  onClick={() => setDisplayLimit((n) => n + 20)}
+                  className="px-6 py-2 rounded-lg border border-border text-xs font-mono text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
+                >
+                  Load more ({alerts.length - displayLimit} remaining)
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>

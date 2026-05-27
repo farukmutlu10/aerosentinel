@@ -8,9 +8,12 @@ import {
 
 const router = Router();
 
-// ── In-memory cache for /alerts/summary ──────────────────────────────────────
+// ── In-memory caches ─────────────────────────────────────────────────────────
 let summaryCache: { data: object; ts: number } | null = null;
-const SUMMARY_CACHE_TTL = 25_000;
+const SUMMARY_CACHE_TTL = 60_000;
+
+let recentCache: { data: object[]; ts: number } | null = null;
+const RECENT_CACHE_TTL = 60_000;
 
 function startOfTodayUtc(): Date {
   const d = new Date();
@@ -101,8 +104,30 @@ router.get("/alerts/summary", async (req, res) => {
   return res.json(result);
 });
 
-router.get("/alerts/recent", async (_req, res) => {
-  const alerts = await db.select().from(alertsTable).orderBy(desc(alertsTable.detectedAt)).limit(10);
+router.get("/alerts/recent", async (req, res) => {
+  const forceRefresh = req.query.refresh === "1";
+  const page  = Math.max(1, parseInt(String(req.query.page  ?? "1"), 10)  || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "10"), 10) || 10));
+  const now   = Date.now();
+
+  // Page 1 with default limit=10 is served from cache (covers notification hook usage)
+  const canUseCache = !forceRefresh && page === 1 && limit === 10;
+  if (canUseCache && recentCache && now - recentCache.ts < RECENT_CACHE_TTL) {
+    return res.json(recentCache.data);
+  }
+
+  const offset = (page - 1) * limit;
+  const alerts = await db
+    .select()
+    .from(alertsTable)
+    .orderBy(desc(alertsTable.detectedAt))
+    .limit(limit)
+    .offset(offset);
+
+  if (canUseCache) {
+    recentCache = { data: alerts, ts: now };
+  }
+
   return res.json(alerts);
 });
 
