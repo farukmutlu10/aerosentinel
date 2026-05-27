@@ -27,7 +27,7 @@ export function useAlertNotifications() {
   const { data: recent } = useGetRecentAlerts({
     query: {
       queryKey: getGetRecentAlertsQueryKey(),
-      refetchInterval: 30_000,
+      refetchInterval: 60_000,
       refetchIntervalInBackground: true,
     },
   });

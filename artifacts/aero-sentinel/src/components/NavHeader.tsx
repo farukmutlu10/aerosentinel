@@ -32,7 +32,7 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
   const [location] = useLocation();
 
   const { data: summary } = useGetAlertsSummary({
-    query: { refetchInterval: 30_000, refetchIntervalInBackground: true },
+    query: { refetchInterval: 60_000, refetchIntervalInBackground: true },
   });
   const unacknowledgedCount = summary?.unacknowledged ?? 0;
 
