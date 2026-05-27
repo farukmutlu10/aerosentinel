@@ -133,16 +133,18 @@ export default function Alerts() {
   const { theme, toggleTheme } = useThemeContext();
 
   const { data: summary, isLoading: summaryLoading } = useGetAlertsSummary({
-    query: { refetchInterval: 30_000 },
+    query: { refetchInterval: 60_000 },
   });
 
   const { data: allAlerts, isLoading } = useListAlerts(
     { limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 30_000 } }
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 60_000 } }
   );
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
+    // Bust server-side summary cache so the next fetch returns fresh DB data
+    fetch("/api/alerts/summary?refresh=1").catch(() => {});
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() }),
       queryClient.invalidateQueries({ queryKey: getGetAlertsSummaryQueryKey() }),

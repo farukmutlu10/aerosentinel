@@ -8,6 +8,10 @@ import {
 
 const router = Router();
 
+// ── In-memory cache for /alerts/summary ──────────────────────────────────────
+let summaryCache: { data: object; ts: number } | null = null;
+const SUMMARY_CACHE_TTL = 25_000;
+
 function startOfTodayUtc(): Date {
   const d = new Date();
   d.setUTCHours(0, 0, 0, 0);
@@ -45,18 +49,25 @@ router.get("/alerts", async (req, res) => {
   return res.json(alerts);
 });
 
-router.get("/alerts/summary", async (_req, res) => {
+router.get("/alerts/summary", async (req, res) => {
+  const forceRefresh = req.query.refresh === "1";
+  const now = Date.now();
+
+  // Serve from cache unless forced refresh or cache expired
+  if (!forceRefresh && summaryCache && now - summaryCache.ts < SUMMARY_CACHE_TTL) {
+    return res.json(summaryCache.data);
+  }
+
   const today = startOfTodayUtc();
 
-  // Get watchlist ICAOs for filtering
+  // Query 1: watchlist (tiny table)
   const watchlistRows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
   const watchlistIcaos = watchlistRows.map((r) => r.icao);
 
   if (watchlistIcaos.length === 0) {
-    return res.json({
-      totalAlerts: 0, unacknowledged: 0, tafRevisions: 0, speciAlerts: 0,
-      airportsAffected: 0, lastScan: null,
-    });
+    const empty = { totalAlerts: 0, unacknowledged: 0, tafRevisions: 0, speciAlerts: 0, airportsAffected: 0, lastScan: null };
+    summaryCache = { data: empty, ts: now };
+    return res.json(empty);
   }
 
   const baseConditions = [
@@ -64,27 +75,30 @@ router.get("/alerts/summary", async (_req, res) => {
     inArray(alertsTable.icao, watchlistIcaos),
   ];
 
-  const [total] = await db.select({ count: count() }).from(alertsTable)
-    .where(and(...baseConditions));
-  const [unacked] = await db.select({ count: count() }).from(alertsTable)
-    .where(and(...baseConditions, eq(alertsTable.acknowledged, false)));
-  const [tafRevisions] = await db.select({ count: count() }).from(alertsTable)
-    .where(and(...baseConditions, sql`${alertsTable.type} IN ('TAF_AMD', 'TAF_COR')`));
-  const [speciAlerts] = await db.select({ count: count() }).from(alertsTable)
-    .where(and(...baseConditions, eq(alertsTable.type, "SPECI")));
-  const affectedRows = await db.selectDistinct({ icao: alertsTable.icao }).from(alertsTable)
-    .where(and(...baseConditions));
-  const [lastScanRow] = await db.select({ detectedAt: alertsTable.detectedAt }).from(alertsTable)
-    .orderBy(desc(alertsTable.detectedAt)).limit(1);
+  // Query 2: single aggregation replacing 5 separate COUNT queries
+  const [agg] = await db.select({
+    total:            sql<number>`COUNT(*)::int`,
+    unacknowledged:   sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.acknowledged} = false)::int`,
+    tafRevisions:     sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.type} IN ('TAF_AMD', 'TAF_COR'))::int`,
+    speciAlerts:      sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.type} = 'SPECI')::int`,
+    airportsAffected: sql<number>`COUNT(DISTINCT ${alertsTable.icao})::int`,
+  }).from(alertsTable).where(and(...baseConditions));
 
-  return res.json({
-    totalAlerts: Number(total.count),
-    unacknowledged: Number(unacked.count),
-    tafRevisions: Number(tafRevisions.count),
-    speciAlerts: Number(speciAlerts.count),
-    airportsAffected: affectedRows.length,
-    lastScan: lastScanRow?.detectedAt ?? null,
-  });
+  // Query 3: last scan time from all alerts
+  const [lastScanRow] = await db.select({ detectedAt: alertsTable.detectedAt })
+    .from(alertsTable).orderBy(desc(alertsTable.detectedAt)).limit(1);
+
+  const result = {
+    totalAlerts:      agg?.total ?? 0,
+    unacknowledged:   agg?.unacknowledged ?? 0,
+    tafRevisions:     agg?.tafRevisions ?? 0,
+    speciAlerts:      agg?.speciAlerts ?? 0,
+    airportsAffected: agg?.airportsAffected ?? 0,
+    lastScan:         lastScanRow?.detectedAt ?? null,
+  };
+
+  summaryCache = { data: result, ts: now };
+  return res.json(result);
 });
 
 router.get("/alerts/recent", async (_req, res) => {

@@ -44,7 +44,7 @@ function useWatchlistWeather(icaos: string[]) {
     queryKey: WEATHER_KEY(key),
     queryFn: () => fetch(`/api/watchlist/weather?icaos=${key}`).then((r) => r.json()),
     enabled: icaos.length > 0,
-    refetchInterval: 60_000,
+    refetchInterval: 120_000,
     refetchIntervalInBackground: true,
     staleTime: 30_000,
   });
@@ -154,7 +154,7 @@ export default function Dashboard() {
   }, [timeOpen]);
 
   const { data: monitor } = useGetMonitorStatus({
-    query: { queryKey: getGetMonitorStatusQueryKey(), refetchInterval: 30_000 },
+    query: { queryKey: getGetMonitorStatusQueryKey(), refetchInterval: 60_000 },
   });
   const { data: weatherData, isLoading: weatherLoading, refresh: refreshWeather } = useWatchlistWeather(effectiveIcaos);
 
