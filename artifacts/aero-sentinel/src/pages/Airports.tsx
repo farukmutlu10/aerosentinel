@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { useThemeContext } from "@/App";
-import { parseMetar, FlightCategory, CATEGORY_COLOR, analyzeTafWindow, type TafWindowResult } from "@/lib/metarParser";
+import { parseMetar, analyzeTafWindow, type TafWindowResult } from "@/lib/metarParser";
 
 // ── Excel parsing ─────────────────────────────────────────────────────────────
 
@@ -18,6 +18,8 @@ export interface FlightRow {
   etd: string;
   eta: string;
   etaHour: number | null;
+  /** UTC day-of-month from the Excel "Date" column; null if column absent */
+  etaDay: number | null;
 }
 
 type ColMap = Record<string, string>;
@@ -57,6 +59,74 @@ function excelTimeToHHMM(val: unknown): string {
 function parseEtaHour(eta: string): number | null {
   const m = eta.match(/^(\d{1,2}):(\d{2})/);
   if (m) return parseInt(m[1]) % 24;
+  return null;
+}
+
+/**
+ * Extract day-of-month from whatever value sits in an Excel "Date" cell.
+ * Handles: Excel serial numbers, DD.MM.YYYY, DD/MM/YYYY, MM-DD, DD/MM,
+ *          DDMMYYYY, and plain text with an embedded day number.
+ */
+function parseDayOfMonth(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+
+  // Excel serial date (number stored as days since 1900-01-00)
+  if (typeof raw === "number") {
+    if (raw > 1000) {
+      const d = new Date(Math.round((raw - 25569) * 86400_000));
+      return d.getUTCDate();
+    }
+    if (raw >= 1 && raw <= 31) return raw; // bare day number
+    return null;
+  }
+
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  // Numeric string that looks like an Excel serial
+  const asNum = Number(s.replace(",", "."));
+  if (!isNaN(asNum) && asNum > 1000) {
+    const d = new Date(Math.round((asNum - 25569) * 86400_000));
+    return d.getUTCDate();
+  }
+
+  // Three-part dates: DD.MM.YYYY / DD/MM/YYYY / DD-MM-YYYY / MM/DD/YYYY etc.
+  let m = s.match(/^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{2,4})$/);
+  if (m) {
+    const a = parseInt(m[1]), b = parseInt(m[2]);
+    if (a > 12) return a;   // a is definitely day
+    if (b > 12) return b;   // b is definitely day, so a is month
+    return a;               // both ≤12 → assume DD first (European aviation)
+  }
+
+  // Two-part with dash: user example "05-28" = MM-DD
+  m = s.match(/^(\d{1,2})-(\d{1,2})$/);
+  if (m) {
+    const a = parseInt(m[1]), b = parseInt(m[2]);
+    if (b > 12) return b;   // MM-DD unambiguous
+    if (a > 12) return a;   // DD-MM unambiguous
+    return b;               // both ≤12 → treat as MM-DD per user convention
+  }
+
+  // Two-part with slash: "28/05" = DD/MM
+  m = s.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (m) {
+    const a = parseInt(m[1]), b = parseInt(m[2]);
+    if (a > 12) return a;
+    if (b > 12) return b;
+    return a; // assume DD/MM
+  }
+
+  // Eight-digit: DDMMYYYY
+  m = s.match(/^(\d{2})(\d{2})(\d{4})$/);
+  if (m) return parseInt(m[1]);
+
+  // Last resort: first number in range 1-31
+  for (const token of s.match(/\d+/g) ?? []) {
+    const v = parseInt(token);
+    if (v >= 1 && v <= 31) return v;
+  }
+
   return null;
 }
 
@@ -141,6 +211,7 @@ function parseExcelFile(file: File): Promise<FlightRow[]> {
         const toIdx     = findIdx(["TO (S) ICAO", "TO S ICAO", "DEST ICAO", "ARR ICAO", "TO ICAO", "DESTINATION ICAO", "VARIŞ ICAO", "VARIS ICAO", "DEST", "TO", "ARR", "DESTN", "VARIŞ", "VARIS"]);
         const etdIdx    = findIdx(["ETD", "EST DEP", "ESTIMATED DEP", "STD", "DEP TIME", "KALKIŞ SAATİ", "STA", "SCHED ARR", "SCHEDULED ARR"]);
         const etaIdx    = findIdx(["ETA", "EST ARR", "ESTIMATED ARR", "ACT ARR", "ACTUAL ARR", "BT ARR", "BLOK ARR", "TAHMINI VARIŞ"]);
+        const dateIdx   = findIdx(["DATE", "TARİH", "TARIH"]);
 
         const getCell = (row: unknown[], idx: number | undefined): unknown =>
           idx !== undefined ? row[idx] : "";
@@ -164,7 +235,8 @@ function parseExcelFile(file: File): Promise<FlightRow[]> {
             const etd       = excelTimeToHHMM(getCell(row, etdIdx));
             const eta       = excelTimeToHHMM(getCell(row, etaIdx));
             const etaHour   = parseEtaHour(eta || etd);
-            return { id: idx, flightRaw, flight, reg, fromIcao, toIcao, etd, eta, etaHour };
+            const etaDay    = parseDayOfMonth(getCell(row, dateIdx));
+            return { id: idx, flightRaw, flight, reg, fromIcao, toIcao, etd, eta, etaHour, etaDay };
           });
 
         resolve(parsed);
@@ -228,7 +300,7 @@ function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }
     </span>
   );
 
-  const { visibility, ceiling, rawCeil, critCodes, orangeCodes, critWind, orangeWind, category } = result;
+  const { visibility, ceiling, rawCeil, critCodes, orangeCodes, critWind, orangeWind } = result;
 
   const isLifrVis  = visibility !== null && visibility < 1600;
   const isIfrVis   = visibility !== null && visibility >= 1600 && visibility < 4800;
@@ -248,17 +320,8 @@ function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }
     );
   }
 
-  const catColor = category ? CATEGORY_COLOR[category] : undefined;
-  const showCatChip = category && category !== FlightCategory.VFR && catColor;
-
   return (
     <div className="flex flex-wrap items-center gap-1">
-      {showCatChip && (
-        <span className="text-[9px] font-mono font-bold px-1 py-0.5 rounded border flex-shrink-0"
-          style={{ color: catColor, borderColor: `${catColor}55`, backgroundColor: `${catColor}18` }}>
-          {category}
-        </span>
-      )}
       {showVis && (
         <span className="text-[11px] font-mono font-bold"
           style={{ color: isLifrVis ? "#a855f7" : "#ef4444" }}>
@@ -676,8 +739,8 @@ export default function Airports() {
       const oldTaf = oldTafMap[f.toIcao] ?? null;
       const newTaf = newTafMap[f.toIcao] ?? null;
       if (!oldTaf && !newTaf) continue;
-      const oldResult = oldTaf ? analyzeTafWindow(oldTaf, f.etaHour) : null;
-      const newResult = newTaf ? analyzeTafWindow(newTaf, f.etaHour) : null;
+      const oldResult = oldTaf ? analyzeTafWindow(oldTaf, f.etaHour, f.etaDay) : null;
+      const newResult = newTaf ? analyzeTafWindow(newTaf, f.etaHour, f.etaDay) : null;
       if (JSON.stringify(oldResult) !== JSON.stringify(newResult)) changedIds.add(f.id);
     }
     if (changedIds.size > 0) setChangedFlightIds(changedIds);
@@ -700,7 +763,7 @@ export default function Airports() {
     const rawTaf = analysis.tafMap[f.toIcao] ?? null;
     if (f.etaHour === null) return null;
     if (!rawTaf) return null;
-    return analyzeTafWindow(rawTaf, f.etaHour);
+    return analyzeTafWindow(rawTaf, f.etaHour, f.etaDay);
   });
 
   // Determine if a TAF result is CLEAR — must exactly match AnalysisCell's !hasSignificant logic
@@ -976,9 +1039,9 @@ export default function Airports() {
                   <tbody>
                     {displayPairs.map(({ f, result }) => {
                       const cat = (result as TafWindowResult | null | undefined)?.category;
-                      const rowBg = cat === FlightCategory.LIFR ? "bg-purple-500/5" :
-                                    cat === FlightCategory.IFR ? "bg-red-500/5" :
-                                    cat === FlightCategory.MVFR ? "bg-blue-500/5" : "";
+                      const rowBg = cat === "LIFR" ? "bg-purple-500/5" :
+                                    cat === "IFR"  ? "bg-red-500/5" :
+                                    cat === "MVFR" ? "bg-blue-500/5" : "";
                       const isChanged = changedFlightIds.has(f.id);
                       return (
                         <tr
