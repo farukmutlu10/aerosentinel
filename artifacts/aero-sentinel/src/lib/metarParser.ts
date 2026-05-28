@@ -395,17 +395,30 @@ export interface TafWindowResult {
   orangeWind: string | null;
 }
 
-export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResult {
+/**
+ * Analyze which TAF groups overlap with the flight's ETA window (±1 h).
+ *
+ * @param etaDay  UTC day-of-month extracted from the Excel "Date" column.
+ *                When provided, period day digits in the TAF (DDHH/DDHH) are
+ *                compared so that e.g. "2812/2816" and "2908/2912" are never
+ *                confused even though both contain hour 12.
+ *                When null, falls back to hour-only matching (legacy behaviour).
+ */
+export function analyzeTafWindow(rawTaf: string, etaHour: number, etaDay: number | null = null): TafWindowResult {
   if (!rawTaf) return { category: null, critCodes: [], orangeCodes: [], visibility: null, ceiling: null, rawCeil: null, critWind: null, orangeWind: null };
 
+  // Hour-only window (used when etaDay is unknown)
   const windowStart = (etaHour - 1 + 24) % 24;
-  const windowEnd = (etaHour + 1) % 24;
-  const wraps = windowEnd < windowStart;
-
+  const windowEnd   = (etaHour + 1) % 24;
+  const wraps       = windowEnd < windowStart;
   function hourInWindow(h: number): boolean {
     if (wraps) return h >= windowStart || h <= windowEnd;
     return h >= windowStart && h <= windowEnd;
   }
+
+  // Absolute-hour window (used when etaDay is known)
+  const absMin = etaDay !== null ? etaDay * 24 + (etaHour - 1) : 0;
+  const absMax = etaDay !== null ? etaDay * 24 + (etaHour + 1) : 0;
 
   const normalized = rawTaf.replace(/\r?\n/g, " ").replace(/\s{2,}/g, " ");
   const groupRe = /(?=\b(?:BECMG|TEMPO|PROB\d{2}|FM\d{4,6})\b)/g;
@@ -423,29 +436,45 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResu
   let hasOverlap = false;
 
   for (const group of parts) {
-    const fmMatch = group.match(/\bFM\d{2}(\d{2})\d{2}\b/);
-    const periodMatch = group.match(/\b\d{2}(\d{2})\/\d{2}(\d{2})\b/);
+    // Capture full DDHHMM for FM, and full DDHH/DDHH for period groups
+    const fmMatch     = group.match(/\bFM(\d{2})(\d{2})(\d{2})\b/);   // [1]=day [2]=hour [3]=min
+    const periodMatch = group.match(/\b(\d{2})(\d{2})\/(\d{2})(\d{2})\b/); // [1]=sDay [2]=sHour [3]=eDay [4]=eHour
 
-    let groupHours: number[] = [];
-    if (fmMatch) {
-      groupHours = [parseInt(fmMatch[1])];
-    } else if (periodMatch) {
-      const startH = parseInt(periodMatch[1]);
-      const endH = parseInt(periodMatch[2]);
-      const hours: number[] = [];
-      let h = startH;
-      while (true) {
-        hours.push(h % 24);
-        if (h % 24 === endH % 24) break;
-        h++;
-        if (hours.length > 25) break;
+    let overlaps = false;
+
+    if (etaDay !== null) {
+      // ── Day-aware matching ─────────────────────────────────────────────────
+      if (fmMatch) {
+        const fmAbs = parseInt(fmMatch[1]) * 24 + parseInt(fmMatch[2]);
+        overlaps = fmAbs >= absMin && fmAbs <= absMax;
+      } else if (periodMatch) {
+        const periodAbsStart = parseInt(periodMatch[1]) * 24 + parseInt(periodMatch[2]);
+        const periodAbsEnd   = parseInt(periodMatch[3]) * 24 + parseInt(periodMatch[4]);
+        overlaps = periodAbsStart <= absMax && periodAbsEnd >= absMin;
+      } else {
+        overlaps = true; // base (header) group — always include
       }
-      groupHours = hours;
     } else {
-      groupHours = Array.from({ length: 24 }, (_, i) => i);
+      // ── Hour-only matching (legacy, no date info) ──────────────────────────
+      if (fmMatch) {
+        overlaps = hourInWindow(parseInt(fmMatch[2]));
+      } else if (periodMatch) {
+        const startH = parseInt(periodMatch[2]);
+        const endH   = parseInt(periodMatch[4]);
+        const hours: number[] = [];
+        let h = startH;
+        while (true) {
+          hours.push(h % 24);
+          if (h % 24 === endH % 24) break;
+          h++;
+          if (hours.length > 25) break;
+        }
+        overlaps = hours.some((h) => hourInWindow(h));
+      } else {
+        overlaps = true; // base (header) group — always include
+      }
     }
 
-    const overlaps = groupHours.some((h) => hourInWindow(h));
     if (!overlaps) continue;
     hasOverlap = true;
 
