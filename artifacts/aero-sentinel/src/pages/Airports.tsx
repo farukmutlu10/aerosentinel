@@ -631,13 +631,6 @@ export default function Airports() {
     if (changedIds.size > 0) setChangedFlightIds(changedIds);
   };
 
-  // Auto-clear changed highlights after the flash animation completes (4 s)
-  useEffect(() => {
-    if (changedFlightIds.size === 0) return;
-    const t = setTimeout(() => setChangedFlightIds(new Set()), 4200);
-    return () => clearTimeout(t);
-  }, [changedFlightIds]);
-
   // Keep a ref so the interval always calls the latest refreshTaf closure
   const refreshTafRef = useRef(refreshTaf);
   useEffect(() => { refreshTafRef.current = refreshTaf; });
@@ -814,6 +807,23 @@ export default function Airports() {
                     {filteredFlights.length} / {flights.length} shown
                   </span>
                 )}
+                {hasActiveFilter && (
+                  <button
+                    onClick={() => {
+                      setFilterFlight(new Set()); setFlightSearch("");
+                      setFilterReg(new Set());   setRegSearch("");
+                      setFilterFrom(new Set());  setFromSearch("");
+                      setFilterTo(new Set());    setToSearch("");
+                      setEtdFrom(""); setEtdTo("");
+                    }}
+                    title="Clear all active filters"
+                    className="flex items-center gap-1 px-2.5 py-1 rounded border border-rose-500/40 bg-rose-500/8 text-rose-400 text-[11px] font-mono font-bold tracking-wide hover:bg-rose-500/18 hover:border-rose-400/60 transition-all">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                    CLEAR FILTERS
+                  </button>
+                )}
 
                 {/* Refresh + Hide CLEAR — pinned to right */}
                 <div className="ml-auto flex items-center gap-1.5">
@@ -898,7 +908,9 @@ export default function Airports() {
                       return (
                         <tr
                           key={f.id}
-                          className={`border-b border-border/60 last:border-b-0 hover:bg-muted/20 transition-colors ${rowBg} ${isChanged ? "taf-row-changed" : ""}`}>
+                          onClick={isChanged ? () => setChangedFlightIds((prev) => { const next = new Set(prev); next.delete(f.id); return next; }) : undefined}
+                          className={`border-b border-border/60 last:border-b-0 hover:bg-muted/20 transition-colors ${rowBg} ${isChanged ? "taf-row-changed cursor-pointer" : ""}`}
+                          title={isChanged ? "TAF analysis changed — click to dismiss" : undefined}>
                           <td className="px-3 py-2.5 font-bold text-foreground whitespace-nowrap">{f.flight || "—"}</td>
                           <td className="px-3 py-2.5 text-muted-foreground">{f.reg || "—"}</td>
                           <td className="px-3 py-2.5">
