@@ -510,5 +510,25 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number): TafWindowResu
   }
 
   if (!hasOverlap) return { category: null, critCodes: [], orangeCodes: [], visibility: null, ceiling: null, rawCeil: null, critWind: null, orangeWind: null };
+
+  // Deduplicate: heavier intensity supersedes lighter in the same phenomenon family.
+  // e.g. TSRA present → remove -TSRA; +TSRA present → also remove TSRA.
+  for (const code of [...allCrit, ...allOrange]) {
+    const stripped = code.replace(/^[-+]/, "");
+    const isLight  = code.startsWith("-");
+    const isHeavy  = code.startsWith("+");
+    if (isLight) {
+      // Remove -X if base X or +X is present anywhere
+      if (allCrit.has(stripped) || allOrange.has(stripped) || allCrit.has("+" + stripped) || allOrange.has("+" + stripped)) {
+        allCrit.delete(code); allOrange.delete(code);
+      }
+    } else if (!isHeavy) {
+      // Remove base X if +X is present anywhere
+      if (allCrit.has("+" + code) || allOrange.has("+" + code)) {
+        allCrit.delete(code); allOrange.delete(code);
+      }
+    }
+  }
+
   return { category: worstCat, critCodes: [...allCrit], orangeCodes: [...allOrange], visibility: worstVis, ceiling: worstCeil, rawCeil: worstCeilRaw, critWind: critWindRaw, orangeWind: critWindRaw ? null : orangeWindRaw };
 }

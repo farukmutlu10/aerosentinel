@@ -182,14 +182,19 @@ export default function Dashboard() {
       const prevCrit = prev ? airportIsCrit(prev.rawTaf, prev.rawMetar) : false;
 
       if (permGranted && nowCrit && !prevCrit) {
-        const critCodes = [...RED_WX].filter((code) => {
-          const esc = code.replace(/[+]/g, "\\+");
-          return new RegExp(`(?:^|\\s)${esc}(?=\\s|$)`).test(w.rawMetar ?? "");
-        });
-        const windAlert = hasBadgeWind(w.rawMetar) || hasBadgeWind(w.rawTaf);
+        const makeRe = (code: string) => new RegExp(`(?:^|\\s)${code.replace(/[+]/g, "\\+")}(?=\\s|$)`);
+        const critCodesMetar = [...RED_WX].filter((code) => makeRe(code).test(w.rawMetar ?? ""));
+        const critCodesTaf   = [...RED_WX].filter((code) => makeRe(code).test(w.rawTaf   ?? ""));
+        const windFromMetar  = hasBadgeWind(w.rawMetar);
+        const windFromTaf    = hasBadgeWind(w.rawTaf);
+        // Use TAF as source only when METAR has no crit condition
+        const useTaf    = !critCodesMetar.length && !windFromMetar && (critCodesTaf.length > 0 || windFromTaf);
+        const critCodes = useTaf ? critCodesTaf : critCodesMetar;
+        const windAlert = windFromMetar || windFromTaf;
+        const sourceRaw = useTaf ? (w.rawTaf ?? "") : (w.rawMetar ?? "");
         const body = [
           critCodes.length ? critCodes.slice(0, 5).join(", ") : windAlert ? "EXTREME WIND" : "Critical condition",
-          (w.rawMetar ?? "").slice(0, 120),
+          sourceRaw.slice(0, 120),
         ].filter(Boolean).join("\n");
         try {
           const n = new Notification(`⚠ CRITICAL — ${w.icao}`, {

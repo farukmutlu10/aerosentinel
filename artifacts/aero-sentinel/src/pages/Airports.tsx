@@ -329,10 +329,15 @@ function ColFilterDropdown({ label, allValues, selected, onChange, searchText, o
   const isActive = selected.size > 0 || searchText.trim() !== "";
 
   const toggle = (v: string) => {
-    const next = new Set(selected);
-    if (next.has(v)) next.delete(v);
-    else next.add(v);
-    onChange(next.size === allValues.length ? new Set<string>() : next);
+    if (selected.size === 0) {
+      // All items implicitly shown — clicking one means "hide this, keep the rest"
+      onChange(new Set(allValues.filter((x) => x !== v)));
+    } else {
+      const next = new Set(selected);
+      if (next.has(v)) next.delete(v);
+      else next.add(v);
+      onChange(next.size === allValues.length ? new Set<string>() : next);
+    }
   };
 
   const selectAll = () => onChange(new Set<string>());
@@ -450,13 +455,25 @@ export default function Airports() {
     try {
       const raw = localStorage.getItem(ANALYZE_KEY);
       if (!raw) return;
-      const { flights: f, fileName: fn, tafMap: tm } = JSON.parse(raw) as {
+      const {
+        flights: f, fileName: fn, tafMap: tm,
+        filterFlight: ff, filterReg: fr, filterFrom: ffr, filterTo: ft,
+        etdFrom: ef, etdTo: et,
+      } = JSON.parse(raw) as {
         flights: FlightRow[]; fileName: string | null; tafMap: Record<string, string | null>;
+        filterFlight?: string[]; filterReg?: string[]; filterFrom?: string[]; filterTo?: string[];
+        etdFrom?: string; etdTo?: string;
       };
       if (Array.isArray(f) && f.length > 0) {
         setFlights(f);
         setFileName(fn ?? null);
         setAnalysis({ tafMap: tm ?? {}, loading: false, done: Object.keys(tm ?? {}).length > 0, error: null });
+        if (ff?.length) setFilterFlight(new Set(ff));
+        if (fr?.length) setFilterReg(new Set(fr));
+        if (ffr?.length) setFilterFrom(new Set(ffr));
+        if (ft?.length) setFilterTo(new Set(ft));
+        if (ef) setEtdFrom(ef);
+        if (et) setEtdTo(et);
       }
     } catch {}
   }, []);
@@ -464,9 +481,14 @@ export default function Airports() {
   useEffect(() => {
     if (flights.length === 0) { localStorage.removeItem(ANALYZE_KEY); return; }
     try {
-      localStorage.setItem(ANALYZE_KEY, JSON.stringify({ flights, fileName, tafMap: analysis.tafMap }));
+      localStorage.setItem(ANALYZE_KEY, JSON.stringify({
+        flights, fileName, tafMap: analysis.tafMap,
+        filterFlight: [...filterFlight], filterReg: [...filterReg],
+        filterFrom: [...filterFrom], filterTo: [...filterTo],
+        etdFrom, etdTo,
+      }));
     } catch {}
-  }, [flights, fileName, analysis.tafMap]);
+  }, [flights, fileName, analysis.tafMap, filterFlight, filterReg, filterFrom, filterTo, etdFrom, etdTo]);
 
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -486,6 +508,8 @@ export default function Airports() {
   const [etdTo, setEtdTo] = useState("");
   // Hide CLEAR rows toggle
   const [hideClear, setHideClear] = useState(false);
+  // Tracks flight IDs whose TAF result changed on the last refresh (for pulse effect)
+  const [changedFlightIds, setChangedFlightIds] = useState<Set<number>>(new Set());
 
   // Unique column values for dropdown filters
   const allFlightNums = useMemo(() =>
@@ -586,14 +610,21 @@ export default function Airports() {
     setFilterFrom(new Set());  setFromSearch("");
     setFilterTo(new Set());    setToSearch("");
     setEtdFrom(""); setEtdTo("");
+    setChangedFlightIds(new Set());
   };
 
   const refreshTaf = async () => {
     if (flights.length === 0 || analysis.loading) return;
     const uniqueIcaos = [...new Set(flights.map((r) => r.toIcao).filter((x) => x.length === 4))];
+    const oldTafMap = analysis.tafMap;
     setAnalysis((prev) => ({ ...prev, loading: true, done: false }));
-    const tafMap = await fetchTafBatch(uniqueIcaos);
-    setAnalysis({ tafMap, loading: false, done: true, error: null });
+    const newTafMap = await fetchTafBatch(uniqueIcaos);
+    setAnalysis({ tafMap: newTafMap, loading: false, done: true, error: null });
+    // Detect which flights have a changed TAF — mark for pulse effect
+    const changedIcaos = new Set(uniqueIcaos.filter((icao) => oldTafMap[icao] !== newTafMap[icao]));
+    if (changedIcaos.size > 0) {
+      setChangedFlightIds(new Set(flights.filter((f) => changedIcaos.has(f.toIcao)).map((f) => f.id)));
+    }
   };
 
   const analysisResults: (TafWindowResult | null | undefined)[] = filteredFlights.map((f) => {
@@ -840,8 +871,13 @@ export default function Airports() {
                       const rowBg = cat === FlightCategory.LIFR ? "bg-purple-500/5" :
                                     cat === FlightCategory.IFR ? "bg-red-500/5" :
                                     cat === FlightCategory.MVFR ? "bg-blue-500/5" : "";
+                      const isChanged = changedFlightIds.has(f.id);
                       return (
-                        <tr key={f.id} className={`border-b border-border/60 last:border-b-0 hover:bg-muted/20 transition-colors ${rowBg}`}>
+                        <tr
+                          key={f.id}
+                          onClick={isChanged ? () => setChangedFlightIds((prev) => { const next = new Set(prev); next.delete(f.id); return next; }) : undefined}
+                          className={`border-b border-border/60 last:border-b-0 hover:bg-muted/20 transition-colors ${rowBg} ${isChanged ? "outline outline-1 outline-amber-400/60 animate-pulse cursor-pointer" : ""}`}
+                          title={isChanged ? "TAF changed — click to dismiss" : undefined}>
                           <td className="px-3 py-2.5 font-bold text-foreground whitespace-nowrap">{f.flight || "—"}</td>
                           <td className="px-3 py-2.5 text-muted-foreground">{f.reg || "—"}</td>
                           <td className="px-3 py-2.5">
