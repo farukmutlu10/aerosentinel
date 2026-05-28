@@ -616,12 +616,27 @@ export default function Airports() {
     setAnalysis((prev) => ({ ...prev, loading: true, done: false }));
     const newTafMap = await fetchTafBatch(uniqueIcaos);
     setAnalysis({ tafMap: newTafMap, loading: false, done: true, error: null });
-    // Detect which flights have a changed TAF — mark for pulse effect
-    const changedIcaos = new Set(uniqueIcaos.filter((icao) => oldTafMap[icao] !== newTafMap[icao]));
-    if (changedIcaos.size > 0) {
-      setChangedFlightIds(new Set(flights.filter((f) => changedIcaos.has(f.toIcao)).map((f) => f.id)));
+    // Detect which flights have a changed TAF ANALYSIS result (category / ceiling / phenomena / wind)
+    // We compare the serialised TafWindowResult per flight — raw TAF rewording with same analysis won't trigger
+    const changedIds = new Set<number>();
+    for (const f of flights) {
+      if (f.etaHour === null) continue;
+      const oldTaf = oldTafMap[f.toIcao] ?? null;
+      const newTaf = newTafMap[f.toIcao] ?? null;
+      if (!oldTaf && !newTaf) continue;
+      const oldResult = oldTaf ? analyzeTafWindow(oldTaf, f.etaHour) : null;
+      const newResult = newTaf ? analyzeTafWindow(newTaf, f.etaHour) : null;
+      if (JSON.stringify(oldResult) !== JSON.stringify(newResult)) changedIds.add(f.id);
     }
+    if (changedIds.size > 0) setChangedFlightIds(changedIds);
   };
+
+  // Auto-clear changed highlights after the flash animation completes (4 s)
+  useEffect(() => {
+    if (changedFlightIds.size === 0) return;
+    const t = setTimeout(() => setChangedFlightIds(new Set()), 4200);
+    return () => clearTimeout(t);
+  }, [changedFlightIds]);
 
   // Keep a ref so the interval always calls the latest refreshTaf closure
   const refreshTafRef = useRef(refreshTaf);
@@ -883,9 +898,7 @@ export default function Airports() {
                       return (
                         <tr
                           key={f.id}
-                          onClick={isChanged ? () => setChangedFlightIds((prev) => { const next = new Set(prev); next.delete(f.id); return next; }) : undefined}
-                          className={`border-b border-border/60 last:border-b-0 hover:bg-muted/20 transition-colors ${rowBg} ${isChanged ? "outline outline-1 outline-amber-400/60 animate-pulse cursor-pointer" : ""}`}
-                          title={isChanged ? "TAF changed — click to dismiss" : undefined}>
+                          className={`border-b border-border/60 last:border-b-0 hover:bg-muted/20 transition-colors ${rowBg} ${isChanged ? "taf-row-changed" : ""}`}>
                           <td className="px-3 py-2.5 font-bold text-foreground whitespace-nowrap">{f.flight || "—"}</td>
                           <td className="px-3 py-2.5 text-muted-foreground">{f.reg || "—"}</td>
                           <td className="px-3 py-2.5">
