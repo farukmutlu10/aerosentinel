@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import {
   useListAlerts, getListAlertsQueryKey,
-  useAcknowledgeAlert, getGetAlertsSummaryQueryKey, getGetRecentAlertsQueryKey,
+  getGetAlertsSummaryQueryKey, getGetRecentAlertsQueryKey,
   useGetAlertsSummary,
 } from "@workspace/api-client-react";
 import { NavHeader } from "@/components/NavHeader";
@@ -109,11 +109,19 @@ export default function Alerts() {
   const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-alerts-route", DEFAULT_ROUTE);
   const [sortMode, setSortMode] = usePersistedState<SortMode>("as-alerts-sort", DEFAULT_SORT);
   const [hideAcknowledged, setHideAcknowledged] = usePersistedState<boolean>("as-alerts-hide-ack", DEFAULT_HIDE_ACK);
+  // Per-user ACK: stored in localStorage, never synced to DB
+  const [localAcked, setLocalAcked] = usePersistedState<number[]>("as-acked-ids-v2", []);
   const [ackingAll, setAckingAll] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(20);
 
   const activeTypesSet = new Set<string>(activeTypesArr);
+  const localAckedSet = useMemo(() => new Set(localAcked), [localAcked]);
+  const isAcked = (a: { id: number; acknowledged: boolean }) => a.acknowledged || localAckedSet.has(a.id);
+
+  const handleAck = (id: number) => {
+    setLocalAcked((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  };
 
   const toggleType = (t: AlertType) =>
     setActiveTypesArr((p) => p.includes(t) ? p.filter((x) => x !== t) : [...p, t]);
@@ -158,7 +166,7 @@ export default function Alerts() {
     let list = allAlerts ?? [];
     // Type filter — inclusion: keep alerts whose type is active
     list = list.filter((a) => activeTypesSet.has(a.type));
-    if (hideAcknowledged) list = list.filter((a) => !a.acknowledged);
+    if (hideAcknowledged) list = list.filter((a) => !isAcked(a));
     list = list.filter((a) => isWatching(a.icao));
     if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
     else if (routeFilter === "INT") list = list.filter((a) => !a.icao.startsWith("LT"));
@@ -169,29 +177,14 @@ export default function Alerts() {
     return sorted;
   }, [allAlerts, activeTypesArr, hideAcknowledged, isWatching, routeFilter, sortMode]);
 
-  const { mutate: acknowledge, isPending } = useAcknowledgeAlert({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetAlertsSummaryQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetRecentAlertsQueryKey() });
-      },
-    },
-  });
-
-  const handleAckAll = async () => {
+  const handleAckAll = () => {
     setAckingAll(true);
-    try {
-      await fetch("/api/alerts/acknowledge-all", { method: "PATCH" });
-      queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getGetAlertsSummaryQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getGetRecentAlertsQueryKey() });
-    } finally {
-      setAckingAll(false);
-    }
+    const ids = alerts.filter((a) => !isAcked(a)).map((a) => a.id);
+    setLocalAcked((prev) => [...new Set([...prev, ...ids])]);
+    setAckingAll(false);
   };
 
-  const unackedCount = alerts.filter((a) => !a.acknowledged).length;
+  const unackedCount = alerts.filter((a) => !isAcked(a)).length;
   const dash = summaryLoading ? "—" : undefined;
 
   return (
@@ -210,10 +203,10 @@ export default function Alerts() {
           />
           <StatCard
             label="Unacknowledged"
-            value={dash ?? String(summary?.unacknowledged ?? 0)}
-            accent={!summaryLoading && (summary?.unacknowledged ?? 0) > 0 ? "#ef4444" : "#64748b"}
+            value={dash ?? String(allAlerts ? allAlerts.filter((a) => isWatching(a.icao) && !isAcked(a)).length : (summary?.unacknowledged ?? 0))}
+            accent={unackedCount > 0 ? "#ef4444" : "#64748b"}
             icon={<IconAlert />}
-            pulse={!summaryLoading && (summary?.unacknowledged ?? 0) > 0}
+            pulse={unackedCount > 0}
           />
           <StatCard
             label="TAF Revisions"
@@ -336,7 +329,7 @@ export default function Alerts() {
           <div className="space-y-2">
             {alerts.slice(0, displayLimit).map((alert) => (
               <div key={alert.id}
-                className={`border rounded-lg px-4 py-4 transition-opacity ${alert.acknowledged ? "opacity-65 dark:opacity-40" : ""} ${
+                className={`border rounded-lg px-4 py-4 transition-opacity ${isAcked(alert) ? "opacity-65 dark:opacity-40" : ""} ${
                   alert.type === "SPECI" ? "alert-speci" : alert.type === "TAF_AMD" ? "alert-taf-amd" : "alert-taf-cor"
                 }`}>
 
@@ -349,14 +342,14 @@ export default function Alerts() {
                         <span className="text-[10px] font-mono text-muted-foreground border border-border px-1 py-0.5 rounded">{alert.icao.startsWith("LT") ? "DOM" : "INT"}</span>
                         <span className="text-xs text-muted-foreground font-mono">{format(new Date(alert.detectedAt), "dd MMM HH:mm")} UTC</span>
                         <span className="text-xs text-muted-foreground font-mono">({formatDistanceToNow(new Date(alert.detectedAt), { addSuffix: true })})</span>
-                        {alert.acknowledged && <span className="text-xs bg-muted text-muted-foreground font-mono px-2 py-0.5 rounded">ACK</span>}
+                        {isAcked(alert) && <span className="text-xs bg-muted text-muted-foreground font-mono px-2 py-0.5 rounded">ACK</span>}
                       </div>
                       <TafText raw={alert.rawText} />
                     </div>
                   </div>
-                  {!alert.acknowledged && (
-                    <button onClick={() => acknowledge({ id: alert.id })} disabled={isPending}
-                      className="flex-shrink-0 self-center ml-4 px-5 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/8 text-emerald-400 text-xs font-mono font-bold tracking-[0.2em] hover:bg-emerald-500/18 hover:border-emerald-400/70 hover:text-emerald-300 transition-all disabled:opacity-50">
+                  {!isAcked(alert) && (
+                    <button onClick={() => handleAck(alert.id)}
+                      className="flex-shrink-0 self-center ml-4 px-5 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/8 text-emerald-400 text-xs font-mono font-bold tracking-[0.2em] hover:bg-emerald-500/18 hover:border-emerald-400/70 hover:text-emerald-300 transition-all">
                       ACK
                     </button>
                   )}

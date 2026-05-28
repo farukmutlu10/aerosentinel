@@ -478,6 +478,20 @@ export default function Airports() {
     } catch {}
   }, []);
 
+  // Column filters — declared before save useEffect to avoid temporal dead zone
+  const [filterFlight, setFilterFlight] = useState<Set<string>>(new Set());
+  const [filterReg, setFilterReg] = useState<Set<string>>(new Set());
+  const [filterFrom, setFilterFrom] = useState<Set<string>>(new Set());
+  const [filterTo, setFilterTo] = useState<Set<string>>(new Set());
+  const [flightSearch, setFlightSearch] = useState("");
+  const [regSearch, setRegSearch] = useState("");
+  const [fromSearch, setFromSearch] = useState("");
+  const [toSearch, setToSearch] = useState("");
+  const [etdFrom, setEtdFrom] = useState("");
+  const [etdTo, setEtdTo] = useState("");
+  const [hideClear, setHideClear] = useState(false);
+  const [changedFlightIds, setChangedFlightIds] = useState<Set<number>>(new Set());
+
   useEffect(() => {
     if (flights.length === 0) { localStorage.removeItem(ANALYZE_KEY); return; }
     try {
@@ -492,24 +506,6 @@ export default function Airports() {
 
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Column filters — checkbox sets
-  const [filterFlight, setFilterFlight] = useState<Set<string>>(new Set());
-  const [filterReg, setFilterReg] = useState<Set<string>>(new Set());
-  const [filterFrom, setFilterFrom] = useState<Set<string>>(new Set());
-  const [filterTo, setFilterTo] = useState<Set<string>>(new Set());
-  // Column filter search texts (live-filter as user types)
-  const [flightSearch, setFlightSearch] = useState("");
-  const [regSearch, setRegSearch] = useState("");
-  const [fromSearch, setFromSearch] = useState("");
-  const [toSearch, setToSearch] = useState("");
-  // ETD time range filter (HHMM strings, e.g. "1345")
-  const [etdFrom, setEtdFrom] = useState("");
-  const [etdTo, setEtdTo] = useState("");
-  // Hide CLEAR rows toggle
-  const [hideClear, setHideClear] = useState(false);
-  // Tracks flight IDs whose TAF result changed on the last refresh (for pulse effect)
-  const [changedFlightIds, setChangedFlightIds] = useState<Set<number>>(new Set());
 
   // Unique column values for dropdown filters
   const allFlightNums = useMemo(() =>
@@ -626,6 +622,18 @@ export default function Airports() {
       setChangedFlightIds(new Set(flights.filter((f) => changedIcaos.has(f.toIcao)).map((f) => f.id)));
     }
   };
+
+  // Keep a ref so the interval always calls the latest refreshTaf closure
+  const refreshTafRef = useRef(refreshTaf);
+  useEffect(() => { refreshTafRef.current = refreshTaf; });
+
+  // Auto-refresh every 60 s — same cadence as the monitor scan
+  // Watchlist airports are served from the monitor's in-memory cache (no external request)
+  useEffect(() => {
+    if (flights.length === 0) return;
+    const id = setInterval(() => { void refreshTafRef.current(); }, 60_000);
+    return () => clearInterval(id);
+  }, [flights.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const analysisResults: (TafWindowResult | null | undefined)[] = filteredFlights.map((f) => {
     if (!analysis.done) return undefined;
