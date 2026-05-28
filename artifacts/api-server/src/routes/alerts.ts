@@ -183,11 +183,19 @@ router.get("/alerts/recent", async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+function invalidateAckCaches() {
+  cache.delete("summary");
+  for (const key of [...cache.keys()]) {
+    if (key.startsWith("recent:")) cache.delete(key);
+  }
+}
+
 router.patch("/alerts/acknowledge-all", async (_req, res) => {
   await db
     .update(alertsTable)
     .set({ acknowledged: true, acknowledgedAt: new Date() })
     .where(eq(alertsTable.acknowledged, false));
+  invalidateAckCaches();
   return res.json({ ok: true });
 });
 
@@ -202,6 +210,7 @@ router.patch("/alerts/:id/acknowledge", async (req, res) => {
     .returning();
 
   if (!updated) return res.status(404).json({ error: "Alert not found" });
+  invalidateAckCaches();
   return res.json(updated);
 });
 

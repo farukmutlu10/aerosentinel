@@ -8,6 +8,10 @@ const sonGorulenTs:    Record<string, number> = {}; // last-scanned timestamp pe
 
 const WEATHER_CACHE_MAX_AGE = 90_000; // 90 s — monitor scans every 60 s
 
+// Separate display cache for /watchlist/weather — NEVER touches change-detection state
+const displayCache: Record<string, { rawTaf: string | null; rawMetar: string | null; ts: number }> = {};
+const DISPLAY_CACHE_MAX_AGE = 60_000; // 60 s
+
 let scanCount = 0;
 let scanCountToday = 0;
 let lastResetDateStr = getUtcDateStr();
@@ -168,6 +172,12 @@ export async function fetchWeatherForIcao(
     };
   }
 
+  // Check display cache before hitting the live API
+  const dcEntry = displayCache[icao];
+  if (dcEntry && Date.now() - dcEntry.ts < DISPLAY_CACHE_MAX_AGE) {
+    return { rawTaf: dcEntry.rawTaf, rawMetar: dcEntry.rawMetar };
+  }
+
   // Cache is stale or this airport hasn't been scanned yet — fetch live from API
   try {
     const [tafData, metarData] = await Promise.all([
@@ -177,10 +187,8 @@ export async function fetchWeatherForIcao(
     const rawTaf   = (tafData   as Array<{ rawTAF?: string }>)[0]?.rawTAF ?? null;
     const rawMetar = (metarData as Array<{ rawOb?:  string }>)[0]?.rawOb  ?? null;
 
-    // Update in-memory cache so the monitor's change-detection stays in sync
-    if (rawTaf   !== null) sonGorulenTaf[icao]   = rawTaf;
-    if (rawMetar !== null) sonGorulenMetar[icao] = rawMetar;
-    sonGorulenTs[icao] = Date.now();
+    // Store in display cache ONLY — NEVER touch monitor's change-detection state
+    displayCache[icao] = { rawTaf, rawMetar, ts: Date.now() };
 
     return { rawTaf, rawMetar };
   } catch {
