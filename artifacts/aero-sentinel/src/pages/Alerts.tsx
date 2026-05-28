@@ -3,8 +3,8 @@ import { Link } from "wouter";
 import {
   useListAlerts, getListAlertsQueryKey,
   getGetAlertsSummaryQueryKey, getGetRecentAlertsQueryKey,
-  useGetAlertsSummary,
 } from "@workspace/api-client-react";
+import { useLocalAck } from "@/App";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { ClockCard } from "@/components/ClockDisplay";
@@ -109,8 +109,8 @@ export default function Alerts() {
   const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-alerts-route", DEFAULT_ROUTE);
   const [sortMode, setSortMode] = usePersistedState<SortMode>("as-alerts-sort", DEFAULT_SORT);
   const [hideAcknowledged, setHideAcknowledged] = usePersistedState<boolean>("as-alerts-hide-ack", DEFAULT_HIDE_ACK);
-  // Per-user ACK: stored in localStorage, never synced to DB
-  const [localAcked, setLocalAcked] = usePersistedState<number[]>("as-acked-ids-v2", []);
+  // Per-user ACK: shared via LocalAckContext (persisted in localStorage)
+  const { localAcked, setLocalAcked } = useLocalAck();
   const [ackingAll, setAckingAll] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(20);
@@ -141,13 +141,9 @@ export default function Alerts() {
   const { isWatching } = useWatchlist();
   const { theme, toggleTheme } = useThemeContext();
 
-  const { data: summary, isLoading: summaryLoading } = useGetAlertsSummary({
-    query: { refetchInterval: 60_000 },
-  });
-
   const { data: allAlerts, isLoading } = useListAlerts(
     { limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 60_000 } }
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 180_000 } }
   );
 
   const handleRefresh = async () => {
@@ -185,7 +181,10 @@ export default function Alerts() {
   };
 
   const unackedCount = alerts.filter((a) => !isAcked(a)).length;
-  const dash = summaryLoading ? "—" : undefined;
+  const dash = isLoading ? "—" : undefined;
+  const totalAlerts    = allAlerts?.length ?? 0;
+  const tafRevisions   = allAlerts?.filter((a) => a.type === "TAF_AMD" || a.type === "TAF_COR").length ?? 0;
+  const speciAlerts    = allAlerts?.filter((a) => a.type === "SPECI").length ?? 0;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -197,26 +196,26 @@ export default function Alerts() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <StatCard
             label="Total Alerts"
-            value={dash ?? String(summary?.totalAlerts ?? 0)}
+            value={dash ?? String(totalAlerts)}
             accent="#64748b"
             icon={<IconList />}
           />
           <StatCard
             label="Unacknowledged"
-            value={dash ?? String(allAlerts ? allAlerts.filter((a) => isWatching(a.icao) && !isAcked(a)).length : (summary?.unacknowledged ?? 0))}
+            value={dash ?? String(allAlerts ? allAlerts.filter((a) => isWatching(a.icao) && !isAcked(a)).length : 0)}
             accent={unackedCount > 0 ? "#ef4444" : "#64748b"}
             icon={<IconAlert />}
             pulse={unackedCount > 0}
           />
           <StatCard
             label="TAF Revisions"
-            value={dash ?? String(summary?.tafRevisions ?? 0)}
+            value={dash ?? String(tafRevisions)}
             accent="#f59e0b"
             icon={<IconTaf />}
           />
           <StatCard
             label="SPECI Alerts"
-            value={dash ?? String(summary?.speciAlerts ?? 0)}
+            value={dash ?? String(speciAlerts)}
             accent="#ef4444"
             icon={<IconSpeci />}
           />

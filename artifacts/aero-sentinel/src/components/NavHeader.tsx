@@ -1,5 +1,8 @@
 import { Link, useLocation } from "wouter";
-import { useGetAlertsSummary } from "@workspace/api-client-react";
+import { useMemo } from "react";
+import { useListAlerts, getListAlertsQueryKey } from "@workspace/api-client-react";
+import { useWatchlist } from "@/context/WatchlistContext";
+import { useLocalAck } from "@/App";
 
 interface Props {
   monitorStatus?: { running: boolean };
@@ -30,11 +33,21 @@ const NAV_ITEMS = [
 
 export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
   const [location] = useLocation();
+  const { isWatching } = useWatchlist();
+  const { localAcked } = useLocalAck();
 
-  const { data: summary } = useGetAlertsSummary({
-    query: { refetchInterval: 60_000, refetchIntervalInBackground: true },
-  });
-  const unacknowledgedCount = summary?.unacknowledged ?? 0;
+  const localAckedSet = useMemo(() => new Set(localAcked), [localAcked]);
+
+  // Same query key as Alerts.tsx — TanStack Query deduplicates, no extra network call
+  const { data: allAlerts } = useListAlerts(
+    { limit: 100 },
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 180_000, refetchIntervalInBackground: true } }
+  );
+
+  // Compute real unacked count using local ACK state + watchlist filter
+  const unacknowledgedCount = allAlerts
+    ? allAlerts.filter((a) => isWatching(a.icao) && !a.acknowledged && !localAckedSet.has(a.id)).length
+    : 0;
 
   const isActive = (href: string) =>
     href === "/" ? location === "/" : location.startsWith(href);
