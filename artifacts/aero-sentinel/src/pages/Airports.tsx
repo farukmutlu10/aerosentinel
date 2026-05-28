@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo, type KeyboardEvent, type DragEvent } from "react";
+import { useRef, useState, useEffect, useMemo, type CSSProperties, type KeyboardEvent, type DragEvent } from "react";
 import { Link } from "wouter";
 import * as XLSX from "xlsx";
 import { NavHeader } from "@/components/NavHeader";
@@ -220,10 +220,15 @@ function CatBadge({ cat }: { cat: FlightCategory | null }) {
 }
 
 function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }) {
-  if (result === undefined) return <span className="text-muted-foreground text-xs font-mono">—</span>;
-  if (result === null) return <span className="text-[10px] font-mono text-muted-foreground/60">NO TAF</span>;
+  if (result === undefined) return <span className="text-muted-foreground/40 text-[10px] font-mono">—</span>;
+  if (result === null) return (
+    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border"
+      style={{ color: "#f59e0b", borderColor: "#f59e0b30", backgroundColor: "#f59e0b0a" }}>
+      NO TAF
+    </span>
+  );
 
-  const { visibility, ceiling, rawCeil, critCodes, orangeCodes, critWind, orangeWind } = result;
+  const { visibility, ceiling, rawCeil, critCodes, orangeCodes, critWind, orangeWind, category } = result;
 
   const isLifrVis  = visibility !== null && visibility < 1600;
   const isIfrVis   = visibility !== null && visibility >= 1600 && visibility < 4800;
@@ -236,15 +241,28 @@ function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }
   const hasSignificant = critCodes.length > 0 || orangeCodes.length > 0 || !!critWind || !!orangeWind || showVis || showCeil;
 
   if (!hasSignificant) {
-    return <span className="text-[10px] font-mono font-bold" style={{ color: "#22c55e" }}>CLEAR</span>;
+    return (
+      <span className="text-[10px] font-mono font-bold flex items-center gap-1">
+        <span style={{ color: "#22c55e" }}>✓ CLEAR</span>
+      </span>
+    );
   }
 
+  const catColor = category ? CATEGORY_COLOR[category] : undefined;
+  const showCatChip = category && category !== FlightCategory.VFR && catColor;
+
   return (
-    <div className="flex flex-wrap items-center gap-1 min-w-[80px]">
+    <div className="flex flex-wrap items-center gap-1">
+      {showCatChip && (
+        <span className="text-[9px] font-mono font-bold px-1 py-0.5 rounded border flex-shrink-0"
+          style={{ color: catColor, borderColor: `${catColor}55`, backgroundColor: `${catColor}18` }}>
+          {category}
+        </span>
+      )}
       {showVis && (
         <span className="text-[11px] font-mono font-bold"
           style={{ color: isLifrVis ? "#a855f7" : "#ef4444" }}>
-          {String(visibility!).padStart(4, "0")}
+          {String(visibility!).padStart(4, "0")}m
         </span>
       )}
       {showCeil && (
@@ -280,6 +298,38 @@ function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }
         </span>
       )}
     </div>
+  );
+}
+
+// ── TAF Analysis column quick-filter ─────────────────────────────────────────
+export type AnalysisFilter = "ALL" | "PROBLEM" | "CLEAR";
+
+function TafAnalysisFilter({ value, onChange }: { value: AnalysisFilter; onChange: (v: AnalysisFilter) => void }) {
+  const pills: { v: AnalysisFilter; label: string; title: string }[] = [
+    { v: "ALL",     label: "ALL", title: "Show all rows" },
+    { v: "PROBLEM", label: "⚠",  title: "Show only rows with weather issues" },
+    { v: "CLEAR",   label: "✓",  title: "Show only CLEAR rows" },
+  ];
+  const activeStyle = (v: AnalysisFilter): CSSProperties => {
+    if (v === "PROBLEM") return { color: "#ef4444", borderColor: "#ef444460", backgroundColor: "#ef444415" };
+    if (v === "CLEAR")   return { color: "#22c55e", borderColor: "#22c55e60", backgroundColor: "#22c55e15" };
+    return { color: "#94a3b8", borderColor: "#94a3b840", backgroundColor: "#94a3b810" };
+  };
+  return (
+    <span className="inline-flex items-center gap-0.5 ml-1.5">
+      {pills.map((p) => (
+        <button
+          key={p.v}
+          onClick={(e) => { e.stopPropagation(); onChange(p.v); }}
+          title={p.title}
+          style={value === p.v
+            ? activeStyle(p.v)
+            : { color: "#475569", borderColor: "transparent", backgroundColor: "transparent" }}
+          className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border transition-all">
+          {p.label}
+        </button>
+      ))}
+    </span>
   );
 }
 
@@ -491,6 +541,7 @@ export default function Airports() {
   const [etdTo, setEtdTo] = useState("");
   const [hideClear, setHideClear] = useState(false);
   const [changedFlightIds, setChangedFlightIds] = useState<Set<number>>(new Set());
+  const [filterAnalysis, setFilterAnalysis] = useState<AnalysisFilter>("ALL");
 
   useEffect(() => {
     if (flights.length === 0) { localStorage.removeItem(ANALYZE_KEY); return; }
@@ -607,6 +658,7 @@ export default function Airports() {
     setFilterTo(new Set());    setToSearch("");
     setEtdFrom(""); setEtdTo("");
     setChangedFlightIds(new Set());
+    setFilterAnalysis("ALL");
   };
 
   const refreshTaf = async () => {
@@ -662,11 +714,16 @@ export default function Airports() {
     return r.critCodes.length === 0 && r.orangeCodes.length === 0 && !r.critWind && !r.orangeWind && !isLifrVis && !isIfrVis && !showCeil;
   }
 
-  // Pairs of (flight, result) — optionally filtered by hideClear
+  // Pairs of (flight, result) — optionally filtered by hideClear + filterAnalysis
   const displayPairs: Array<{ f: FlightRow; result: TafWindowResult | null | undefined }> = (() => {
     const pairs = filteredFlights.map((f, i) => ({ f, result: analysisResults[i] }));
-    if (!hideClear || !analysis.done) return pairs;
-    return pairs.filter(({ result }) => !isClearResult(result));
+    let out = pairs;
+    if (hideClear && analysis.done) out = out.filter(({ result }) => !isClearResult(result));
+    if (filterAnalysis === "PROBLEM" && analysis.done)
+      out = out.filter(({ result }) => result !== undefined && result !== null && !isClearResult(result));
+    if (filterAnalysis === "CLEAR" && analysis.done)
+      out = out.filter(({ result }) => isClearResult(result));
+    return out;
   })();
 
   const clearCount = analysis.done
@@ -675,7 +732,7 @@ export default function Airports() {
 
   const hasActiveFilter = filterFlight.size > 0 || filterReg.size > 0 || filterFrom.size > 0 || filterTo.size > 0
     || flightSearch.trim() !== "" || regSearch.trim() !== "" || fromSearch.trim() !== "" || toSearch.trim() !== ""
-    || etdFrom.trim() !== "" || etdTo.trim() !== "";
+    || etdFrom.trim() !== "" || etdTo.trim() !== "" || filterAnalysis !== "ALL";
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -815,6 +872,7 @@ export default function Airports() {
                       setFilterFrom(new Set());  setFromSearch("");
                       setFilterTo(new Set());    setToSearch("");
                       setEtdFrom(""); setEtdTo("");
+                      setFilterAnalysis("ALL");
                     }}
                     title="Clear all active filters"
                     className="flex items-center gap-1 px-2.5 py-1 rounded border border-rose-500/40 bg-rose-500/8 text-rose-400 text-[11px] font-mono font-bold tracking-wide hover:bg-rose-500/18 hover:border-rose-400/60 transition-all">
@@ -825,8 +883,20 @@ export default function Airports() {
                   </button>
                 )}
 
-                {/* Refresh + Hide CLEAR — pinned to right */}
+                {/* Refresh + Dismiss All + Hide CLEAR — pinned to right */}
                 <div className="ml-auto flex items-center gap-1.5">
+                  {/* Dismiss all pulse highlights */}
+                  {changedFlightIds.size > 0 && (
+                    <button
+                      onClick={() => setChangedFlightIds(new Set())}
+                      title="Dismiss all changed row highlights"
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border transition-all border-amber-500/40 bg-amber-500/8 text-amber-400 hover:bg-amber-500/18 hover:border-amber-400/70">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <path d="M18 6L6 18M6 6l12 12"/>
+                      </svg>
+                      DISMISS ({changedFlightIds.size})
+                    </button>
+                  )}
                   {/* Refresh TAF */}
                   <button
                     onClick={refreshTaf}
@@ -895,7 +965,12 @@ export default function Airports() {
                       </th>
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider">ETD</th>
                       <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider whitespace-nowrap">ETA <span className="text-muted-foreground/50 text-[9px] font-normal">+1/-1</span></th>
-                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider min-w-[160px]">TAF ANALYSIS</th>
+                      <th className="text-left px-3 py-2.5 text-muted-foreground tracking-wider min-w-[160px]">
+                        <span className="flex items-center">
+                          TAF ANALYSIS
+                          <TafAnalysisFilter value={filterAnalysis} onChange={setFilterAnalysis} />
+                        </span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
