@@ -2,8 +2,11 @@ import { db, alertsTable, watchlistTable } from "@workspace/db";
 
 let cachedIcaos: string[] = [];
 
-const sonGorulenTaf: Record<string, string> = {};
+const sonGorulenTaf:   Record<string, string> = {};
 const sonGorulenMetar: Record<string, string> = {};
+const sonGorulenTs:    Record<string, number> = {}; // last-scanned timestamp per ICAO
+
+const WEATHER_CACHE_MAX_AGE = 90_000; // 90 s — monitor scans every 60 s
 
 let scanCount = 0;
 let scanCountToday = 0;
@@ -16,7 +19,7 @@ const HEADERS = { "User-Agent": "Mozilla/5.0 AERO-SENTINEL/1.8" };
 const BASE_URL = "https://aviationweather.gov/api/data";
 
 function getUtcDateStr(): string {
-  return new Date().toISOString().slice(0, 10); // "2024-05-23"
+  return new Date().toISOString().slice(0, 10);
 }
 
 function checkDailyReset() {
@@ -57,10 +60,12 @@ async function seedIfEmpty() {
 async function scanTaf(ids: string) {
   if (!ids) return;
   const data = await fetchJson(`${BASE_URL}/taf?ids=${ids}&format=json`);
+  const now = Date.now();
   for (const entry of data as Array<{ icaoId?: string; rawTAF?: string }>) {
     const icao = entry.icaoId;
     const rawTaf = entry.rawTAF ?? "";
     if (!icao) continue;
+    sonGorulenTs[icao] = now; // mark as freshly scanned
     if (sonGorulenTaf[icao] !== rawTaf) {
       sonGorulenTaf[icao] = rawTaf;
       if (rawTaf.includes("AMD") || rawTaf.includes("COR")) {
@@ -74,10 +79,12 @@ async function scanTaf(ids: string) {
 async function scanMetar(ids: string) {
   if (!ids) return;
   const data = await fetchJson(`${BASE_URL}/metar?ids=${ids}&format=json`);
+  const now = Date.now();
   for (const entry of data as Array<{ icaoId?: string; rawOb?: string }>) {
     const icao = entry.icaoId;
     const rawMetar = entry.rawOb ?? "";
     if (!icao) continue;
+    sonGorulenTs[icao] = now; // mark as freshly scanned
     if (sonGorulenMetar[icao] !== rawMetar) {
       sonGorulenMetar[icao] = rawMetar;
       if (rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ")) {
@@ -143,23 +150,38 @@ export function getAllWeather(): Array<{ icao: string; rawMetar: string | null; 
   return cachedIcaos.map((icao) => ({
     icao,
     rawMetar: sonGorulenMetar[icao] ?? null,
-    rawTaf: sonGorulenTaf[icao] ?? null,
+    rawTaf:   sonGorulenTaf[icao]   ?? null,
   }));
 }
 
-export async function fetchWeatherForIcao(icao: string): Promise<{ rawTaf: string | null; rawMetar: string | null }> {
-  const cachedTaf = sonGorulenTaf[icao];
-  const cachedMetar = sonGorulenMetar[icao];
-  if (cachedTaf !== undefined || cachedMetar !== undefined) {
-    return { rawTaf: cachedTaf ?? null, rawMetar: cachedMetar ?? null };
+export async function fetchWeatherForIcao(
+  icao: string,
+): Promise<{ rawTaf: string | null; rawMetar: string | null }> {
+  const ts      = sonGorulenTs[icao] ?? 0;
+  const isFresh = Date.now() - ts < WEATHER_CACHE_MAX_AGE;
+
+  // Return in-memory cache only when it was populated by a recent monitor scan
+  if (isFresh && (sonGorulenTaf[icao] !== undefined || sonGorulenMetar[icao] !== undefined)) {
+    return {
+      rawTaf:   sonGorulenTaf[icao]   ?? null,
+      rawMetar: sonGorulenMetar[icao] ?? null,
+    };
   }
+
+  // Cache is stale or this airport hasn't been scanned yet — fetch live from API
   try {
     const [tafData, metarData] = await Promise.all([
       fetchJson(`${BASE_URL}/taf?ids=${icao}&format=json`),
       fetchJson(`${BASE_URL}/metar?ids=${icao}&format=json`),
     ]);
-    const rawTaf = (tafData as Array<{ rawTAF?: string }>)[0]?.rawTAF ?? null;
-    const rawMetar = (metarData as Array<{ rawOb?: string }>)[0]?.rawOb ?? null;
+    const rawTaf   = (tafData   as Array<{ rawTAF?: string }>)[0]?.rawTAF ?? null;
+    const rawMetar = (metarData as Array<{ rawOb?:  string }>)[0]?.rawOb  ?? null;
+
+    // Update in-memory cache so the monitor's change-detection stays in sync
+    if (rawTaf   !== null) sonGorulenTaf[icao]   = rawTaf;
+    if (rawMetar !== null) sonGorulenMetar[icao] = rawMetar;
+    sonGorulenTs[icao] = Date.now();
+
     return { rawTaf, rawMetar };
   } catch {
     return { rawTaf: null, rawMetar: null };

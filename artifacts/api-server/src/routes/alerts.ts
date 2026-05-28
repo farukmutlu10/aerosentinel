@@ -1,19 +1,31 @@
 import { Router } from "express";
 import { db, alertsTable, watchlistTable } from "@workspace/db";
-import { eq, and, desc, sql, count, gte, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, gte, inArray } from "drizzle-orm";
 import {
   ListAlertsQueryParams,
   AcknowledgeAlertParams,
 } from "@workspace/api-zod";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
-// ── In-memory caches ─────────────────────────────────────────────────────────
-let summaryCache: { data: object; ts: number } | null = null;
-const SUMMARY_CACHE_TTL = 60_000;
+// ── Global Map cache (survives module re-evaluation in hot-reload) ────────────
+type CacheEntry = { data: object | object[]; ts: number };
 
-let recentCache: { data: object[]; ts: number } | null = null;
-const RECENT_CACHE_TTL = 60_000;
+declare global {
+  // eslint-disable-next-line no-var
+  var __alertsCache: Map<string, CacheEntry> | undefined;
+}
+
+globalThis.__alertsCache ??= new Map<string, CacheEntry>();
+const cache = globalThis.__alertsCache;
+
+const SUMMARY_CACHE_TTL = 60_000;
+const RECENT_CACHE_TTL  = 60_000;
+
+function cacheAge(ts: number): string {
+  return `${Math.round((Date.now() - ts) / 1000)}s`;
+}
 
 function startOfTodayUtc(): Date {
   const d = new Date();
@@ -21,12 +33,14 @@ function startOfTodayUtc(): Date {
   return d;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+
 router.get("/alerts", async (req, res) => {
   const raw = req.query;
   const coerced = {
     ...raw,
     acknowledged:
-      raw.acknowledged === "true" ? true :
+      raw.acknowledged === "true"  ? true  :
       raw.acknowledged === "false" ? false :
       undefined,
     limit: raw.limit ? Number(raw.limit) : undefined,
@@ -38,8 +52,8 @@ router.get("/alerts", async (req, res) => {
 
   const { type, icao, acknowledged, limit = 50 } = parsed.data;
   const conditions = [];
-  if (type) conditions.push(eq(alertsTable.type, type));
-  if (icao) conditions.push(eq(alertsTable.icao, icao));
+  if (type)                       conditions.push(eq(alertsTable.type, type));
+  if (icao)                       conditions.push(eq(alertsTable.icao, icao));
   if (acknowledged !== undefined) conditions.push(eq(alertsTable.acknowledged, acknowledged));
 
   const alerts = await db
@@ -52,24 +66,38 @@ router.get("/alerts", async (req, res) => {
   return res.json(alerts);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+
 router.get("/alerts/summary", async (req, res) => {
   const forceRefresh = req.query.refresh === "1";
-  const now = Date.now();
+  const now          = Date.now();
+  const entry        = cache.get("summary");
 
-  // Serve from cache unless forced refresh or cache expired
-  if (!forceRefresh && summaryCache && now - summaryCache.ts < SUMMARY_CACHE_TTL) {
-    return res.json(summaryCache.data);
+  if (!forceRefresh && entry && now - entry.ts < SUMMARY_CACHE_TTL) {
+    logger.info(
+      { endpoint: "/alerts/summary", cache: "HIT", age: cacheAge(entry.ts) },
+      "[cache] HIT",
+    );
+    return res.json(entry.data);
   }
+
+  logger.info(
+    {
+      endpoint: "/alerts/summary",
+      cache: "MISS",
+      reason: forceRefresh ? "force-refresh" : !entry ? "empty" : "expired",
+    },
+    "[cache] MISS → DB",
+  );
 
   const today = startOfTodayUtc();
 
-  // Query 1: watchlist (tiny table)
-  const watchlistRows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
+  const watchlistRows  = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
   const watchlistIcaos = watchlistRows.map((r) => r.icao);
 
   if (watchlistIcaos.length === 0) {
     const empty = { totalAlerts: 0, unacknowledged: 0, tafRevisions: 0, speciAlerts: 0, airportsAffected: 0, lastScan: null };
-    summaryCache = { data: empty, ts: now };
+    cache.set("summary", { data: empty, ts: now });
     return res.json(empty);
   }
 
@@ -78,7 +106,6 @@ router.get("/alerts/summary", async (req, res) => {
     inArray(alertsTable.icao, watchlistIcaos),
   ];
 
-  // Query 2: single aggregation replacing 5 separate COUNT queries
   const [agg] = await db.select({
     total:            sql<number>`COUNT(*)::int`,
     unacknowledged:   sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.acknowledged} = false)::int`,
@@ -87,7 +114,6 @@ router.get("/alerts/summary", async (req, res) => {
     airportsAffected: sql<number>`COUNT(DISTINCT ${alertsTable.icao})::int`,
   }).from(alertsTable).where(and(...baseConditions));
 
-  // Query 3: last scan time from all alerts
   const [lastScanRow] = await db.select({ detectedAt: alertsTable.detectedAt })
     .from(alertsTable).orderBy(desc(alertsTable.detectedAt)).limit(1);
 
@@ -100,21 +126,45 @@ router.get("/alerts/summary", async (req, res) => {
     lastScan:         lastScanRow?.detectedAt ?? null,
   };
 
-  summaryCache = { data: result, ts: now };
+  cache.set("summary", { data: result, ts: now });
   return res.json(result);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+
 router.get("/alerts/recent", async (req, res) => {
   const forceRefresh = req.query.refresh === "1";
-  const page  = Math.max(1, parseInt(String(req.query.page  ?? "1"), 10)  || 1);
+  const page  = Math.max(1, parseInt(String(req.query.page  ?? "1"),  10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "10"), 10) || 10));
   const now   = Date.now();
 
-  // Page 1 with default limit=10 is served from cache (covers notification hook usage)
+  // Cache applies only for the default page=1&limit=10 request (notification hook)
   const canUseCache = !forceRefresh && page === 1 && limit === 10;
-  if (canUseCache && recentCache && now - recentCache.ts < RECENT_CACHE_TTL) {
-    return res.json(recentCache.data);
+  const cacheKey    = "recent_p1_l10";
+  const entry       = canUseCache ? cache.get(cacheKey) : undefined;
+
+  if (entry && now - entry.ts < RECENT_CACHE_TTL) {
+    logger.info(
+      { endpoint: "/alerts/recent", cache: "HIT", age: cacheAge(entry.ts) },
+      "[cache] HIT",
+    );
+    return res.json(entry.data);
   }
+
+  logger.info(
+    {
+      endpoint: "/alerts/recent",
+      cache: canUseCache ? "MISS" : "SKIP",
+      reason: !canUseCache
+        ? `non-default params (page=${page} limit=${limit})`
+        : forceRefresh ? "force-refresh"
+        : !entry    ? "empty"
+        : "expired",
+      page,
+      limit,
+    },
+    canUseCache ? "[cache] MISS → DB" : "[cache] SKIP → DB",
+  );
 
   const offset = (page - 1) * limit;
   const alerts = await db
@@ -125,11 +175,13 @@ router.get("/alerts/recent", async (req, res) => {
     .offset(offset);
 
   if (canUseCache) {
-    recentCache = { data: alerts, ts: now };
+    cache.set(cacheKey, { data: alerts, ts: now });
   }
 
   return res.json(alerts);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 router.patch("/alerts/acknowledge-all", async (_req, res) => {
   await db

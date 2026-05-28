@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, watchlistTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { fetchWeatherForIcao, updateCachedIcaos } from "../lib/monitor.js";
+import { fetchWeatherForIcao, updateCachedIcaos, getAirports } from "../lib/monitor.js";
 
 const router = Router();
 
@@ -16,6 +16,11 @@ router.post("/watchlist", async (req, res) => {
     return res.status(400).json({ error: "Invalid ICAO code" });
   }
   await db.insert(watchlistTable).values({ icao }).onConflictDoNothing();
+  // Immediately add to monitor's in-memory list so next scan covers it
+  const current = getAirports();
+  if (!current.includes(icao)) {
+    updateCachedIcaos([...current, icao]);
+  }
   return res.json({ ok: true, icao });
 });
 
