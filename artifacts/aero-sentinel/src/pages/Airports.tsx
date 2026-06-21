@@ -3,9 +3,9 @@ import { Link } from "wouter";
 import * as XLSX from "xlsx";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
+import { AdSlot } from "@/components/ads/AdSlot";
 import { useThemeContext } from "@/App";
-import { parseMetar, analyzeTafWindow, type TafWindowResult } from "@/lib/metarParser";
-
+import { parseMetar, analyzeTafWindow, type TafWindowResult, FlightCategory, CATEGORY_COLOR } from "@/lib/metarParser";
 // ── Excel parsing ─────────────────────────────────────────────────────────────
 
 export interface FlightRow {
@@ -847,7 +847,7 @@ export default function Airports() {
                   <p className="text-xs font-mono text-muted-foreground mt-1">Drag & drop or click · .xlsx .xls .csv</p>
                 </div>
                 <p className="text-[10px] font-mono text-muted-foreground/60 mt-1">
-                  Required columns: Flight · Reg · From (S) ICAO · To (S) ICAO · ETD · ETA
+                  Required columns: Date · Flight · Reg · From (S) ICAO · To (S) ICAO · ETD · ETA
                 </p>
               </div>
             </div>
@@ -858,6 +858,16 @@ export default function Airports() {
               {parseError}
             </div>
           )}
+
+          {/* AdSlot — excel yükleme kutucuğunun altında, her zaman görünür */}
+          <AdSlot
+            slot="analyze-footer"
+            sponsor={{
+              name: "AERO-SENTINEL",
+              url: "#",
+              description: "Premium aviation weather monitoring — Sponsor this platform",
+            }}
+          />
 
           {/* File loaded + analysis */}
           {flights.length > 0 && (
@@ -1053,12 +1063,12 @@ export default function Airports() {
                           <td className="px-3 py-2.5 text-muted-foreground">{f.reg || "—"}</td>
                           <td className="px-3 py-2.5">
                             {f.fromIcao ? (
-                              <Link href={`/airports/${f.fromIcao}`} className="text-sky-400 hover:underline">{f.fromIcao}</Link>
+                              <Link href={`/airports/${f.fromIcao}`} className="text-sky-400 hover:underline font-semibold tracking-wide">{f.fromIcao}</Link>
                             ) : "—"}
                           </td>
                           <td className="px-3 py-2.5">
                             {f.toIcao ? (
-                              <Link href={`/airports/${f.toIcao}`} className="text-sky-400 hover:underline">{f.toIcao}</Link>
+                              <Link href={`/airports/${f.toIcao}`} className="text-sky-400 hover:underline font-semibold tracking-wide">{f.toIcao}</Link>
                             ) : "—"}
                           </td>
                           <td className="px-3 py-2.5 text-muted-foreground tabular-nums">{f.etd || "—"}</td>
@@ -1079,6 +1089,16 @@ export default function Airports() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Sponsor placeholder — AdSense onayı sonrası gerçek reklam gösterilecek */}
+              <AdSlot
+                slot="analyze-footer"
+                sponsor={{
+                  name: "AERO-SENTINEL",
+                  url: "#",
+                  description: "Premium aviation weather monitoring — Sponsor this platform",
+                }}
+              />
 
               {/* Upload new file */}
               <button

@@ -9,6 +9,8 @@ import { Footer } from "@/components/Footer";
 import { TafText } from "@/components/TafText";
 import { ColoredRawText } from "@/components/ColoredRawText";
 import { ClockBadge } from "@/components/ClockDisplay";
+import { IataBadge } from "@/components/IataBadge";
+import { AdSlot } from "@/components/ads/AdSlot";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
@@ -296,27 +298,27 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader monitorStatus={monitor} theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5 space-y-3">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 py-3 sm:py-5 space-y-2 sm:space-y-3">
 
         {/* Monitor bar */}
-        <div className="bg-card border border-border rounded-lg px-4 py-2 flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-4 text-xs font-mono flex-wrap">
+        <div className="bg-card border border-border rounded-lg px-3 sm:px-4 py-2 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 sm:gap-4 text-[10px] sm:text-xs font-mono flex-wrap">
             <span className="text-muted-foreground tracking-widest">MONITOR</span>
             <span className={monitorData?.running ? "text-green-400 font-bold flex items-center gap-1.5" : "text-red-400 font-bold"}>
               {monitorData?.running
                 ? <><div className="w-1.5 h-1.5 rounded-full bg-green-400 sentinel-pulse flex-shrink-0" />LIVE</>
                 : "STOPPED"}
             </span>
-            <span className="text-border">|</span>
-            <span className="text-muted-foreground">SCANS TODAY</span>
+            <span className="text-border hidden sm:inline">|</span>
+            <span className="text-muted-foreground">SCANS</span>
             <span className="tabular-nums">{monitorData?.scanCountToday ?? monitorData?.scanCount ?? 0}</span>
             {watchedIcaos.length > 0 && (
-              <><span className="text-border">|</span>
-              <span className="text-sky-400">WATCHLIST {watchedIcaos.length}</span></>
+              <><span className="text-border hidden sm:inline">|</span>
+              <span className="text-sky-400">WL {watchedIcaos.length}</span></>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] text-muted-foreground font-mono">INTERVAL: 60s</span>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="text-[9px] sm:text-[10px] text-muted-foreground font-mono hidden sm:inline">INTERVAL: 60s</span>
             <ClockBadge />
           </div>
         </div>
@@ -356,7 +358,7 @@ export default function Dashboard() {
               >
                 {watchedIcaos.map((icao) => (
                   <span key={icao} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-primary/15 border border-primary/30 text-primary text-xs font-mono font-bold">
-                    {icao}
+                    <span>{icao}</span>
                     <button type="button" onClick={(e) => { e.stopPropagation(); removeIcao(icao); }}
                       className="text-primary/60 hover:text-primary transition-colors leading-none">✕</button>
                   </span>
@@ -383,14 +385,14 @@ export default function Dashboard() {
         {/* Airport Weather Section */}
         <section>
           {/* Filter row */}
-          <div className="flex flex-wrap items-center gap-2 mb-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2">
             {/* Category filters — all same toggle logic */}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5 sm:gap-1">
               {ALL_CATS.map((cat) => {
                 const isActive = activeCats.has(cat);
                 return (
                   <button key={cat} onClick={() => toggleCat(cat)}
-                    className="px-2 py-0.5 rounded text-xs font-mono border transition-colors"
+                    className="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs font-mono border transition-colors"
                     style={isActive ? {
                       borderColor: CATEGORY_COLOR[cat] + "99",
                       color: CATEGORY_COLOR[cat],
@@ -402,47 +404,47 @@ export default function Dashboard() {
               })}
               {/* CRIT — same toggle logic: active = crit shown, inactive = crit hidden */}
               <button onClick={toggleCritFilter}
-                className="px-2 py-0.5 rounded text-xs font-mono border transition-colors"
+                className="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs font-mono border transition-colors"
                 style={critActive ? {
                   borderColor: "#ef444499", color: "#ef4444", backgroundColor: "#ef444418",
                 } : { borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
                 CRIT
               </button>
             </div>
-            <span className="text-border text-xs font-mono">|</span>
+            <span className="text-border text-xs font-mono hidden sm:inline">|</span>
 
             {/* DOM/INT */}
-            <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
+            <div className="flex items-center gap-0.5 sm:gap-1 bg-card border border-border rounded-lg p-0.5">
               {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
                 <button key={f} onClick={() => setRouteFilter(f)}
-                  className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors ${routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                  className={`px-1.5 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs font-mono font-medium transition-colors ${routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                   {f}
                 </button>
               ))}
             </div>
-            <span className="text-border text-xs font-mono">|</span>
+            <span className="text-border text-xs font-mono hidden sm:inline">|</span>
 
             {/* Sort */}
-            <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
+            <div className="flex items-center gap-0.5 sm:gap-1 bg-card border border-border rounded-lg p-0.5">
               {SORT_OPTIONS.map((s) => (
                 <button key={s.value} onClick={() => setSortMode(s.value)}
-                  className={`px-2.5 py-1 rounded text-xs font-mono transition-colors ${sortMode === s.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                  className={`px-1.5 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs font-mono transition-colors ${sortMode === s.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                   {s.label}
                 </button>
               ))}
             </div>
-            <span className="text-border text-xs font-mono">|</span>
+            <span className="text-border text-xs font-mono hidden sm:inline">|</span>
 
             {/* View */}
-            <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
+            <div className="flex items-center gap-0.5 sm:gap-1 bg-card border border-border rounded-lg p-0.5">
               {VIEW_OPTIONS.map((v) => (
                 <button key={v.value} onClick={() => { setView(v.value); setTimeFilters([]); }}
-                  className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors ${view === v.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                  className={`px-1.5 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs font-mono font-medium transition-colors ${view === v.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                   {v.label}
                 </button>
               ))}
             </div>
-            <span className="text-border text-xs font-mono">|</span>
+            <span className="text-border text-xs font-mono hidden sm:inline">|</span>
 
             {/* TIME multi-select */}
             {!weatherLoading && allTimeSlots.length > 0 && (
@@ -507,29 +509,29 @@ export default function Dashboard() {
           </div>
 
           {/* ICAO search + REFRESH (same height) */}
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
             <div className="relative flex-1">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
               <input
                 type="text"
-                placeholder="Filter airports — e.g. LTFH,LTAC,LTFJ or LTFH LTAC LTFJ"
+                placeholder="Filter — e.g. LTFH,LTAC"
                 value={icaoSearch}
                 onChange={(e) => setIcaoSearch(e.target.value.toUpperCase().replace(/[^A-Z0-9,\s]/g, ""))}
-                className={`w-full h-[34px] pl-8 pr-7 rounded-lg text-xs font-mono border bg-card transition-colors focus:outline-none focus:border-primary ${icaoSearch ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
+                className={`w-full h-[30px] sm:h-[34px] pl-7 sm:pl-8 pr-6 sm:pr-7 rounded-lg text-[10px] sm:text-xs font-mono border bg-card transition-colors focus:outline-none focus:border-primary ${icaoSearch ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
               />
               {icaoSearch && (
                 <button onClick={() => setIcaoSearch("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors text-sm leading-none">×</button>
+                  className="absolute right-2 sm:right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors text-sm leading-none">×</button>
               )}
             </div>
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
               title="Refresh weather data"
-              className="h-[34px] flex items-center gap-1.5 px-3 rounded-lg text-[11px] font-mono font-bold border transition-all disabled:opacity-50 flex-shrink-0"
+              className="h-[30px] sm:h-[34px] flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 rounded-lg text-[10px] sm:text-[11px] font-mono font-bold border transition-all disabled:opacity-50 flex-shrink-0"
               style={{ borderColor: "#38BDF840", color: "#38BDF8", backgroundColor: "#38BDF810" }}
             >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={isRefreshing ? "animate-spin" : ""}>
@@ -541,16 +543,42 @@ export default function Dashboard() {
           </div>
 
           {weatherLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {[...Array(6)].map((_, i) => <div key={i} className="h-40 rounded-lg bg-card animate-pulse border border-border" />)}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-4">
+              {[...Array(6)].map((_, i) => <div key={i} className="h-32 sm:h-40 rounded-lg bg-card animate-pulse border border-border" />)}
             </div>
           ) : displayed.length === 0 ? (
-            <div className="bg-card border border-border rounded-lg p-12 text-center">
-              <p className="text-muted-foreground font-mono text-sm">No airports match current filters</p>
+            <div className="bg-card border border-border rounded-lg p-6 sm:p-12 text-center">
+              <p className="text-muted-foreground font-mono text-xs sm:text-sm">No airports match current filters</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {displayed.map((a) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-4">
+              {displayed.slice(0, 2).map((a) => (
+                <WeatherCard key={a.icao} icao={a.icao} rawTaf={a.rawTaf} rawMetar={a.rawMetar} parsed={a.parsed} view={view} />
+              ))}
+              {/* Sponsor — 2. ve 3. kart arasında */}
+              <AdSlot
+                slot="monitor-infeed"
+                sponsor={{
+                  name: "AERO-SENTINEL",
+                  url: "#",
+                  description: "Premium aviation weather monitoring",
+                }}
+              />
+              {displayed.slice(2, 5).map((a) => (
+                <WeatherCard key={a.icao} icao={a.icao} rawTaf={a.rawTaf} rawMetar={a.rawMetar} parsed={a.parsed} view={view} />
+              ))}
+              {/* Sponsor — 5. ve 6. kart arasında */}
+              {displayed.length > 5 && (
+                <AdSlot
+                  slot="monitor-infeed"
+                  sponsor={{
+                    name: "AERO-SENTINEL",
+                    url: "#",
+                    description: "Premium aviation weather monitoring",
+                  }}
+                />
+              )}
+              {displayed.slice(5).map((a) => (
                 <WeatherCard key={a.icao} icao={a.icao} rawTaf={a.rawTaf} rawMetar={a.rawMetar} parsed={a.parsed} view={view} />
               ))}
             </div>
@@ -617,7 +645,10 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
       <div className="flex-1 min-w-0">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/60">
-          <span className="font-mono font-bold text-base tracking-wider">{icao}</span>
+          <span className="font-mono font-bold text-base tracking-wider inline-flex items-center gap-1.5">
+            {icao}
+            <IataBadge icao={icao} />
+          </span>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
             {/* Single category badge — worst in BOTH mode */}
             {view === "TAF" && rawTaf && tafWorst && (

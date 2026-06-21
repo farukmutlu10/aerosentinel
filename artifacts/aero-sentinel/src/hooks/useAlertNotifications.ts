@@ -12,6 +12,7 @@ const AUTO_CLOSE_MS = 60_000; // 60 saniye sonra otomatik kapat
 export function useAlertNotifications() {
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [dismissed, setDismissed] = useState(false);
+  const [deniedDismissed, setDeniedDismissed] = useState(false);
   const seenIds = useRef<Set<number>>(new Set());
   const initialized = useRef(false);
   const openNotifs = useRef<Map<number, Notification>>(new Map());
@@ -93,9 +94,10 @@ export function useAlertNotifications() {
   const dismiss = () => {
     sessionStorage.setItem("notif-dismissed", "1");
     setDismissed(true);
+    setDeniedDismissed(true);
   };
 
   const showBanner = permission === "default" && !dismissed;
 
-  return { permission, requestPermission, dismiss, showBanner };
+  return { permission, requestPermission, dismiss, showBanner, dismissed };
 }

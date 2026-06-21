@@ -12,6 +12,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertBadge } from "@/components/AlertBadge";
+import { IataBadge } from "@/components/IataBadge";
 import { parseMetar, CATEGORY_COLOR, FlightCategory } from "@/lib/metarParser";
 import { formatDistanceToNow, format } from "date-fns";
 import { useMemo } from "react";
@@ -60,7 +61,10 @@ export default function AirportDetail({ icao }: Props) {
               &larr; AIRPORTS
             </Link>
             <div className="flex items-center gap-3 mt-2">
-              <h2 className="text-3xl font-bold font-mono text-primary">{icao}</h2>
+              <h2 className="text-3xl font-bold font-mono text-primary inline-flex items-center gap-2">
+                {icao}
+                <IataBadge icao={icao} size="sm" />
+              </h2>
               {parsedMetar && (
                 <span className="text-sm font-mono font-bold px-2.5 py-1 rounded border"
                   style={{ color: catColor, borderColor: `${catColor}60`, backgroundColor: `${catColor}18` }}>

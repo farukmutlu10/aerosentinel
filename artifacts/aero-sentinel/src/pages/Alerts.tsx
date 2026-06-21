@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, Fragment } from "react";
 import { Link } from "wouter";
 import {
   useListAlerts, getListAlertsQueryKey,
@@ -13,7 +13,9 @@ import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertBadge } from "@/components/AlertBadge";
+import { IataBadge } from "@/components/IataBadge";
 import { TafText } from "@/components/TafText";
+import { AdSlot } from "@/components/ads/AdSlot";
 import { formatDistanceToNow, format } from "date-fns";
 
 type AlertType = "TAF_AMD" | "TAF_COR" | "SPECI";
@@ -45,7 +47,7 @@ const DEFAULT_ROUTE: RouteFilter = "ALL";
 const DEFAULT_SORT: SortMode = "newest";
 const DEFAULT_HIDE_ACK = false;
 
-// ── Stat card — redesigned ────────────────────────────────────────────────────
+// ── Stat card — vertical centered on all screen sizes ──────────────────────────
 function StatCard({
   label, value, accent, icon, pulse,
 }: {
@@ -57,23 +59,17 @@ function StatCard({
 }) {
   return (
     <div
-      className={`relative rounded-xl border overflow-hidden flex items-center gap-0 ${pulse ? "animate-pulse-slow" : ""}`}
+      className={`relative rounded-lg sm:rounded-xl border overflow-hidden ${pulse ? "animate-pulse-slow" : ""}`}
       style={{ borderColor: `${accent}30`, backgroundColor: "hsl(var(--card))" }}
     >
-      {/* Left accent column */}
-      <div
-        className="flex-shrink-0 w-14 self-stretch flex items-center justify-center"
-        style={{ background: `linear-gradient(135deg, ${accent}22, ${accent}10)`, borderRight: `1.5px solid ${accent}30` }}
-      >
-        <span style={{ color: accent, opacity: 0.85 }}>{icon}</span>
+      {/* Left accent glow */}
+      <div className="absolute inset-y-0 left-0 w-[2px] sm:w-[3px] rounded-l-xl" style={{ backgroundColor: accent }} />
+      {/* Vertical centered content */}
+      <div className="flex flex-col items-center justify-center px-2 sm:px-4 py-2.5 sm:py-3 text-center">
+        <span style={{ color: accent, opacity: 0.85 }} className="scale-75 sm:scale-100 mb-1 sm:mb-1.5">{icon}</span>
+        <p className="text-lg sm:text-3xl font-mono font-black tabular-nums leading-none" style={{ color: accent }}>{value}</p>
+        <p className="text-[7px] sm:text-[10px] font-mono tracking-widest text-muted-foreground uppercase mt-0.5 sm:mt-1 whitespace-nowrap">{label}</p>
       </div>
-      {/* Content */}
-      <div className="flex-1 px-4 py-3">
-        <p className="text-[10px] font-mono tracking-widest text-muted-foreground uppercase mb-1">{label}</p>
-        <p className="text-3xl font-mono font-black tabular-nums leading-none" style={{ color: accent }}>{value}</p>
-      </div>
-      {/* Right accent glow */}
-      <div className="absolute inset-y-0 left-0 w-[3px] rounded-l-xl" style={{ backgroundColor: accent }} />
     </div>
   );
 }
@@ -148,7 +144,6 @@ export default function Alerts() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    // Bust server-side summary cache so the next fetch returns fresh DB data
     fetch("/api/alerts/summary?refresh=1").catch(() => {});
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() }),
@@ -160,7 +155,6 @@ export default function Alerts() {
 
   const alerts = useMemo(() => {
     let list = allAlerts ?? [];
-    // Type filter — inclusion: keep alerts whose type is active
     list = list.filter((a) => activeTypesSet.has(a.type));
     if (hideAcknowledged) list = list.filter((a) => !isAcked(a));
     list = list.filter((a) => isWatching(a.icao));
@@ -190,66 +184,30 @@ export default function Alerts() {
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5 space-y-5">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 py-3 sm:py-5 space-y-3 sm:space-y-5">
 
-        {/* Stats — redesigned */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          <StatCard
-            label="Total Alerts"
-            value={dash ?? String(totalAlerts)}
-            accent="#64748b"
-            icon={<IconList />}
-          />
-          <StatCard
-            label="Unacknowledged"
-            value={dash ?? String(allAlerts ? allAlerts.filter((a) => isWatching(a.icao) && !isAcked(a)).length : 0)}
-            accent={unackedCount > 0 ? "#ef4444" : "#64748b"}
-            icon={<IconAlert />}
-            pulse={unackedCount > 0}
-          />
-          <StatCard
-            label="TAF Revisions"
-            value={dash ?? String(tafRevisions)}
-            accent="#f59e0b"
-            icon={<IconTaf />}
-          />
-          <StatCard
-            label="SPECI Alerts"
-            value={dash ?? String(speciAlerts)}
-            accent="#ef4444"
-            icon={<IconSpeci />}
-          />
-          <ClockCard />
+        {/* Stats — mobile: 1x2x2 (clock full width, 2x2 stats), desktop: 5 cols horizontal */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 sm:gap-3">
+          <div className="col-span-1"><StatCard label="Total" value={dash ?? String(totalAlerts)} accent="#64748b" icon={<IconList />} /></div>
+          <div className="col-span-1"><StatCard label="Unacked" value={dash ?? String(allAlerts ? allAlerts.filter((a) => isWatching(a.icao) && !isAcked(a)).length : 0)} accent={unackedCount > 0 ? "#ef4444" : "#64748b"} icon={<IconAlert />} pulse={unackedCount > 0} /></div>
+          <div className="col-span-1"><StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} accent="#f59e0b" icon={<IconTaf />} /></div>
+          <div className="col-span-1"><StatCard label="SPECI" value={dash ?? String(speciAlerts)} accent="#ef4444" icon={<IconSpeci />} /></div>
+          <div className="col-span-2 sm:col-span-1">
+            <ClockCard />
+          </div>
         </div>
 
         {/* Filter row */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* REFRESH — far left */}
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            title="Refresh alerts"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border transition-all disabled:opacity-50"
-            style={{ borderColor: "#38BDF840", color: "#38BDF8", backgroundColor: "#38BDF810" }}
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-              className={isRefreshing ? "animate-spin" : ""}>
-              <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
-              <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-            </svg>
-            {isRefreshing ? "..." : "REFRESH"}
-          </button>
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
 
-          <span className="text-border text-xs">|</span>
-
-          {/* Type filters — toggle inclusion, all active by default */}
-          <div className="flex items-center gap-1">
+          {/* Type filters */}
+          <div className="flex items-center gap-0.5 sm:gap-1">
             {ALL_ALERT_TYPES.map((t) => {
               const isActive = activeTypesSet.has(t);
               const color = TYPE_COLORS[t];
               return (
                 <button key={t} onClick={() => toggleType(t)}
-                  className="px-2.5 py-1 rounded text-xs font-mono font-medium border transition-colors"
+                  className="px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-mono font-medium border transition-colors"
                   style={isActive ? {
                     borderColor: color + "99",
                     color,
@@ -261,41 +219,41 @@ export default function Alerts() {
             })}
           </div>
 
-          <span className="text-border text-xs">|</span>
+          <span className="text-border text-xs hidden sm:inline">|</span>
 
           {/* DOM/INT */}
-          <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
+          <div className="flex items-center gap-0.5 sm:gap-1 bg-card border border-border rounded-lg p-0.5">
             {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
               <button key={f} onClick={() => setRouteFilter(f)}
-                className={`px-2.5 py-1.5 rounded text-xs font-mono font-medium transition-colors ${routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1.5 rounded text-[10px] sm:text-xs font-mono font-medium transition-colors ${routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                 {f}
               </button>
             ))}
           </div>
 
-          <span className="text-border text-xs">|</span>
+          <span className="text-border text-xs hidden sm:inline">|</span>
 
           {/* Sort */}
-          <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
+          <div className="flex items-center gap-0.5 sm:gap-1 bg-card border border-border rounded-lg p-0.5">
             {SORT_OPTIONS.map((s) => (
               <button key={s.value} onClick={() => setSortMode(s.value)}
-                className={`px-2.5 py-1.5 rounded text-xs font-mono transition-colors ${sortMode === s.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1.5 rounded text-[10px] sm:text-xs font-mono transition-colors ${sortMode === s.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                 {s.label}
               </button>
             ))}
           </div>
 
-          <span className="text-border text-xs">|</span>
+          <span className="text-border text-xs hidden sm:inline">|</span>
 
           {/* Hide acknowledged */}
           <button onClick={() => setHideAcknowledged(!hideAcknowledged)}
-            className={`px-3 py-1.5 rounded text-xs font-mono font-medium border transition-colors ${hideAcknowledged ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"}`}>
-            {hideAcknowledged ? "Unacknowledged Only ✓" : "Hide Acknowledged"}
+            className={`px-2 sm:px-3 py-0.5 sm:py-1.5 rounded text-[10px] sm:text-xs font-mono font-medium border transition-colors ${hideAcknowledged ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"}`}>
+            {hideAcknowledged ? "Unacked ✓" : "Hide Ack"}
           </button>
 
           {isFiltered && (
             <button onClick={resetFilters} title="Reset all filters"
-              className="flex items-center gap-1 px-2 py-1.5 rounded text-xs font-mono text-muted-foreground hover:text-destructive border border-border hover:border-destructive/50 transition-colors">
+              className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 sm:py-1.5 rounded text-[10px] sm:text-xs font-mono text-muted-foreground hover:text-destructive border border-border hover:border-destructive/50 transition-colors">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
               </svg>
@@ -305,62 +263,114 @@ export default function Alerts() {
 
           {unackedCount > 0 && (
             <button onClick={handleAckAll} disabled={ackingAll}
-              className="ml-auto px-3 py-1.5 text-xs font-mono font-bold border border-green-500/40 text-green-400 rounded hover:bg-green-500/10 transition-colors disabled:opacity-50 flex items-center gap-1.5">
-              {ackingAll ? "Acknowledging..." : `ACK ALL (${unackedCount})`}
+              className="ml-auto px-2 sm:px-3 py-0.5 sm:py-1.5 text-[10px] sm:text-xs font-mono font-bold border border-green-500/40 text-green-400 rounded hover:bg-green-500/10 transition-colors disabled:opacity-50 flex items-center gap-1">
+              {ackingAll ? "..." : `ACK ALL (${unackedCount})`}
             </button>
           )}
 
-          <span className={`text-xs text-muted-foreground font-mono ${unackedCount > 0 ? "" : "ml-auto"}`}>
-            {Math.min(displayLimit, alerts.length)} / {alerts.length} alerts
+          <span className={`text-[10px] sm:text-xs text-muted-foreground font-mono ${unackedCount > 0 ? "" : "ml-auto"}`}>
+            {Math.min(displayLimit, alerts.length)} / {alerts.length}
           </span>
+          {/* REFRESH - far right */}
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            title="Refresh alerts"
+            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-mono font-bold border transition-all disabled:opacity-50 ml-auto"
+            style={{ borderColor: "#38BDF840", color: "#38BDF8", backgroundColor: "#38BDF810" }}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className={isRefreshing ? "animate-spin" : ""}>
+              <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+              <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+            </svg>
+            {isRefreshing ? "..." : "REFRESH"}
+          </button>
         </div>
 
         {/* Alert list */}
         {isLoading ? (
           <div className="space-y-2">
-            {[...Array(8)].map((_, i) => <div key={i} className="h-24 rounded-lg bg-card animate-pulse border border-border" />)}
+            {[...Array(8)].map((_, i) => <div key={i} className="h-20 sm:h-24 rounded-lg bg-card animate-pulse border border-border" />)}
           </div>
         ) : !alerts.length ? (
-          <div className="bg-card border border-border rounded-lg p-16 text-center">
-            <p className="text-muted-foreground font-mono text-sm">No alerts match current filters</p>
+          <div className="space-y-3">
+            <div className="bg-card border border-border rounded-lg p-8 sm:p-16 text-center">
+              <p className="text-muted-foreground font-mono text-xs sm:text-sm">No alerts match current filters</p>
+            </div>
+            <AdSlot
+              slot="alerts-infeed"
+              sponsor={{
+                name: "AERO-SENTINEL",
+                url: "#",
+                description: "Premium aviation weather monitoring",
+              }}
+            />
           </div>
         ) : (
-          <div className="space-y-2">
-            {alerts.slice(0, displayLimit).map((alert) => (
-              <div key={alert.id}
-                className={`border rounded-lg px-4 py-4 transition-opacity ${isAcked(alert) ? "opacity-65 dark:opacity-40" : ""} ${
-                  alert.type === "SPECI" ? "alert-speci" : alert.type === "TAF_AMD" ? "alert-taf-amd" : "alert-taf-cor"
-                }`}>
+          <div className="space-y-1.5 sm:space-y-2">
+            {alerts.slice(0, displayLimit).map((alert, idx) => (
+              <Fragment key={alert.id}>
+                {/* Sponsor — 2. alert sonrası */}
+                {idx === 2 && (
+                  <AdSlot
+                    slot="alerts-infeed"
+                    sponsor={{
+                      name: "AERO-SENTINEL",
+                      url: "#",
+                      description: "Premium aviation weather monitoring",
+                    }}
+                  />
+                )}
+                {/* Sponsor — 5. alert sonrası */}
+                {idx === 5 && (
+                  <AdSlot
+                    slot="alerts-infeed"
+                    sponsor={{
+                      name: "AERO-SENTINEL",
+                      url: "#",
+                      description: "Premium aviation weather monitoring",
+                    }}
+                  />
+                )}
+                <div
+                  className={`border rounded-lg px-3 sm:px-4 py-2.5 sm:py-4 transition-opacity ${isAcked(alert) ? "opacity-65 dark:opacity-40" : ""} ${
+                    alert.type === "SPECI" ? "alert-speci" : alert.type === "TAF_AMD" ? "alert-taf-amd" : "alert-taf-cor"
+                  }`}>
 
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-2 sm:gap-4">
+                  <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
                     <div className="flex-shrink-0 pt-0.5"><AlertBadge type={alert.type as AlertType} /></div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2 flex-wrap">
-                        <Link href={`/airports/${alert.icao}`} className="font-mono font-bold text-sm hover:underline">{alert.icao}</Link>
-                        <span className="text-[10px] font-mono text-muted-foreground border border-border px-1 py-0.5 rounded">{alert.icao.startsWith("LT") ? "DOM" : "INT"}</span>
-                        <span className="text-xs text-muted-foreground font-mono">{format(new Date(alert.detectedAt), "dd MMM HH:mm")} UTC</span>
-                        <span className="text-xs text-muted-foreground font-mono">({formatDistanceToNow(new Date(alert.detectedAt), { addSuffix: true })})</span>
-                        {isAcked(alert) && <span className="text-xs bg-muted text-muted-foreground font-mono px-2 py-0.5 rounded">ACK</span>}
+                      <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2 flex-wrap">
+                        <Link href={`/airports/${alert.icao}`} className="font-mono font-bold text-xs sm:text-sm hover:underline inline-flex items-center gap-1">
+                          {alert.icao}
+                          <IataBadge icao={alert.icao} />
+                        </Link>
+                        <span className="text-[9px] sm:text-[10px] font-mono text-muted-foreground border border-border px-1 py-0.5 rounded">{alert.icao.startsWith("LT") ? "DOM" : "INT"}</span>
+                        <span className="text-[10px] sm:text-xs text-muted-foreground font-mono">{format(new Date(alert.detectedAt), "dd MMM HH:mm")} UTC</span>
+                        <span className="text-[10px] sm:text-xs text-muted-foreground font-mono hidden sm:inline">({formatDistanceToNow(new Date(alert.detectedAt), { addSuffix: true })})</span>
+                        {isAcked(alert) && <span className="text-[10px] sm:text-xs bg-muted text-muted-foreground font-mono px-1.5 sm:px-2 py-0.5 rounded">ACK</span>}
                       </div>
                       <TafText raw={alert.rawText} />
                     </div>
                   </div>
                   {!isAcked(alert) && (
                     <button onClick={() => handleAck(alert.id)}
-                      className="flex-shrink-0 self-center ml-4 px-5 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/8 text-emerald-400 text-xs font-mono font-bold tracking-[0.2em] hover:bg-emerald-500/18 hover:border-emerald-400/70 hover:text-emerald-300 transition-all">
+                      className="flex-shrink-0 self-center ml-2 sm:ml-4 px-3 sm:px-5 py-1.5 sm:py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/8 text-emerald-400 text-[10px] sm:text-xs font-mono font-bold tracking-[0.15em] sm:tracking-[0.2em] hover:bg-emerald-500/18 hover:border-emerald-400/70 hover:text-emerald-300 transition-all">
                       ACK
                     </button>
                   )}
                 </div>
               </div>
+              </Fragment>
             ))}
 
             {displayLimit < alerts.length && (
               <div className="pt-2 flex justify-center">
                 <button
                   onClick={() => setDisplayLimit((n) => n + 20)}
-                  className="px-6 py-2 rounded-lg border border-border text-xs font-mono text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
+                  className="px-4 sm:px-6 py-2 rounded-lg border border-border text-[10px] sm:text-xs font-mono text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
                 >
                   Load more ({alerts.length - displayLimit} remaining)
                 </button>

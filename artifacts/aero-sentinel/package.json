@@ -75,6 +75,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "react-ga4": "^3.0.1",
     "xlsx": "^0.18.5"
   }
 }

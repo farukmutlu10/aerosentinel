@@ -26,25 +26,34 @@ if (!basePath) {
   );
 }
 
+const isReplit = process.env.REPL_ID !== undefined;
+
+/**
+ * Replit'e özel plugin'ler — normalde sadece development/Replit'te yüklenir.
+ * Railway/production'da bu plugin'ler atlanır.
+ */
+function replitPlugins() {
+  if (process.env.NODE_ENV === "production" || !isReplit) return [];
+  // Dynamic import sadece Replit ortamında çalışır
+  return [
+    import("@replit/vite-plugin-cartographer").then((m) =>
+      m.cartographer({
+        root: path.resolve(import.meta.dirname, ".."),
+      }),
+    ),
+    import("@replit/vite-plugin-dev-banner").then((m) =>
+      m.devBanner(),
+    ),
+  ];
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, ".."),
-            }),
-          ),
-          await import("@replit/vite-plugin-dev-banner").then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
+    ...(await Promise.all(replitPlugins())),
   ],
   resolve: {
     alias: {
@@ -57,6 +66,15 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    sourcemap: process.env.NODE_ENV !== "production",
+    minify: "esbuild",
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ["react", "react-dom", "wouter", "@tanstack/react-query"],
+        },
+      },
+    },
   },
   server: {
     port,
@@ -65,6 +83,12 @@ export default defineConfig({
     allowedHosts: true,
     fs: {
       strict: true,
+    },
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
     },
   },
   preview: {

@@ -12,6 +12,12 @@ const MIGRATIONS: Array<{ name: string; sql: string }> = [
 ];
 
 export async function runMigrations(): Promise<void> {
+  // Skip migrations when using in-memory database (no PostgreSQL available)
+  if (!pool) {
+    console.log("[migrate] In-memory mode — skipping migrations");
+    return;
+  }
+
   const client = await pool.connect();
   try {
     await client.query(`
@@ -28,7 +34,6 @@ export async function runMigrations(): Promise<void> {
       if (rows.length > 0) continue;
       await client.query(m.sql);
       await client.query("INSERT INTO _migrations (name) VALUES ($1)", [m.name]);
-      console.log(`[migrate] applied: ${m.name}`);
     }
   } finally {
     client.release();

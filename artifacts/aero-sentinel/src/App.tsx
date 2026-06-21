@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,7 +10,8 @@ import AirportDetail from "@/pages/AirportDetail";
 import { WatchlistProvider } from "@/context/WatchlistContext";
 import { useAlertNotifications } from "@/hooks/useAlertNotifications";
 import { useTheme } from "@/hooks/useTheme";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect } from "react";
+import { initGA, trackPageView } from "@/lib/ga";
 import { usePersistedState } from "@/hooks/usePersistedState";
 
 const queryClient = new QueryClient({
@@ -31,9 +32,15 @@ const LocalAckContext = createContext<LocalAckCtx>({ localAcked: [], setLocalAck
 export const useLocalAck = () => useContext(LocalAckContext);
 
 function AppInner() {
-  const { permission, requestPermission, dismiss, showBanner } = useAlertNotifications();
+  const { permission, requestPermission, dismiss, showBanner, dismissed } = useAlertNotifications();
   const { theme, toggleTheme } = useTheme();
   const [localAcked, setLocalAcked] = usePersistedState<number[]>("as-acked-ids-v2", []);
+  const [location] = useLocation();
+
+  // Sayfa görüntüleme takibi
+  useEffect(() => {
+    trackPageView(location);
+  }, [location]);
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
@@ -72,13 +79,13 @@ function AppInner() {
           </div>
         )}
 
-        {permission === "denied" && (
+        {permission === "denied" && !dismissed && (
           <div className="fixed bottom-4 right-4 z-50 bg-card border border-border rounded-lg px-3 py-2 shadow flex items-center gap-2 text-xs font-mono text-muted-foreground max-w-xs">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
             </svg>
             Notifications blocked by browser
-            <button onClick={dismiss} className="ml-1 hover:text-foreground">✕</button>
+            <button onClick={dismiss} className="ml-1 hover:text-foreground text-lg leading-none">×</button>
           </div>
         )}
 
@@ -89,6 +96,11 @@ function AppInner() {
 }
 
 function App() {
+  // Google Analytics'i başlat
+  useEffect(() => {
+    initGA();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

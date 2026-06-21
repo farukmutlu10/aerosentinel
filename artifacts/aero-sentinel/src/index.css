@@ -124,6 +124,18 @@
   body { @apply font-sans antialiased bg-background text-foreground; }
 }
 
+/* ── Mobile bottom tab bar safe area ── */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── Mobile content padding (bottom bar) ── */
+@media (max-width: 639px) {
+  main {
+    padding-bottom: 4rem !important;
+  }
+}
+
 /* ── Alert type colors — light ──────────────────────────── */
 .alert-taf-amd {
   color: hsl(38 90% 28%);

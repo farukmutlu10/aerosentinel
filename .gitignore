@@ -44,6 +44,31 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
+# Environment variables (CRITICAL — contains DB credentials)
+.env
+.env.local
+.env.production
+
+# Build artifacts
+*.tsbuildinfo
+dist
+tmp
+out-tsc
+
 # Replit
 .cache/
 .local/
+.replit-artifact/
+
+# Logs
+*.log
+pids
+logs
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# OS files
+.DS_Store
+Thumbs.db
