@@ -175,7 +175,7 @@ export default function Alerts() {
     else if (sortMode === "oldest") sorted.sort((a, b) => new Date(a.detectedAt).getTime() - new Date(b.detectedAt).getTime());
     else sorted.sort((a, b) => a.icao.localeCompare(b.icao));
     return sorted;
-  }, [allAlerts, activeTypesArr, hideAcknowledged, isWatching, routeFilter, sortMode]);
+  }, [allAlerts, activeTypesArr, hideAcknowledged, localAcked, isWatching, routeFilter, sortMode]);
 
   const handleAckAll = () => {
     setAckingAll(true);
@@ -198,11 +198,11 @@ export default function Alerts() {
 
         {/* Stats — flex row, cards fill full width, gap between cards is 1px */}
         <div className="flex flex-wrap sm:flex-nowrap" style={{gap:"10px"}}>
-          <div className="w-1/2 sm:flex-1"><StatCard label="Total" value={dash ?? String(totalAlerts)} accent="#64748b" icon={<IconList />} /></div>
-          <div className="w-1/2 sm:flex-1"><StatCard label="Unacked" value={dash ?? String(allAlerts ? allAlerts.filter((a) => isWatching(a.icao) && !isAcked(a)).length : 0)} accent={unackedCount > 0 ? "#ef4444" : "#64748b"} icon={<IconAlert />} pulse={unackedCount > 0} /></div>
-          <div className="w-1/2 sm:flex-1"><StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} accent="#f59e0b" icon={<IconTaf />} /></div>
-          <div className="w-1/2 sm:flex-1"><StatCard label="SPECI" value={dash ?? String(speciAlerts)} accent="#ef4444" icon={<IconSpeci />} /></div>
-          <div className="w-1/2 sm:flex-1">
+          <div className="w-full sm:flex-1"><StatCard label="Total" value={dash ?? String(totalAlerts)} accent="#64748b" icon={<IconList />} /></div>
+          <div className="w-full sm:flex-1"><StatCard label="Unacked" value={dash ?? String(allAlerts ? allAlerts.filter((a) => isWatching(a.icao) && !isAcked(a)).length : 0)} accent={unackedCount > 0 ? "#ef4444" : "#64748b"} icon={<IconAlert />} pulse={unackedCount > 0} /></div>
+          <div className="w-full sm:flex-1"><StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} accent="#f59e0b" icon={<IconTaf />} /></div>
+          <div className="w-full sm:flex-1"><StatCard label="SPECI" value={dash ?? String(speciAlerts)} accent="#ef4444" icon={<IconSpeci />} /></div>
+          <div className="w-full sm:flex-1">
             <ClockCard />
           </div>
         </div>
