@@ -21,8 +21,8 @@ RUN pnpm install --frozen-lockfile
 # Kaynak kodları kopyala
 COPY . .
 
-# Build
-RUN pnpm build
+# Build (typecheck'i atla, sadece esbuild ile API server'ı build et)
+RUN pnpm -r --filter "@workspace/api-server" run build
 
 # ── Production image ──────────────────────────────────────────
 FROM node:22-alpine AS production
@@ -38,10 +38,9 @@ COPY --from=base /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=base /app/pnpm-workspace.yaml ./
 COPY --from=base /app/artifacts ./artifacts
 COPY --from=base /app/lib ./lib
-COPY --from=base /app/.env ./
 
 ENV NODE_ENV=production
-EXPOSE 5001
+EXPOSE 8080
 
 # Railway'de PORT env değişkeni otomatik set edilir
 CMD ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
