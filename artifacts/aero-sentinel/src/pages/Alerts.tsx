@@ -64,11 +64,11 @@ function StatCard({
     >
       {/* Left accent glow */}
       <div className="absolute inset-y-0 left-0 w-[2px] sm:w-[3px] rounded-l-xl" style={{ backgroundColor: accent }} />
-      {/* Vertical centered content */}
-      <div className="flex flex-col items-center justify-center px-2 sm:px-4 py-2.5 sm:py-3 text-center">
-        <span style={{ color: accent, opacity: 0.85 }} className="scale-75 sm:scale-100 mb-1 sm:mb-1.5">{icon}</span>
-        <p className="text-lg sm:text-3xl font-mono font-black tabular-nums leading-none" style={{ color: accent }}>{value}</p>
-        <p className="text-[7px] sm:text-[10px] font-mono tracking-widest text-muted-foreground uppercase mt-0.5 sm:mt-1 whitespace-nowrap">{label}</p>
+      {/* Vertical centered: icon, value, label stacked */}
+      <div className="flex flex-col items-center justify-center px-1 sm:px-2 py-2 sm:py-2.5 text-center">
+        <span style={{ color: accent, opacity: 0.85 }} className="mb-0.5 sm:mb-1">{icon}</span>
+        <p className="text-xl sm:text-2xl font-mono font-black tabular-nums leading-none" style={{ color: accent }}>{value}</p>
+        <p className="text-[8px] sm:text-[10px] font-mono tracking-widest text-muted-foreground uppercase mt-0.5">{label}</p>
       </div>
     </div>
   );
@@ -184,15 +184,15 @@ export default function Alerts() {
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 py-3 sm:py-5 space-y-3 sm:space-y-5">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-0 py-1.5 sm:py-3 space-y-1.5 sm:space-y-3">
 
-        {/* Stats — mobile: 1x2x2 (clock full width, 2x2 stats), desktop: 5 cols horizontal */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 sm:gap-3">
-          <div className="col-span-1"><StatCard label="Total" value={dash ?? String(totalAlerts)} accent="#64748b" icon={<IconList />} /></div>
-          <div className="col-span-1"><StatCard label="Unacked" value={dash ?? String(allAlerts ? allAlerts.filter((a) => isWatching(a.icao) && !isAcked(a)).length : 0)} accent={unackedCount > 0 ? "#ef4444" : "#64748b"} icon={<IconAlert />} pulse={unackedCount > 0} /></div>
-          <div className="col-span-1"><StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} accent="#f59e0b" icon={<IconTaf />} /></div>
-          <div className="col-span-1"><StatCard label="SPECI" value={dash ?? String(speciAlerts)} accent="#ef4444" icon={<IconSpeci />} /></div>
-          <div className="col-span-2 sm:col-span-1">
+        {/* Stats — flex row, cards fill full width, gap between cards is 1px */}
+        <div className="flex flex-wrap sm:flex-nowrap" style={{gap:"10px"}}>
+          <div className="w-1/2 sm:flex-1"><StatCard label="Total" value={dash ?? String(totalAlerts)} accent="#64748b" icon={<IconList />} /></div>
+          <div className="w-1/2 sm:flex-1"><StatCard label="Unacked" value={dash ?? String(allAlerts ? allAlerts.filter((a) => isWatching(a.icao) && !isAcked(a)).length : 0)} accent={unackedCount > 0 ? "#ef4444" : "#64748b"} icon={<IconAlert />} pulse={unackedCount > 0} /></div>
+          <div className="w-1/2 sm:flex-1"><StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} accent="#f59e0b" icon={<IconTaf />} /></div>
+          <div className="w-1/2 sm:flex-1"><StatCard label="SPECI" value={dash ?? String(speciAlerts)} accent="#ef4444" icon={<IconSpeci />} /></div>
+          <div className="w-1/2 sm:flex-1">
             <ClockCard />
           </div>
         </div>
@@ -201,7 +201,7 @@ export default function Alerts() {
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
 
           {/* Type filters */}
-          <div className="flex items-center gap-0.5 sm:gap-1">
+          <div className="flex items-center gap-0">
             {ALL_ALERT_TYPES.map((t) => {
               const isActive = activeTypesSet.has(t);
               const color = TYPE_COLORS[t];
@@ -222,7 +222,7 @@ export default function Alerts() {
           <span className="text-border text-xs hidden sm:inline">|</span>
 
           {/* DOM/INT */}
-          <div className="flex items-center gap-0.5 sm:gap-1 bg-card border border-border rounded-lg p-0.5">
+          <div className="flex items-center gap-0 bg-card border border-border rounded-lg p-0.5">
             {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
               <button key={f} onClick={() => setRouteFilter(f)}
                 className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1.5 rounded text-[10px] sm:text-xs font-mono font-medium transition-colors ${routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
@@ -234,7 +234,7 @@ export default function Alerts() {
           <span className="text-border text-xs hidden sm:inline">|</span>
 
           {/* Sort */}
-          <div className="flex items-center gap-0.5 sm:gap-1 bg-card border border-border rounded-lg p-0.5">
+          <div className="flex items-center gap-0 bg-card border border-border rounded-lg p-0.5">
             {SORT_OPTIONS.map((s) => (
               <button key={s.value} onClick={() => setSortMode(s.value)}
                 className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1.5 rounded text-[10px] sm:text-xs font-mono transition-colors ${sortMode === s.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
@@ -246,9 +246,16 @@ export default function Alerts() {
           <span className="text-border text-xs hidden sm:inline">|</span>
 
           {/* Hide acknowledged */}
-          <button onClick={() => setHideAcknowledged(!hideAcknowledged)}
+          <button onClick={() => {
+            if (!hideAcknowledged) {
+              // When hiding, add all current alert IDs to localAcked so they disappear immediately
+              const allIds = (allAlerts ?? []).map((a) => a.id);
+              setLocalAcked((prev) => [...new Set([...prev, ...allIds])]);
+            }
+            setHideAcknowledged(!hideAcknowledged);
+          }}
             className={`px-2 sm:px-3 py-0.5 sm:py-1.5 rounded text-[10px] sm:text-xs font-mono font-medium border transition-colors ${hideAcknowledged ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"}`}>
-            {hideAcknowledged ? "Unacked ✓" : "Hide Ack"}
+            {hideAcknowledged ? "Show All" : "Hide Ack"}
           </button>
 
           {isFiltered && (

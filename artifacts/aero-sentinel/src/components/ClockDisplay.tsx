@@ -108,6 +108,7 @@ function TimezonePicker({
   );
 }
 
+// ClockCard for Alerts page — exact same frame as StatCard, split in half
 export function ClockCard() {
   const [selectedTz, setSelectedTz] = useSelectedTimezone();
   const [showPicker, setShowPicker] = useState(false);
@@ -115,32 +116,36 @@ export function ClockCard() {
   const now = useNow();
 
   const utcTime = now.toLocaleTimeString("en-GB", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const utcDate = now.toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short" });
   const tzTime = now.toLocaleTimeString("en-GB", { timeZone: selectedTz, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const tzDate = now.toLocaleDateString("en-GB", { timeZone: selectedTz, day: "2-digit", month: "short" });
   const tzLabel = getTimezoneLabel(selectedTz);
-  const tzOffset = getTimezoneOffset(selectedTz);
 
   return (
-    <div className="relative rounded-lg sm:border h-full" style={{ borderColor: "#f59e0b30", backgroundColor: "hsl(var(--card))" }}>
-      <div className="absolute inset-y-0 left-0 w-[2px] sm:w-[3px] rounded-l-xl bg-amber-400" />
-      <div className="flex flex-col items-center justify-center px-1.5 sm:px-3 py-2 sm:py-2.5 text-center">
-        <p className="text-[6px] sm:text-[7px] font-mono text-sky-400 uppercase tracking-widest leading-none mb-0.5">UTC</p>
-        <p className="text-[11px] sm:text-lg font-mono font-black tabular-nums leading-none text-sky-300">{utcTime}</p>
-        <div className="w-5 border-t border-border/50 my-0.5" />
+    <div className="relative rounded-lg sm:rounded-xl border overflow-hidden h-full" style={{ borderColor: "#f59e0b30", backgroundColor: "hsl(var(--card))" }}>
+      {/* Left accent glow — same as StatCard */}
+      <div className="absolute inset-y-0 left-0 w-[2px] sm:w-[3px] rounded-l-xl" style={{ backgroundColor: "#f59e0b" }} />
+      {/* Split in half: UTC left, TZ right — same padding as StatCard */}
+      <div className="flex items-stretch h-full">
+        {/* UTC half */}
+        <div className="flex flex-col items-center justify-center flex-1 px-1 py-2 sm:py-2.5 text-center border-r border-border/40">
+          <span className="text-[7px] sm:text-[9px] font-mono text-sky-400 uppercase tracking-widest leading-none mb-0.5">UTC</span>
+          <span className="text-xs sm:text-base font-bold font-mono text-sky-300 leading-none tabular-nums">{utcTime}</span>
+          <span className="text-[7px] sm:text-[9px] font-mono text-sky-400/60 leading-none mt-0.5">{utcDate}</span>
+        </div>
+        {/* TZ half */}
         <button ref={btnRef} onClick={() => setShowPicker((v) => !v)}
-          className="relative flex flex-col items-center justify-center w-full rounded border border-amber-400/25 bg-amber-400/5 hover:bg-amber-400/10 hover:border-amber-400/50 transition-all py-0.5 px-1.5"
+          className="flex flex-col items-center justify-center flex-1 px-1 py-2 sm:py-2.5 text-center hover:bg-amber-400/5 transition-colors"
           title="Click to change timezone">
-          <div className="flex items-center gap-1">
-            <span className="text-[7px] sm:text-[8px] font-mono text-amber-400 uppercase tracking-widest leading-none font-bold">{tzLabel}</span>
-            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-              className={`text-amber-400/80 transition-transform ${showPicker ? "rotate-180" : ""}`}>
+          <div className="flex items-center gap-1 mb-0.5">
+            <span className="text-[7px] sm:text-[9px] font-mono text-amber-400 uppercase tracking-widest leading-none font-bold">{tzLabel}</span>
+            <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className={`text-amber-400/70 transition-transform ${showPicker ? "rotate-180" : ""}`}>
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </div>
-          <p className="text-[11px] sm:text-lg font-mono font-black tabular-nums leading-none text-amber-300">{tzTime}</p>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-[6px] sm:text-[7px] font-mono text-amber-400/70 leading-none">{tzDate}</span>
-            <span className="text-[6px] sm:text-[7px] font-mono text-amber-400/50 leading-none">{tzOffset}</span>
+          <span className="text-xs sm:text-base font-bold font-mono text-amber-300 leading-none tabular-nums">{tzTime}</span>
+          <div className="flex items-center gap-1 mt-0.5">
+            <span className="text-[7px] sm:text-[9px] font-mono text-amber-400/70 leading-none">{getTimezoneOffset(selectedTz)}</span>
           </div>
         </button>
       </div>
@@ -151,6 +156,7 @@ export function ClockCard() {
   );
 }
 
+// ClockBadge for Dashboard page — unchanged
 export function ClockBadge() {
   const [selectedTz, setSelectedTz] = useSelectedTimezone();
   const [showPicker, setShowPicker] = useState(false);

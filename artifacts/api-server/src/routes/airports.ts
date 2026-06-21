@@ -1,11 +1,16 @@
 import { Router } from "express";
-import { db, alertsTable } from "@workspace/db";
-import { count, max } from "drizzle-orm";
+import { db, alertsTable, watchlistTable } from "@workspace/db";
+import { count, max, eq } from "drizzle-orm";
 import { getAirports, getMonitorState, getCurrentTaf, getCurrentMetar, getAllWeather, fetchWeatherForIcao } from "../lib/monitor.js";
 
 const router = Router();
 
-router.get("/airports", async (_req, res) => {
+function getDeviceId(req: Express.Request): string {
+  return (req.headers["x-device-id"] as string) ?? "legacy";
+}
+
+router.get("/airports", async (req, res) => {
+  const userId = getDeviceId(req);
   const airports = getAirports();
   const alertCounts = await db
     .select({

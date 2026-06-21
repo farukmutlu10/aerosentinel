@@ -42,12 +42,21 @@ interface AdSlotProps {
  * Kartların arasına entegre edilir, grid içinde normal kart gibi davranır.
  * Dark/light tema değişimine göre uygun AdSense slot'u otomatik seçilir.
  * AdSense onaylanıp reklam gösterirse sponsor metin otomatik gizlenir.
+ * 
+ * Şimdilik gizli — geri getirmek için aşağıdaki return null'u kaldır.
  */
 export function AdSlot({ slot, className = "", sponsor }: AdSlotProps) {
+  // ŞİMDİLİK GİZLİ — geri getirmek için aşağıdaki satırı kaldır
+  return null;
+
+  // eslint-disable-next-line no-unreachable
   const { theme } = useThemeContext();
+  // eslint-disable-next-line no-unreachable
   const config = theme === "dark" ? SLOT_CONFIG_DARK[slot] : SLOT_CONFIG_LIGHT[slot];
+  // eslint-disable-next-line no-unreachable
   const insRef = useRef<HTMLModElement>(null);
 
+  // eslint-disable-next-line no-unreachable
   useEffect(() => {
     if (sponsor) return;
     const timer = setTimeout(() => {
@@ -61,11 +70,8 @@ export function AdSlot({ slot, className = "", sponsor }: AdSlotProps) {
     return () => clearTimeout(timer);
   }, [slot, sponsor, theme]);
 
-  // Google AdSense — her zaman render edilir (sponsor olsun veya olmasın)
-  // Sponsor bilgisi AdSense'in üstünde gösterilir
   return (
     <div className={`bg-card border border-border/40 rounded-lg overflow-hidden relative ${className}`}>
-      {/* Sponsor overlay — AdSense yüklenemezse veya sponsor prop verilmişse görünür */}
       {sponsor && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-card/80 backdrop-blur-[1px]">
           <div className="flex items-center gap-3 px-4 py-3">
@@ -87,7 +93,6 @@ export function AdSlot({ slot, className = "", sponsor }: AdSlotProps) {
           </div>
         </div>
       )}
-      {/* AdSense iframe */}
       <div className="flex items-center justify-center py-4 px-3">
         <ins
           ref={insRef}

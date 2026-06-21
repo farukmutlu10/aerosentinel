@@ -20,11 +20,24 @@ function saveLocal(icaos: string[]) {
   try { localStorage.setItem(LS_KEY, JSON.stringify(icaos)); } catch {}
 }
 
+// Generate or retrieve a persistent device ID for this browser
+function getOrCreateDeviceId(): string {
+  let id = localStorage.getItem("aero-device-id");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem("aero-device-id", id);
+  }
+  return id;
+}
+
+const deviceId = getOrCreateDeviceId();
+const headers: Record<string, string> = { "X-Device-ID": deviceId, "Content-Type": "application/json" };
+
 // On mount: replace backend list with this browser's localStorage list
 function syncToBackend(icaos: string[]) {
   void fetch("/api/watchlist/sync", {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ icaos }),
   }).catch(() => {});
 }
@@ -32,17 +45,23 @@ function syncToBackend(icaos: string[]) {
 function apiAdd(icao: string) {
   void fetch("/api/watchlist", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ icao }),
   }).catch(() => {});
 }
 
 function apiRemove(icao: string) {
-  void fetch(`/api/watchlist/${icao}`, { method: "DELETE" }).catch(() => {});
+  void fetch(`/api/watchlist/${icao}`, {
+    method: "DELETE",
+    headers,
+  }).catch(() => {});
 }
 
 function apiClear() {
-  void fetch("/api/watchlist", { method: "DELETE" }).catch(() => {});
+  void fetch("/api/watchlist", {
+    method: "DELETE",
+    headers,
+  }).catch(() => {});
 }
 
 interface WatchlistContextValue {

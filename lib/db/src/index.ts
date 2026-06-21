@@ -13,7 +13,7 @@ const { Pool } = pg;
  */
 
 // ── In-memory store ──────────────────────────────────────────
-interface MemWatchlistEntry { id: number; icao: string; addedAt: Date }
+interface MemWatchlistEntry { id: number; userId: string; icao: string; addedAt: Date }
 interface MemAlertEntry {
   id: number;
   type: string;
@@ -54,9 +54,10 @@ function memDb() {
         onConflictDoNothing: () => {
           const arr = Array.isArray(v) ? v : [v];
           for (const item of arr) {
-            if (item.icao && !memStore.watchlist.find((r) => r.icao === item.icao)) {
+            if (item.icao && !memStore.watchlist.find((r) => r.icao === item.icao && r.userId === (item.userId ?? "legacy"))) {
               memStore.watchlist.push({
                 id: memNextId.wl++,
+                userId: item.userId ?? "legacy",
                 icao: item.icao,
                 addedAt: new Date(),
               });

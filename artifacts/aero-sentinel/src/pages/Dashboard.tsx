@@ -314,7 +314,7 @@ export default function Dashboard() {
             <span className="tabular-nums">{monitorData?.scanCountToday ?? monitorData?.scanCount ?? 0}</span>
             {watchedIcaos.length > 0 && (
               <><span className="text-border hidden sm:inline">|</span>
-              <span className="text-sky-400">WL {watchedIcaos.length}</span></>
+              <span className="text-sky-400">WATCHLIST {watchedIcaos.length}</span></>
             )}
           </div>
           <div className="flex items-center gap-2 sm:gap-3">

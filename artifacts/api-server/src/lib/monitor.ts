@@ -41,12 +41,14 @@ async function fetchJson(url: string): Promise<unknown[]> {
 }
 
 async function refreshIcaoCache(): Promise<string[]> {
-  const rows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
-  if (rows.length === 0) {
-    await db.insert(watchlistTable).values({ icao: "LTFH" }).onConflictDoNothing();
+  // Tüm kullanıcılardaki benzersiz ICAO'lar
+  const allRows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
+  if (allRows.length === 0) {
+    await db.insert(watchlistTable).values({ icao: "LTFH", userId: "legacy" }).onConflictDoNothing();
     cachedIcaos = ["LTFH"];
   } else {
-    cachedIcaos = rows.map((r) => r.icao);
+    const uniqueIcaos = [...new Set(allRows.map(r => r.icao))];
+    cachedIcaos = uniqueIcaos;
   }
   return cachedIcaos;
 }
@@ -54,10 +56,11 @@ async function refreshIcaoCache(): Promise<string[]> {
 async function seedIfEmpty() {
   const rows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
   if (rows.length === 0) {
-    await db.insert(watchlistTable).values({ icao: "LTFH" }).onConflictDoNothing();
+    await db.insert(watchlistTable).values({ icao: "LTFH", userId: "legacy" }).onConflictDoNothing();
     cachedIcaos = ["LTFH"];
   } else {
-    cachedIcaos = rows.map((r) => r.icao);
+    const uniqueIcaos = [...new Set(rows.map(r => r.icao))];
+    cachedIcaos = uniqueIcaos;
   }
 }
 

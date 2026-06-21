@@ -33,9 +33,14 @@ function startOfTodayUtc(): Date {
   return d;
 }
 
+function getDeviceId(req: Express.Request): string {
+  return (req.headers["x-device-id"] as string) ?? "legacy";
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/alerts", async (req, res) => {
+  const userId = getDeviceId(req);
   const raw = req.query;
   const coerced = {
     ...raw,
@@ -56,6 +61,19 @@ router.get("/alerts", async (req, res) => {
   if (icao)                       conditions.push(eq(alertsTable.icao, icao));
   if (acknowledged !== undefined) conditions.push(eq(alertsTable.acknowledged, acknowledged));
 
+  // Filter alerts to only those ICAOs in the user's watchlist
+  const userWatchlist = await db
+    .select({ icao: watchlistTable.icao })
+    .from(watchlistTable)
+    .where(eq(watchlistTable.userId, userId));
+  const userIcaos = userWatchlist.map((r) => r.icao);
+
+  if (userIcaos.length === 0) {
+    return res.json([]);
+  }
+
+  conditions.push(inArray(alertsTable.icao, userIcaos));
+
   const alerts = await db
     .select()
     .from(alertsTable)
@@ -69,9 +87,11 @@ router.get("/alerts", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/alerts/summary", async (req, res) => {
+  const userId = getDeviceId(req);
   const forceRefresh = req.query.refresh === "1";
   const now          = Date.now();
-  const entry        = cache.get("summary");
+  const cacheKey     = `summary_${userId}`;
+  const entry        = cache.get(cacheKey);
 
   if (!forceRefresh && entry && now - entry.ts < SUMMARY_CACHE_TTL) {
     logger.info(
@@ -92,12 +112,12 @@ router.get("/alerts/summary", async (req, res) => {
 
   const today = startOfTodayUtc();
 
-  const watchlistRows  = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
+  const watchlistRows  = await db.select({ icao: watchlistTable.icao }).from(watchlistTable).where(eq(watchlistTable.userId, userId));
   const watchlistIcaos = watchlistRows.map((r) => r.icao);
 
   if (watchlistIcaos.length === 0) {
     const empty = { totalAlerts: 0, unacknowledged: 0, tafRevisions: 0, speciAlerts: 0, airportsAffected: 0, lastScan: null };
-    cache.set("summary", { data: empty, ts: now });
+    cache.set(cacheKey, { data: empty, ts: now });
     return res.json(empty);
   }
 
@@ -126,13 +146,14 @@ router.get("/alerts/summary", async (req, res) => {
     lastScan:         lastScanRow?.detectedAt ?? null,
   };
 
-  cache.set("summary", { data: result, ts: now });
+  cache.set(cacheKey, { data: result, ts: now });
   return res.json(result);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/alerts/recent", async (req, res) => {
+  const userId = getDeviceId(req);
   const forceRefresh = req.query.refresh === "1";
   const page  = Math.max(1, parseInt(String(req.query.page  ?? "1"),  10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "10"), 10) || 10));
@@ -140,7 +161,7 @@ router.get("/alerts/recent", async (req, res) => {
 
   // Cache applies only for the default page=1&limit=10 request (notification hook)
   const canUseCache = !forceRefresh && page === 1 && limit === 10;
-  const cacheKey    = "recent_p1_l10";
+  const cacheKey    = `recent_p1_l10_${userId}`;
   const entry       = canUseCache ? cache.get(cacheKey) : undefined;
 
   if (entry && now - entry.ts < RECENT_CACHE_TTL) {
@@ -167,9 +188,22 @@ router.get("/alerts/recent", async (req, res) => {
   );
 
   const offset = (page - 1) * limit;
+
+  // Filter to user's watchlist ICAOs
+  const userWatchlist = await db
+    .select({ icao: watchlistTable.icao })
+    .from(watchlistTable)
+    .where(eq(watchlistTable.userId, userId));
+  const userIcaos = userWatchlist.map((r) => r.icao);
+
+  if (userIcaos.length === 0) {
+    return res.json([]);
+  }
+
   const alerts = await db
     .select()
     .from(alertsTable)
+    .where(inArray(alertsTable.icao, userIcaos))
     .orderBy(desc(alertsTable.detectedAt))
     .limit(limit)
     .offset(offset);
