@@ -113,7 +113,7 @@ export default function Alerts() {
 
   const activeTypesSet = new Set<string>(activeTypesArr);
   const localAckedSet = useMemo(() => new Set(localAcked), [localAcked]);
-  const isAcked = (a: { id: number; acknowledged: boolean }) => a.acknowledged || localAckedSet.has(a.id);
+  const isAcked = (a: { id: number }) => localAckedSet.has(a.id);
 
   const handleAck = (id: number) => {
     setLocalAcked((prev) => (prev.includes(id) ? prev : [...prev, id]));
@@ -155,6 +155,16 @@ export default function Alerts() {
 
   const alerts = useMemo(() => {
     let list = allAlerts ?? [];
+    // Deduplicate: keep only the latest alert per ICAO
+    const seen = new Map<string, number>();
+    list = list.filter((a) => {
+      const prev = seen.get(a.icao);
+      if (prev === undefined || new Date(a.detectedAt).getTime() > prev) {
+        seen.set(a.icao, new Date(a.detectedAt).getTime());
+        return true;
+      }
+      return false;
+    });
     list = list.filter((a) => activeTypesSet.has(a.type));
     if (hideAcknowledged) list = list.filter((a) => !isAcked(a));
     list = list.filter((a) => isWatching(a.icao));
@@ -245,15 +255,8 @@ export default function Alerts() {
 
           <span className="text-border text-xs hidden sm:inline">|</span>
 
-          {/* Hide acknowledged */}
-          <button onClick={() => {
-            if (!hideAcknowledged) {
-              // When hiding, add all current alert IDs to localAcked so they disappear immediately
-              const allIds = (allAlerts ?? []).map((a) => a.id);
-              setLocalAcked((prev) => [...new Set([...prev, ...allIds])]);
-            }
-            setHideAcknowledged(!hideAcknowledged);
-          }}
+          {/* Hide acknowledged — only filters, does NOT auto-ack */}
+          <button onClick={() => setHideAcknowledged(!hideAcknowledged)}
             className={`px-2 sm:px-3 py-0.5 sm:py-1.5 rounded text-[10px] sm:text-xs font-mono font-medium border transition-colors ${hideAcknowledged ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"}`}>
             {hideAcknowledged ? "Show All" : "Hide Ack"}
           </button>
