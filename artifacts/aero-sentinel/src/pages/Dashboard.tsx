@@ -97,7 +97,7 @@ export default function Dashboard() {
   // v2 key — avoids stale localStorage with old format (without CRIT)
   const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-dash-cats-v2", DEFAULT_CATS);
   const [view, setView] = usePersistedState<ViewMode>("as-dash-view", DEFAULT_VIEW);
-  const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-dash-route", DEFAULT_ROUTE);
+  const [routeFilter, setRouteFilter] = useState<RouteFilter>(DEFAULT_ROUTE);
 
   // Reset route filter to ALL when timezone is not Istanbul
   useEffect(() => {
@@ -331,9 +331,11 @@ export default function Dashboard() {
             <span className="text-border hidden sm:inline">|</span>
             <span className="text-muted-foreground">SCANS</span>
             <span className="tabular-nums">{monitorData?.scanCountToday ?? monitorData?.scanCount ?? 0}</span>
+            <span className="text-border hidden sm:inline">|</span>
+            <span className="text-muted-foreground hidden sm:inline">INTERVAL</span>
+            <span className="tabular-nums hidden sm:inline">60s</span>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            <span className="text-[9px] sm:text-[10px] text-muted-foreground font-mono hidden sm:inline">INTERVAL: 60s</span>
             <ClockBadge />
           </div>
         </div>
@@ -345,11 +347,11 @@ export default function Dashboard() {
             className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-mono hover:bg-muted/30 transition-colors cursor-pointer select-none"
           >
             <div className="flex items-center gap-2">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-sky-400">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#d4a843]">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
               </svg>
               <span className="text-[#d4a843] tracking-widest">WATCHED AIRPORTS</span>
-              <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-[10px] font-mono font-bold" style={{ backgroundColor: '#38bdf8', color: '#ffffff' }}>{watchedIcaos.length}</span>
+              <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-[10px] font-mono font-bold" style={{ backgroundColor: '#d4a843', color: '#0f0f1a' }}>{watchedIcaos.length}</span>
             </div>
             <div className="flex items-center gap-2">
               {hasFilter && (

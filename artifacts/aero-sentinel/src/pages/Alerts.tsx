@@ -286,9 +286,6 @@ export default function Alerts() {
             </button>
           )}
 
-          <span className={`text-[10px] sm:text-xs text-muted-foreground font-mono ${unackedCount > 0 ? "" : "ml-auto"}`}>
-            {Math.min(displayLimit, alerts.length)} / {alerts.length}
-          </span>
           {/* REFRESH - far right */}
           <button
             onClick={handleRefresh}

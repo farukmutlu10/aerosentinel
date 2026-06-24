@@ -228,7 +228,7 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
               </svg>
             </button>
             {settingsOpen && (
-              <div className="absolute left-auto right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg p-1.5 z-50 min-w-[140px]">
+              <div className="absolute left-auto right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg p-1.5 z-50 min-w-[140px] max-w-[200px]">
                 <button
                   onClick={() => { handleKiosk(); }}
                   className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
