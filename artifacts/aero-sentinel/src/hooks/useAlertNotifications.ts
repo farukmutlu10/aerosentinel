@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useGetRecentAlerts, getGetRecentAlertsQueryKey } from "@workspace/api-client-react";
+import { useGetRecentAlerts, getGetRecentAlertsQueryKey, listAlerts } from "@workspace/api-client-react";
+import { useAlertSound } from "@/hooks/useAlertSound";
 
 const TYPE_LABELS: Record<string, string> = {
   TAF_AMD: "TAF Revision (AMD)",
@@ -10,6 +11,7 @@ const TYPE_LABELS: Record<string, string> = {
 const AUTO_CLOSE_MS = 60_000; // 60 saniye sonra otomatik kapat
 
 export function useAlertNotifications() {
+  const { play: playAlert } = useAlertSound();
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [dismissed, setDismissed] = useState(false);
   const [deniedDismissed, setDeniedDismissed] = useState(false);
@@ -23,6 +25,20 @@ export function useAlertNotifications() {
     }
     const wasDismissed = sessionStorage.getItem("notif-dismissed") === "1";
     setDismissed(wasDismissed);
+  }, []);
+
+  // Yeni eklenen meydanlar için mevcut alert'leri seenIds'e ekle (notification tetiklemesin)
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const icao = (e as CustomEvent<string>).detail;
+      if (!icao) return;
+      try {
+        const alerts = await listAlerts({ icao, limit: 50 });
+        alerts.forEach((a) => seenIds.current.add(a.id));
+      } catch {}
+    };
+    window.addEventListener("watchlist-airport-added", handler);
+    return () => window.removeEventListener("watchlist-airport-added", handler);
   }, []);
 
   const { data: recent } = useGetRecentAlerts({
@@ -54,6 +70,8 @@ export function useAlertNotifications() {
           }
         );
         openNotifs.current.set(alert.id, n);
+
+        playAlert();
 
         // Auto-dismiss after 60 seconds
         const timer = setTimeout(() => {

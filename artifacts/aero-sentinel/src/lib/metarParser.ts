@@ -68,7 +68,7 @@ export const WX_LABELS: Record<string, string> = {
   "+SHRA": "Hvy Rain Showers", SHSN: "Snow Showers", "-SHSN": "Lt Snow Showers",
   "+SHSN": "Hvy Snow Showers", SHGR: "Hail Showers", SHGS: "Small Hail Showers",
   VCSH: "Vcnty Showers", VCTS: "Vcnty T-storm",
-  SS: "Sandstorm", DS: "Duststorm", SG: "Snow Grains",
+  SS: "Sandstorm", DS: "Duststorm", "-DS": "Lt Duststorm", "+DS": "Hvy Duststorm", "-SS": "Lt Sandstorm", "+SS": "Hvy Sandstorm", SG: "Snow Grains",
   IC: "Ice Crystals", PL: "Ice Pellets", FC: "Funnel Cloud", SQ: "Squall",
   NSW: "No Sig Weather", CB: "Cumulonimbus",
   "-TS": "Lt Thunderstorm", "+TS": "Hvy Thunderstorm",
@@ -77,22 +77,22 @@ export const WX_LABELS: Record<string, string> = {
 };
 
 export const ORANGE_WX = new Set([
-  "VCTS", "TS", "-TS", "TSRA", "-TSRA", "CB",
-  "DU", "FU", "-SH", "SH", "-RA", "RA", "SHRA", "-SHRA",
-  "SA", "FG", "BLDU", "BLSA", "DRDU", "DRSA",
+  "VCTS", "TS", "-TS", "TSRA", "-TSRA",
+  "DU", "FU", "-SH", "SH", "-RA", "RA", "+RA", "DZ", "-DZ", "+DZ", "SHRA", "-SHRA",
+  "SA", "FG", "BLDU", "BLSA", "DRDU", "DRSA", "PO",
 ]);
 
 export const RED_WX = new Set([
-  "+TS", "+TSRA", "+SH", "+SHRA", "DS", "SS",
+  "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ", "DS", "-DS", "+DS", "SS", "-SS", "+SS",
   "-SN", "SN", "+SN", "-SHSN", "SHSN", "+SHSN",
   "TSSN", "+TSSN", "TSGR", "TSPL",
   "-FZRA", "FZRA", "+FZRA",
   "FZDZ", "-FZDZ", "+FZDZ",
-  "FZFG",
+  "FZFG", "BCFG",
   "BLSN", "+BLSN", "-BLSN", "DRSN",
   "-RASN", "RASN", "+RASN",
   "SHGR", "SHGS",
-  "IC", "PL", "GR", "GS", "VA", "FC", "SQ",
+  "IC", "PL", "GR", "GS", "VA", "FC", "SQ", "SG",
 ]);
 
 const DANGER_CODES = [...RED_WX];
@@ -256,8 +256,12 @@ function wxColor(code: string): string {
   if (RED_WX.has(code)) return "#ef4444";
   if (ORANGE_WX.has(code)) return "#f97316";
   if (/^(BR|HZ)$/.test(code)) return "#d1a054";
+  if (/^CB$/.test(code)) return "#d1a054";
   const base = code.replace(/^[-+]/, "");
+  if (RED_WX.has(base)) return "#ef4444";
+  if (ORANGE_WX.has(base)) return "#f97316";
   if (/^(BL|DR)(SN|RA)/.test(base)) return "#ef4444";
+  if (/^(DS|SS|SG)$/.test(base)) return "#ef4444";
   if (/^FZ(FG|DZ|SN|RA)/.test(base)) return "#ef4444";
   if (/^TS(SN|GR|PL|IC)/.test(base)) return "#ef4444";
   if (/^RA(SN)/.test(base)) return "#ef4444";
@@ -276,12 +280,33 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
     if (/^\s+$/.test(part)) { tokens.push({ text: part }); continue; }
 
     const t = part.trim();
+    // SCT030CB, BKN015CB gibi token'ları ikiye böl
+    const cbSplit = t.match(/^(FEW|SCT|BKN|OVC|VV)(\d{3})(CB)$/);
+    if (cbSplit) {
+      // İlk parça: cloud layer
+      const cloudToken = cbSplit[1] + cbSplit[2];
+      const ft = parseInt(cbSplit[2]) * 100;
+      tokens.push({ text: cloudToken, color: "#94a3b8", title: `Cloud: ${ft}ft` });
+      // İkinci parça: CB
+      tokens.push({ text: "CB", color: "#d1a054", title: "Cumulonimbus" });
+      nonSpaceIdx++;
+      continue;
+    }
     let color: string | undefined;
     let bold = false;
     let title: string | undefined;
 
     if (/^(METAR|SPECI|TAF|AMD|COR|NIL)$/.test(t)) {
       color = "#38BDF8"; bold = true;
+    } else if (t === "CB") {
+      color = "#d1a054"; title = "Cumulonimbus";
+    } else if (/^(BECMG|TEMPO|INTER|PROB\d{2})$/.test(t) || /^FM\d{6}$/.test(t) || /^AT\d{4}$/.test(t) || /^TL\d{4}$/.test(t)) {
+      bold = true; color = "currentColor"; title = "TAF change group";
+    } else if (/^[-+]?(?:TS|SH|FZ|DR|BL|VC|MI|PR|BC|NSW)/.test(t) || /(?:DZ|RA|SN|SG|IC|PL|GR|GS|BR|FG|FU|VA|DU|SA|HZ|PO|CB|FC|SQ|SS|DS)/.test(t)) {
+      const wx = wxColor(t);
+      color = wx;
+      const label = WX_LABELS[t];
+      if (label) title = label;
     } else if (nonSpaceIdx <= 2 && /^[A-Z]{4}$/.test(t) && !/^(AUTO|CORR|NOSIG|BECMG|TEMPO|INTER|PROB)$/.test(t)) {
       color = "#38BDF8"; bold = true; title = `Station: ${t}`;
     } else if (/^\d{6}Z$/.test(t) || /^\d{4}\/\d{4}$/.test(t)) {
@@ -311,6 +336,10 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
         if (c) color = c;
         title = `Visibility: ${vis}m`;
       }
+    } else if (/^(BKN|OVC|VV|FEW|SCT)\d{3}CB$/i.test(t)) {
+      const digits = t.match(/\d{3}/)?.[0] ?? "000";
+      const ft = parseInt(digits) * 100;
+      color = "#d1a054"; title = `Cloud with CB: ${ft}ft`;
     } else if (/^(BKN|OVC|VV)\d{3}/.test(t)) {
       const ft = parseInt(t.slice(t.startsWith("VV") ? 2 : 3)) * 100;
       const c = ceilColor(ft);
@@ -323,20 +352,11 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
     } else if (/^Q\d{4}$/.test(t) || /^A\d{4}$/.test(t)) {
       color = "#94a3b8"; title = `QNH: ${t.slice(1)} ${t.startsWith("Q") ? "hPa" : "inHg"}`;
     } else if (/^(BECMG|TEMPO|INTER|PROB\d{2})$/.test(t) || /^FM\d{6}$/.test(t) || /^AT\d{4}$/.test(t) || /^TL\d{4}$/.test(t)) {
-      color = "#f59e0b"; bold = true; title = "TAF change group";
+      bold = true; title = "TAF change group";
     } else if (t === "NOSIG") {
       color = "#64748b"; title = "No Significant Change";
     } else if (/^(RMK|TX|TN)/.test(t)) {
       color = "#64748b";
-    } else {
-      const wx = wxColor(t);
-      const isWxLike = /^[-+]?(?:TS|SH|FZ|DR|BL|VC|MI|PR|BC|NSW)/.test(t) ||
-        /(?:DZ|RA|SN|SG|IC|PL|GR|GS|BR|FG|FU|VA|DU|SA|HZ|FC|SQ|SS|DS)/.test(t);
-      if (isWxLike || wx !== "#94a3b8") {
-        color = wx;
-        const label = WX_LABELS[t];
-        if (label) title = label;
-      }
     }
 
     tokens.push({ text: part, color, bold, title });

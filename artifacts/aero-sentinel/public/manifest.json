@@ -1,0 +1,14 @@
+{
+  "name": "AeroSentinel",
+  "short_name": "AeroSentinel",
+  "description": "Professional aviation weather monitoring platform with real-time TAF/METAR tracking, SPECI alerts, flight analysis, and personalized watchlists for pilots and aviation professionals.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a14",
+  "theme_color": "#0a0a14",
+  "orientation": "landscape",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

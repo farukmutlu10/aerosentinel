@@ -843,7 +843,7 @@ export default function Airports() {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-mono font-bold text-foreground">Upload Excel flight plan</p>
+                  <p className="text-sm font-mono font-bold text-foreground">Upload your flight list.</p>
                   <p className="text-xs font-mono text-muted-foreground mt-1">Drag & drop or click · .xlsx .xls .csv</p>
                 </div>
                 <p className="text-[10px] font-mono text-muted-foreground/60 mt-1">

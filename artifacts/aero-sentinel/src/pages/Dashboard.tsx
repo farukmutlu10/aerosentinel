@@ -15,6 +15,7 @@ import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { normalizeIcao } from "@/lib/icaoUtils";
+import { iataToIcao } from "@/lib/iataMap";
 import {
   parseMetar, FlightCategory, CATEGORY_COLOR,
   extractTimeSlots, parseTafWorstCategory,
@@ -103,6 +104,7 @@ export default function Dashboard() {
   const timeRef = useRef<HTMLDivElement>(null);
   const [wlInput, setWlInput] = useState("");
   const wlInputRef = useRef<HTMLInputElement>(null);
+  const [copiedWatchlist, setCopiedWatchlist] = useState(false);
 
   // Notification tracking
   const prevWeatherRef = useRef<Map<string, { rawMetar: string | null; rawTaf: string | null }>>(new Map());
@@ -124,9 +126,16 @@ export default function Dashboard() {
     const codes = wlInput.split(/[,\s]+/).filter(Boolean);
     const skipped: string[] = [];
     codes.forEach((c) => {
-      const icao = normalizeIcao(c);
-      if (icao.length === 4) addIcao(icao);
-      else if (icao.length > 0) skipped.push(c);
+      const raw = c.trim().toUpperCase();
+      if (raw.length === 4) {
+        addIcao(raw);
+      } else if (raw.length === 3) {
+        const resolved = iataToIcao(raw);
+        if (resolved) addIcao(resolved);
+        else skipped.push(c);
+      } else if (raw.length > 0) {
+        skipped.push(c);
+      }
     });
     setWlInput(skipped.length > 0 ? skipped.join(",") : "");
     wlInputRef.current?.focus();
@@ -142,8 +151,11 @@ export default function Dashboard() {
     const val = e.target.value
       .replace(/[İı]/g, "I").replace(/[Şş]/g, "S").replace(/[Ğğ]/g, "G")
       .replace(/[Üü]/g, "U").replace(/[Öö]/g, "O").replace(/[Çç]/g, "C")
-      .toUpperCase().replace(/[^A-Z0-9,\s]/g, "");
+      .toUpperCase().replace(/[\n\r]/g, ",").replace(/[^A-Z0-9,\s]/g, "").replace(/,{2,}/g, ",");
     setWlInput(val);
+    if (/[\n\r]/.test(e.target.value)) {
+      setTimeout(() => handleWlAdd(), 0);
+    }
   };
 
   useEffect(() => {
@@ -325,33 +337,51 @@ export default function Dashboard() {
 
         {/* Collapsible watchlist */}
         <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <button
+          <div
             onClick={() => setWatchlistOpen((o) => !o)}
-            className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-mono hover:bg-muted/30 transition-colors"
+            className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-mono hover:bg-muted/30 transition-colors cursor-pointer select-none"
           >
             <div className="flex items-center gap-2">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-sky-400">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
               </svg>
               <span className="text-sky-400 tracking-widest">WATCHED AIRPORTS</span>
-              <span className="text-muted-foreground">
-                {watchedIcaos.length > 0 ? `${watchedIcaos.length} airports` : "default: LTFH"}
-              </span>
+              <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-[10px] font-mono font-bold" style={{ backgroundColor: '#d4a843', color: '#0f0f1a' }}>{watchedIcaos.length}</span>
             </div>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-              className={`text-muted-foreground transition-transform duration-200 ${watchlistOpen ? "rotate-180" : ""}`}>
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </button>
+            <div className="flex items-center gap-2">
+              {hasFilter && (
+                <div className="inline-flex items-stretch border border-border rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => { navigator.clipboard?.writeText(watchedIcaos.join(',')); setCopiedWatchlist(true); setTimeout(() => setCopiedWatchlist(false), 3000); }}
+                    className="flex items-center gap-1.5 text-xs font-mono bg-transparent hover:bg-muted/30 transition-colors px-4 py-1.5"
+                    style={{ color: copiedWatchlist ? '#d4a843' : undefined }}
+                  >
+                    {copiedWatchlist ? (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    ) : (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    )}
+                    <span className={!copiedWatchlist ? 'text-muted-foreground' : ''}>{copiedWatchlist ? 'Copied' : 'Copy All'}</span>
+                  </button>
+                  <div className="w-px bg-border self-stretch" />
+                  <button
+                    onClick={clearWatchlist}
+                    className="flex items-center gap-1.5 text-xs font-mono bg-transparent text-red-500/85 hover:bg-red-500/10 transition-colors px-4 py-1.5"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    Clear All
+                  </button>
+                </div>
+              )}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={`text-muted-foreground transition-transform duration-200 ${watchlistOpen ? "rotate-180" : ""}`}>
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </div>
+          </div>
 
           {watchlistOpen && (
             <div className="border-t border-border/60 px-4 py-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">WATCHLIST — Monitored Airports</span>
-                {hasFilter && (
-                  <button onClick={clearWatchlist} className="text-xs font-mono text-muted-foreground hover:text-destructive transition-colors">Clear All</button>
-                )}
-              </div>
               <div
                 className="flex flex-wrap items-center gap-1.5 min-h-[42px] bg-background border border-input rounded-md px-2 py-1.5 cursor-text focus-within:border-primary transition-colors"
                 onClick={() => wlInputRef.current?.focus()}
@@ -365,19 +395,19 @@ export default function Dashboard() {
                 ))}
                 <input ref={wlInputRef} type="text" value={wlInput}
                   onChange={handleWlInputChange} onKeyDown={handleWlKeyDown}
-                  placeholder={watchedIcaos.length === 0 ? "Enter ICAO and press Enter — e.g. LTFJ,LTAC,LTFM" : "Add (comma-separated)..."}
-                  className="flex-1 min-w-[200px] bg-transparent text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none py-0.5"
+                  placeholder={watchedIcaos.length === 0 ? "Search by ICAO or IATA — separate multiple codes with comma or space." : ""}
+                  className="flex-1 min-w-[80px] bg-transparent text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none py-0.5"
                 />
-                {wlInput.replace(/[,\s]/g, "").length >= 4 && (
+                {wlInput.replace(/[,\s]/g, "").length >= 3 && (
                   <button type="button" onClick={handleWlAdd}
                     className="px-2 py-0.5 text-xs font-mono bg-primary text-primary-foreground rounded hover:opacity-90 transition-opacity">ADD</button>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground font-mono mt-2">
-                {hasFilter
-                  ? <span className="text-sky-400">{watchedIcaos.length} airports monitored — this browser only.</span>
-                  : <span>Watchlist empty — showing default <span className="text-primary font-bold">LTFH</span>. Add any 4-letter ICAO code.</span>}
-              </p>
+              {!hasFilter && (
+                <p className="text-xs text-muted-foreground font-mono mt-2">
+                  Watchlist empty — showing default <span className="text-primary font-bold">LTFH</span>.
+                </p>
+              )}
             </div>
           )}
         </div>

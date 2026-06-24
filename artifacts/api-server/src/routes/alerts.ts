@@ -56,23 +56,15 @@ router.get("/alerts", async (req, res) => {
   }
 
   const { type, icao, acknowledged, limit = 50 } = parsed.data;
+  const sinceHours = raw.since_hours ? Number(raw.since_hours) : 6;
   const conditions = [];
   if (type)                       conditions.push(eq(alertsTable.type, type));
   if (icao)                       conditions.push(eq(alertsTable.icao, icao));
   if (acknowledged !== undefined) conditions.push(eq(alertsTable.acknowledged, acknowledged));
-
-  // Filter alerts to only those ICAOs in the user's watchlist
-  const userWatchlist = await db
-    .select({ icao: watchlistTable.icao })
-    .from(watchlistTable)
-    .where(eq(watchlistTable.userId, userId));
-  const userIcaos = userWatchlist.map((r) => r.icao);
-
-  if (userIcaos.length === 0) {
-    return res.json([]);
+  if (sinceHours > 0) {
+    const since = new Date(Date.now() - sinceHours * 3600_000);
+    conditions.push(gte(alertsTable.detectedAt, since));
   }
-
-  conditions.push(inArray(alertsTable.icao, userIcaos));
 
   const alerts = await db
     .select()

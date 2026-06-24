@@ -93,6 +93,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       const next = [...prev, icao];
       saveLocal(next);
       apiAdd(icao);
+      window.dispatchEvent(new CustomEvent("watchlist-airport-added", { detail: icao }));
       return next;
     });
   }, []);

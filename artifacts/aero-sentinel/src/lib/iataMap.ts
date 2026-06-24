@@ -7762,3 +7762,15 @@ export function getDisplayIcao(icao: string): string {
   const iata = getIataCode(icao);
   return iata ? icao + " (" + iata + ")" : icao;
 }
+
+let _iataToIcao: Record<string, string> | null = null;
+/** Look up ICAO code for a given IATA code (reverse of getIataCode). */
+export function iataToIcao(iata: string): string | undefined {
+  if (!_iataToIcao) {
+    _iataToIcao = {};
+    for (const [icao, code] of Object.entries(ICAO_TO_IATA)) {
+      if (!_iataToIcao[code]) _iataToIcao[code] = icao;
+    }
+  }
+  return _iataToIcao[iata.toUpperCase()];
+}

@@ -72,7 +72,7 @@ async function scanTaf(ids: string) {
     const icao = entry.icaoId;
     const rawTaf = entry.rawTAF ?? "";
     if (!icao) continue;
-    sonGorulenTs[icao] = now; // mark as freshly scanned
+    sonGorulenTs[icao] = now;
     if (sonGorulenTaf[icao] !== rawTaf) {
       sonGorulenTaf[icao] = rawTaf;
       if (rawTaf.includes("AMD") || rawTaf.includes("COR")) {
@@ -91,7 +91,7 @@ async function scanMetar(ids: string) {
     const icao = entry.icaoId;
     const rawMetar = entry.rawOb ?? "";
     if (!icao) continue;
-    sonGorulenTs[icao] = now; // mark as freshly scanned
+    sonGorulenTs[icao] = now;
     if (sonGorulenMetar[icao] !== rawMetar) {
       sonGorulenMetar[icao] = rawMetar;
       if (rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ")) {

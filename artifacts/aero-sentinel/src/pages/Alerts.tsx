@@ -1,4 +1,4 @@
-import { useMemo, useState, Fragment } from "react";
+import { useMemo, useState, useEffect, useCallback, Fragment } from "react";
 import { Link } from "wouter";
 import {
   useListAlerts, getListAlertsQueryKey,
@@ -47,28 +47,36 @@ const DEFAULT_ROUTE: RouteFilter = "ALL";
 const DEFAULT_SORT: SortMode = "newest";
 const DEFAULT_HIDE_ACK = false;
 
-// ── Stat card — vertical centered on all screen sizes ──────────────────────────
-function StatCard({
-  label, value, accent, icon, pulse,
-}: {
+// ── Stat card ──────────────────────────────────────────────────────────────
+interface StatCardProps {
   label: string;
   value: string;
-  accent: string;
   icon: React.ReactNode;
+  bg?: string;
+  border?: string;
+  numberColor?: string;
+  labelColor?: string;
+  barFill?: string;
+  barWidth?: number;
   pulse?: boolean;
-}) {
+}
+
+function StatCard({
+  label, value, icon, bg, border, numberColor, labelColor, barFill, barWidth = 0, pulse,
+}: StatCardProps) {
   return (
     <div
-      className={`relative rounded-lg sm:rounded-xl border overflow-hidden ${pulse ? "animate-pulse-slow" : ""}`}
-      style={{ borderColor: `${accent}30`, backgroundColor: "hsl(var(--card))" }}
+      className={`relative rounded-lg sm:rounded-xl overflow-hidden ${pulse ? "animate-pulse-slow" : ""}`}
+      style={{ backgroundColor: bg || "hsl(var(--card))", border: border || "0.5px solid rgba(255,255,255,0.08)" }}
     >
-      {/* Left accent glow */}
-      <div className="absolute inset-y-0 left-0 w-[2px] sm:w-[3px] rounded-l-xl" style={{ backgroundColor: accent }} />
-      {/* Vertical centered: icon, value, label stacked */}
       <div className="flex flex-col items-center justify-center px-1 sm:px-2 py-2 sm:py-2.5 text-center">
-        <span style={{ color: accent, opacity: 0.85 }} className="mb-0.5 sm:mb-1">{icon}</span>
-        <p className="text-xl sm:text-2xl font-mono font-black tabular-nums leading-none" style={{ color: accent }}>{value}</p>
-        <p className="text-[8px] sm:text-[10px] font-mono tracking-widest text-muted-foreground uppercase mt-0.5">{label}</p>
+        <span style={{ color: numberColor || "rgba(255,255,255,0.45)" }} className="mb-0.5 sm:mb-1">{icon}</span>
+        <p className="text-xl sm:text-2xl font-mono font-black tabular-nums leading-none" style={{ color: numberColor || "rgba(255,255,255,0.85)" }}>{value}</p>
+        <p className="text-[8px] sm:text-[10px] font-mono tracking-widest uppercase mt-0.5" style={{ color: labelColor || "rgba(255,255,255,0.35)" }}>{label}</p>
+      </div>
+      {/* Progress bar */}
+      <div className="h-[2px] mx-2 mb-1.5 rounded-sm" style={{ backgroundColor: "rgba(255,255,255,0.06)" }}>
+        <div className="h-full rounded-sm transition-all duration-500" style={{ width: `${barWidth}%`, backgroundColor: barFill || "rgba(255,255,255,0.2)" }} />
       </div>
     </div>
   );
@@ -113,7 +121,7 @@ export default function Alerts() {
 
   const activeTypesSet = new Set<string>(activeTypesArr);
   const localAckedSet = useMemo(() => new Set(localAcked), [localAcked]);
-  const isAcked = (a: { id: number }) => localAckedSet.has(a.id);
+  const isAcked = useCallback((a: { id: number }) => localAckedSet.has(a.id), [localAckedSet]);
 
   const handleAck = (id: number) => {
     setLocalAcked((prev) => (prev.includes(id) ? prev : [...prev, id]));
@@ -134,12 +142,12 @@ export default function Alerts() {
   };
 
   const queryClient = useQueryClient();
-  const { isWatching } = useWatchlist();
+  const { isWatching, watchedIcaos } = useWatchlist();
   const { theme, toggleTheme } = useThemeContext();
 
   const { data: allAlerts, isLoading } = useListAlerts(
     { limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 180_000 } }
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 60_000, refetchIntervalInBackground: true } }
   );
 
   const handleRefresh = async () => {
@@ -186,9 +194,9 @@ export default function Alerts() {
 
   const unackedCount = alerts.filter((a) => !isAcked(a)).length;
   const dash = isLoading ? "—" : undefined;
-  const totalAlerts    = allAlerts?.length ?? 0;
-  const tafRevisions   = allAlerts?.filter((a) => a.type === "TAF_AMD" || a.type === "TAF_COR").length ?? 0;
-  const speciAlerts    = allAlerts?.filter((a) => a.type === "SPECI").length ?? 0;
+  const totalAlerts    = alerts.length;
+  const tafRevisions   = alerts.filter((a) => a.type === "TAF_AMD" || a.type === "TAF_COR").length;
+  const speciAlerts    = alerts.filter((a) => a.type === "SPECI").length;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -198,10 +206,10 @@ export default function Alerts() {
 
         {/* Stats — flex row, cards fill full width, gap between cards is 1px */}
         <div className="flex flex-wrap sm:flex-nowrap" style={{gap:"10px"}}>
-          <div className="w-full sm:flex-1"><StatCard label="Total" value={dash ?? String(totalAlerts)} accent="#64748b" icon={<IconList />} /></div>
-          <div className="w-full sm:flex-1"><StatCard label="Unacked" value={dash ?? String(allAlerts ? allAlerts.filter((a) => isWatching(a.icao) && !isAcked(a)).length : 0)} accent={unackedCount > 0 ? "#ef4444" : "#64748b"} icon={<IconAlert />} pulse={unackedCount > 0} /></div>
-          <div className="w-full sm:flex-1"><StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} accent="#f59e0b" icon={<IconTaf />} /></div>
-          <div className="w-full sm:flex-1"><StatCard label="SPECI" value={dash ?? String(speciAlerts)} accent="#ef4444" icon={<IconSpeci />} /></div>
+          <div className="w-full sm:flex-1"><StatCard label="Total" value={dash ?? String(totalAlerts)} icon={<IconList />} bg="rgba(100,116,139,0.06)" border="0.5px solid rgba(100,116,139,0.15)" numberColor="rgba(100,116,139,0.9)" labelColor="rgba(100,116,139,0.5)" barFill="rgba(255,255,255,0.2)" barWidth={100} /></div>
+          <div className="w-full sm:flex-1"><StatCard label="Unacked" value={dash ?? String(unackedCount)} icon={<IconAlert />} bg="rgba(226,75,74,0.08)" border="0.5px solid rgba(226,75,74,0.25)" numberColor="#e24b4a" labelColor="rgba(226,75,74,0.6)" barFill="#e24b4a" barWidth={totalAlerts > 0 ? (unackedCount / totalAlerts) * 100 : 0} pulse={unackedCount > 0} /></div>
+          <div className="w-full sm:flex-1"><StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} icon={<IconTaf />} bg="rgba(239,159,39,0.07)" border="0.5px solid rgba(239,159,39,0.2)" numberColor="#ef9f27" labelColor="rgba(239,159,39,0.6)" barFill="#ef9f27" barWidth={totalAlerts > 0 ? (tafRevisions / totalAlerts) * 100 : 0} /></div>
+          <div className="w-full sm:flex-1"><StatCard label="SPECI" value={dash ?? String(speciAlerts)} icon={<IconSpeci />} bg="rgba(255,140,50,0.07)" border="0.5px solid rgba(255,140,50,0.2)" numberColor="#ff8c32" labelColor="rgba(255,140,50,0.6)" barFill="#ff8c32" barWidth={totalAlerts > 0 ? (speciAlerts / totalAlerts) * 100 : 0} /></div>
           <div className="w-full sm:flex-1">
             <ClockCard />
           </div>
