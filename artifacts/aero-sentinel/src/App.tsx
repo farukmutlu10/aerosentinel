@@ -8,6 +8,7 @@ import Alerts from "@/pages/Alerts";
 import Airports from "@/pages/Airports";
 import AirportDetail from "@/pages/AirportDetail";
 import { WatchlistProvider } from "@/context/WatchlistContext";
+import { TimezoneProvider } from "@/components/ClockDisplay";
 import { useAlertNotifications } from "@/hooks/useAlertNotifications";
 import { useTheme } from "@/hooks/useTheme";
 import { createContext, useContext, useEffect } from "react";
@@ -104,9 +105,11 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WatchlistProvider>
-          <AppInner />
-        </WatchlistProvider>
+        <TimezoneProvider>
+          <WatchlistProvider>
+            <AppInner />
+          </WatchlistProvider>
+        </TimezoneProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useMemo, useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useListAlerts, getListAlertsQueryKey } from "@workspace/api-client-react";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useLocalAck } from "@/App";
@@ -44,6 +45,9 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
   const [soundOn, setSoundOn] = useState(() => {
     try { return localStorage.getItem("aerosentinel-sound") !== "0"; } catch { return true; }
   });
+
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number } | null>(null);
+  const portalDropdownRef = useRef<HTMLDivElement>(null);
 
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isPWA, setIsPWA] = useState(false);
@@ -154,7 +158,13 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
             {/* Settings gear button — desktop */}
             <div className="relative" ref={desktopSettingsRef}>
               <button
-                onClick={() => setSettingsOpen(!settingsOpen)}
+                onClick={() => {
+                  if (!settingsOpen && desktopSettingsRef.current) {
+                    const rect = desktopSettingsRef.current.getBoundingClientRect();
+                    setDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                  }
+                  setSettingsOpen(!settingsOpen);
+                }}
                 title="Settings"
                 className="hidden md:flex w-7 h-7 items-center justify-center rounded-md transition-colors ml-0.5"
                 style={{ backgroundColor: '#d4a843', color: '#0f0f1a', border: 'none' }}
@@ -165,58 +175,19 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
                   <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                 </svg>
               </button>
-              {settingsOpen && (
-                <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg p-1.5 z-50 min-w-[140px]">
-                  <button
-                    onClick={() => { handleKiosk(); }}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-                    </svg>
-                    Kiosk
-                  </button>
-                  {onToggleTheme && (
-                    <button
-                      onClick={() => { onToggleTheme(); }}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
-                    >
-                      {theme === "dark" ? (
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="5"/>
-                          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-                          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-                          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                        </svg>
-                      ) : (
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                        </svg>
-                      )}
-                      {theme === "dark" ? "Light" : "Dark"}
-                    </button>
-                  )}
-                  <button
-                    onClick={toggleSound}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
-                  >
-                    {soundOn ? (
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                    ) : (
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
-                    )}
-                    Sound: {soundOn ? "On" : "Off"}
-                  </button>
-                </div>
-              )}
             </div>
           </div>
 
           {/* Mobile — settings gear */}
           <div className="flex sm:hidden items-center relative" ref={mobileSettingsRef}>
             <button
-              onClick={() => setSettingsOpen(!settingsOpen)}
+              onClick={() => {
+                if (!settingsOpen && mobileSettingsRef.current) {
+                  const rect = mobileSettingsRef.current.getBoundingClientRect();
+                  setDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                }
+                setSettingsOpen(!settingsOpen);
+              }}
               title="Settings"
               className="w-8 h-8 flex items-center justify-center rounded-md transition-colors"
               style={{ backgroundColor: '#d4a843', color: '#0f0f1a', border: 'none' }}
@@ -227,66 +198,74 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
                 <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
               </svg>
             </button>
-            {settingsOpen && (
-              <div className="absolute left-auto right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg p-1.5 z-50 min-w-[140px] max-w-[200px]">
-                <button
-                  onClick={() => { handleKiosk(); }}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-                  </svg>
-                  Kiosk
-                </button>
-                {onToggleTheme && (
-                  <button
-                    onClick={() => { onToggleTheme(); }}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
-                  >
-                    {theme === "dark" ? (
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="5"/>
-                        <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                        <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                      </svg>
-                    ) : (
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                      </svg>
-                    )}
-                    {theme === "dark" ? "Light" : "Dark"}
-                  </button>
-                )}
-                <button
-                  onClick={toggleSound}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
-                >
-                  {soundOn ? (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                  ) : (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
-                  )}
-                  Sound: {soundOn ? "On" : "Off"}
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </header>
 
       {/* Click outside to close settings dropdown */}
       {settingsOpen && (
-        <SettingsClickOutside desktopRef={desktopSettingsRef} mobileRef={mobileSettingsRef} onClose={() => setSettingsOpen(false)} />
+        <SettingsClickOutside desktopRef={desktopSettingsRef} mobileRef={mobileSettingsRef} portalRef={portalDropdownRef} onClose={() => setSettingsOpen(false)} />
+      )}
+
+      {/* Portal dropdown — rendered outside the sticky header stacking context */}
+      {settingsOpen && dropdownPos && createPortal(
+        <div
+          ref={portalDropdownRef}
+          className="fixed z-[9999] bg-card border border-border rounded-lg shadow-lg p-1.5 min-w-[180px] whitespace-nowrap"
+          style={{ top: dropdownPos.top, right: dropdownPos.right }}
+        >
+          <button
+            onClick={() => { handleKiosk(); }}
+            className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>
+            Kiosk
+          </button>
+          {onToggleTheme && (
+            <button
+              onClick={() => { onToggleTheme(); }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
+            >
+              {theme === "dark" ? (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="5"/>
+                  <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                  <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+              ) : (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+              )}
+              {theme === "dark" ? "Light" : "Dark"}
+            </button>
+          )}
+          <button
+            onClick={toggleSound}
+            className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
+          >
+            {soundOn ? (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+            )}
+            Sound: {soundOn ? "On" : "Off"}
+          </button>
+        </div>,
+        document.body
       )}
     </>
   );
 }
 
-function SettingsClickOutside({ desktopRef, mobileRef, onClose }: {
+function SettingsClickOutside({ desktopRef, mobileRef, portalRef, onClose }: {
   desktopRef: React.RefObject<HTMLDivElement | null>;
   mobileRef: React.RefObject<HTMLDivElement | null>;
+  portalRef: React.RefObject<HTMLDivElement | null>;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -294,12 +273,13 @@ function SettingsClickOutside({ desktopRef, mobileRef, onClose }: {
       const target = e.target as Node;
       const insideDesktop = desktopRef.current && desktopRef.current.contains(target);
       const insideMobile = mobileRef.current && mobileRef.current.contains(target);
-      if (!insideDesktop && !insideMobile) {
+      const insidePortal = portalRef.current && portalRef.current.contains(target);
+      if (!insideDesktop && !insideMobile && !insidePortal) {
         onClose();
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [desktopRef, mobileRef, onClose]);
+  }, [desktopRef, mobileRef, portalRef, onClose]);
   return null;
 }

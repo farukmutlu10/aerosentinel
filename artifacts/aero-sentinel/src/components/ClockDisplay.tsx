@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, createContext, useContext, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import {
@@ -9,8 +9,32 @@ import {
   type TimezoneOption,
 } from "@/lib/timezones";
 
+// ── Shared timezone context ───────────────────────────────────────────────────
+// Without a context, each component calling useSelectedTimezone() gets its own
+// independent useState instance via usePersistedState. Changing the timezone in
+// ClockBadge wouldn't update Dashboard's isIstanbul check, so ALL/DOM/INT would
+// keep showing for non-Istanbul timezones. This context solves that.
+interface TimezoneCtx {
+  selectedTz: string;
+  setSelectedTz: (val: string | ((prev: string) => string)) => void;
+}
+const TimezoneContext = createContext<TimezoneCtx>({
+  selectedTz: DEFAULT_TIMEZONE,
+  setSelectedTz: () => {},
+});
+
+export function TimezoneProvider({ children }: { children: ReactNode }) {
+  const [selectedTz, setSelectedTz] = usePersistedState<string>("as-clock-tz", DEFAULT_TIMEZONE);
+  return (
+    <TimezoneContext.Provider value={{ selectedTz, setSelectedTz }}>
+      {children}
+    </TimezoneContext.Provider>
+  );
+}
+
 export function useSelectedTimezone() {
-  return usePersistedState<string>("as-clock-tz", DEFAULT_TIMEZONE);
+  const ctx = useContext(TimezoneContext);
+  return [ctx.selectedTz, ctx.setSelectedTz] as const;
 }
 
 function useNow() {
