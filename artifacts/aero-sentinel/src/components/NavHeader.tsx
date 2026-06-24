@@ -46,7 +46,7 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
     try { return localStorage.getItem("aerosentinel-sound") !== "0"; } catch { return true; }
   });
 
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number } | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left?: number; right?: number } | null>(null);
   const portalDropdownRef = useRef<HTMLDivElement>(null);
 
   const [installPrompt, setInstallPrompt] = useState<any>(null);
@@ -184,7 +184,13 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
               onClick={() => {
                 if (!settingsOpen && mobileSettingsRef.current) {
                   const rect = mobileSettingsRef.current.getBoundingClientRect();
-                  setDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                  const dropdownWidth = 180;
+                  let left = rect.left;
+                  if (left + dropdownWidth > window.innerWidth) {
+                    left = window.innerWidth - dropdownWidth - 8;
+                  }
+                  if (left < 8) left = 8;
+                  setDropdownPos({ top: rect.bottom + 4, left });
                 }
                 setSettingsOpen(!settingsOpen);
               }}
@@ -212,7 +218,7 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
         <div
           ref={portalDropdownRef}
           className="fixed z-[9999] bg-card border border-border rounded-lg shadow-lg p-1.5 min-w-[180px] whitespace-nowrap"
-          style={{ top: dropdownPos.top, right: dropdownPos.right }}
+          style={{ top: dropdownPos.top, left: dropdownPos.left ?? undefined, right: dropdownPos.right ?? undefined }}
         >
           <button
             onClick={() => { handleKiosk(); }}
