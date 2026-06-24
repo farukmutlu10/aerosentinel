@@ -168,8 +168,8 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
               {settingsOpen && (
                 <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg p-1.5 z-50 min-w-[140px]">
                   <button
-                    onClick={() => { setSettingsOpen(false); handleKiosk(); }}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 text-xs font-mono w-full text-left"
+                    onClick={() => { handleKiosk(); }}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
                   >
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
@@ -178,8 +178,8 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
                   </button>
                   {onToggleTheme && (
                     <button
-                      onClick={() => { setSettingsOpen(false); onToggleTheme(); }}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 text-xs font-mono w-full text-left"
+                      onClick={() => { onToggleTheme(); }}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
                     >
                       {theme === "dark" ? (
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -199,7 +199,7 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
                   )}
                   <button
                     onClick={toggleSound}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 text-xs font-mono w-full text-left"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
                   >
                     {soundOn ? (
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
@@ -228,10 +228,10 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
               </svg>
             </button>
             {settingsOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg p-1.5 z-50 min-w-[140px]">
+              <div className="absolute left-auto right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg p-1.5 z-50 min-w-[140px]">
                 <button
-                  onClick={() => { setSettingsOpen(false); handleKiosk(); }}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 text-xs font-mono w-full text-left"
+                  onClick={() => { handleKiosk(); }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
@@ -240,8 +240,8 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
                 </button>
                 {onToggleTheme && (
                   <button
-                    onClick={() => { setSettingsOpen(false); onToggleTheme(); }}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 text-xs font-mono w-full text-left"
+                    onClick={() => { onToggleTheme(); }}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
                   >
                     {theme === "dark" ? (
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -261,7 +261,7 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
                 )}
                 <button
                   onClick={toggleSound}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 text-xs font-mono w-full text-left"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
                 >
                   {soundOn ? (
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>

@@ -8,7 +8,7 @@ import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { TafText } from "@/components/TafText";
 import { ColoredRawText } from "@/components/ColoredRawText";
-import { ClockBadge } from "@/components/ClockDisplay";
+import { ClockBadge, useSelectedTimezone } from "@/components/ClockDisplay";
 import { IataBadge } from "@/components/IataBadge";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { useWatchlist } from "@/context/WatchlistContext";
@@ -90,12 +90,19 @@ function worstOf(a: FlightCategory, b: FlightCategory): FlightCategory {
 export default function Dashboard() {
   const { theme, toggleTheme } = useThemeContext();
   const { effectiveIcaos, watchedIcaos, addIcao, removeIcao, clearWatchlist, hasFilter } = useWatchlist();
+  const [selectedTz] = useSelectedTimezone();
+  const isIstanbul = selectedTz === "Europe/Istanbul";
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // v2 key — avoids stale localStorage with old format (without CRIT)
   const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-dash-cats-v2", DEFAULT_CATS);
   const [view, setView] = usePersistedState<ViewMode>("as-dash-view", DEFAULT_VIEW);
   const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-dash-route", DEFAULT_ROUTE);
+
+  // Reset route filter to ALL when timezone is not Istanbul
+  useEffect(() => {
+    if (!isIstanbul && routeFilter !== "ALL") setRouteFilter("ALL");
+  }, [isIstanbul]);
   const [sortMode, setSortMode] = usePersistedState<SortMode>("as-dash-sort", DEFAULT_SORT);
   const [timeFilters, setTimeFilters] = usePersistedState<string[]>("as-dash-time-multi", []);
   const [icaoSearch, setIcaoSearch] = usePersistedState<string>("as-dash-icao-search", "");
@@ -324,10 +331,6 @@ export default function Dashboard() {
             <span className="text-border hidden sm:inline">|</span>
             <span className="text-muted-foreground">SCANS</span>
             <span className="tabular-nums">{monitorData?.scanCountToday ?? monitorData?.scanCount ?? 0}</span>
-            {watchedIcaos.length > 0 && (
-              <><span className="text-border hidden sm:inline">|</span>
-              <span className="text-sky-400">WATCHLIST {watchedIcaos.length}</span></>
-            )}
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <span className="text-[9px] sm:text-[10px] text-muted-foreground font-mono hidden sm:inline">INTERVAL: 60s</span>
@@ -345,8 +348,8 @@ export default function Dashboard() {
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-sky-400">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
               </svg>
-              <span className="text-sky-400 tracking-widest">WATCHED AIRPORTS</span>
-              <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-[10px] font-mono font-bold" style={{ backgroundColor: '#d4a843', color: '#0f0f1a' }}>{watchedIcaos.length}</span>
+              <span className="text-[#d4a843] tracking-widest">WATCHED AIRPORTS</span>
+              <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-[10px] font-mono font-bold" style={{ backgroundColor: '#38bdf8', color: '#ffffff' }}>{watchedIcaos.length}</span>
             </div>
             <div className="flex items-center gap-2">
               {hasFilter && (
@@ -443,16 +446,20 @@ export default function Dashboard() {
             </div>
             <span className="text-border text-xs font-mono hidden sm:inline">|</span>
 
-            {/* DOM/INT */}
-            <div className="flex items-center gap-0.5 sm:gap-1 bg-card border border-border rounded-lg p-0.5">
-              {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
-                <button key={f} onClick={() => setRouteFilter(f)}
-                  className={`px-1.5 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs font-mono font-medium transition-colors ${routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-                  {f}
-                </button>
-              ))}
-            </div>
-            <span className="text-border text-xs font-mono hidden sm:inline">|</span>
+            {/* DOM/INT — only visible when Istanbul timezone is selected */}
+            {isIstanbul && (
+              <>
+                <div className="flex items-center gap-0.5 sm:gap-1 bg-card border border-border rounded-lg p-0.5">
+                  {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
+                    <button key={f} onClick={() => setRouteFilter(f)}
+                      className={`px-1.5 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs font-mono font-medium transition-colors ${routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                      {f}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-border text-xs font-mono hidden sm:inline">|</span>
+              </>
+            )}
 
             {/* Sort */}
             <div className="flex items-center gap-0.5 sm:gap-1 bg-card border border-border rounded-lg p-0.5">
