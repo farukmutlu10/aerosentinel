@@ -316,3 +316,4 @@ router.delete("/alerts/test", async (req, res) => {
 });
 
 export default router;
+// force redeploy Thu Jun 25 08:06:19 +03 2026
