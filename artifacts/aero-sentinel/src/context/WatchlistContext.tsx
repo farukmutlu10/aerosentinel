@@ -85,34 +85,78 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     syncToBackend(loadLocal());
   }, []);
 
+  // ─── Cross-tab/cross-window sync ──────────────────────────────────────────
+  // Kiosk modu (window.open) ile ana site arasındaki senkronizasyon için
+  // `storage` event'ini dinle. Bu event, başka bir tab/pencerede localStorage
+  // değiştiğinde tetiklenir.
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key !== LS_KEY) return;
+      try {
+        const newVal = e.newValue ? JSON.parse(e.newValue) : [];
+        if (Array.isArray(newVal)) {
+          setWatchedIcaos(newVal.filter((s): s is string => typeof s === "string"));
+        }
+      } catch { /* ignore parse errors */ }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
+  // ─── BroadcastChannel for same-origin instant sync ────────────────────────
+  // storage event'i bazı tarayıcılarda gecikebilir, BroadcastChannel daha hızlı.
+  useEffect(() => {
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("aero-watchlist-sync");
+      channel.onmessage = (e) => {
+        if (e.data?.type === "update" && Array.isArray(e.data.icaos)) {
+          setWatchedIcaos(e.data.icaos.filter((s: unknown): s is string => typeof s === "string"));
+        }
+      };
+    } catch { /* BroadcastChannel not supported */ }
+    return () => { try { channel?.close(); } catch {} };
+  }, []);
+
+  // Helper: save + broadcast changes to other tabs/windows
+  const broadcastUpdate = useCallback((icaos: string[]) => {
+    saveLocal(icaos);
+    try {
+      const ch = new BroadcastChannel("aero-watchlist-sync");
+      ch.postMessage({ type: "update", icaos });
+      ch.close();
+    } catch { /* BroadcastChannel not supported */ }
+  }, []);
+
   const addIcao = useCallback((raw: string) => {
     const icao = normalizeIcao(raw);
     if (icao.length !== 4) return;
     setWatchedIcaos((prev) => {
       if (prev.includes(icao)) return prev;
       const next = [...prev, icao];
-      saveLocal(next);
+      broadcastUpdate(next);
       apiAdd(icao);
       window.dispatchEvent(new CustomEvent("watchlist-airport-added", { detail: icao }));
       return next;
     });
-  }, []);
+  }, [broadcastUpdate]);
 
   const removeIcao = useCallback((icao: string) => {
     const up = icao.toUpperCase();
     setWatchedIcaos((prev) => {
       const next = prev.filter((c) => c !== up);
-      saveLocal(next);
+      broadcastUpdate(next);
       apiRemove(up);
       return next;
     });
-  }, []);
+  }, [broadcastUpdate]);
 
   const clearWatchlist = useCallback(() => {
     setWatchedIcaos([]);
-    saveLocal([]);
+    broadcastUpdate([]);
     apiClear();
-  }, []);
+  }, [broadcastUpdate]);
 
   const effectiveIcaos = watchedIcaos.length > 0 ? watchedIcaos : [DEFAULT_ICAO];
 

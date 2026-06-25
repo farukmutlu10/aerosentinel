@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aerosentinel-v1';
+const CACHE_NAME = 'aerosentinel-v2';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
@@ -30,5 +30,25 @@ self.addEventListener('fetch', e => {
         return cached || fetched;
       })
     )
+  );
+});
+
+// ─── Notification tıklama handler'ı ──────────────────────────────────────────
+// Service Worker notification'ları tıklandığında sayfayı odakla
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      // Açık bir pencere varsa ona odaklan
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // Açık pencere yoksa yeni aç
+      if (clients.openWindow) {
+        return clients.openWindow('/');
+      }
+    })
   );
 });

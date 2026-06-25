@@ -79,7 +79,7 @@ export const WX_LABELS: Record<string, string> = {
 export const ORANGE_WX = new Set([
   "VCTS", "TS", "-TS", "TSRA", "-TSRA",
   "DU", "FU", "-SH", "SH", "-RA", "RA", "+RA", "DZ", "-DZ", "+DZ", "SHRA", "-SHRA",
-  "SA", "FG", "BLDU", "BLSA", "DRDU", "DRSA", "PO",
+  "SA", "FG", "BLDU", "BLSA", "DRDU", "DRSA", "PO", "BCFG",
 ]);
 
 export const RED_WX = new Set([
@@ -88,7 +88,7 @@ export const RED_WX = new Set([
   "TSSN", "+TSSN", "TSGR", "TSPL",
   "-FZRA", "FZRA", "+FZRA",
   "FZDZ", "-FZDZ", "+FZDZ",
-  "FZFG", "BCFG",
+  "FZFG",
   "BLSN", "+BLSN", "-BLSN", "DRSN",
   "-RASN", "RASN", "+RASN",
   "SHGR", "SHGS",

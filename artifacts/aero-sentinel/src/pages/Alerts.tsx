@@ -3,8 +3,9 @@ import { Link } from "wouter";
 import {
   useListAlerts, getListAlertsQueryKey,
   getGetAlertsSummaryQueryKey, getGetRecentAlertsQueryKey,
+  customFetch,
 } from "@workspace/api-client-react";
-import { useLocalAck } from "@/App";
+import { useLocalAck, useTestPanel } from "@/App";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { ClockCard } from "@/components/ClockDisplay";
@@ -16,6 +17,8 @@ import { AlertBadge } from "@/components/AlertBadge";
 import { IataBadge } from "@/components/IataBadge";
 import { TafText } from "@/components/TafText";
 import { AdSlot } from "@/components/ads/AdSlot";
+import { TafDiffModal } from "@/components/TafDiffModal";
+import { useAlertSound, playAlertSound } from "@/hooks/useAlertSound";
 import { formatDistanceToNow, format } from "date-fns";
 
 type AlertType = "TAF_AMD" | "TAF_COR" | "SPECI";
@@ -31,9 +34,9 @@ const TYPE_LABELS: Record<AlertType, string> = {
 };
 
 const TYPE_COLORS: Record<AlertType, string> = {
-  TAF_AMD: "#f59e0b",
-  TAF_COR: "#38bdf8",
-  SPECI:   "#ef4444",
+  TAF_AMD: "#facc15",  // yellow-400 — matches AlertBadge
+  TAF_COR: "#fb923c",  // orange-400 — matches AlertBadge
+  SPECI:   "#f87171",  // red-400   — matches AlertBadge
 };
 
 const SORT_OPTIONS: { value: SortMode; label: string }[] = [
@@ -118,6 +121,21 @@ export default function Alerts() {
   const [ackingAll, setAckingAll] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(20);
+  const { testPanelVisible } = useTestPanel();
+
+  // TafDiffModal state
+  const [diffModalOpen, setDiffModalOpen] = useState(false);
+  const [diffAlertId, setDiffAlertId] = useState<number | null>(null);
+  const [diffAlertType, setDiffAlertType] = useState<string>("");
+  const [diffAlertIcao, setDiffAlertIcao] = useState<string>("");
+  const { play: playDiffSound } = useAlertSound();
+
+  const openDiffModal = (alert: { id: number; type: string; icao: string }) => {
+    setDiffAlertId(alert.id);
+    setDiffAlertType(alert.type);
+    setDiffAlertIcao(alert.icao);
+    setDiffModalOpen(true);
+  };
 
   const activeTypesSet = new Set<string>(activeTypesArr);
   const localAckedSet = useMemo(() => new Set(localAcked), [localAcked]);
@@ -175,7 +193,7 @@ export default function Alerts() {
     });
     list = list.filter((a) => activeTypesSet.has(a.type));
     if (hideAcknowledged) list = list.filter((a) => !isAcked(a));
-    list = list.filter((a) => isWatching(a.icao));
+    list = list.filter((a) => isWatching(a.icao) || a.icao.startsWith("TEST"));
     if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
     else if (routeFilter === "INT") list = list.filter((a) => !a.icao.startsWith("LT"));
     const sorted = [...list];
@@ -225,11 +243,11 @@ export default function Alerts() {
               const color = TYPE_COLORS[t];
               return (
                 <button key={t} onClick={() => toggleType(t)}
-                  className="px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-mono font-medium border transition-colors"
+                  className="px-2 py-0.5 rounded text-xs font-mono font-bold border transition-colors"
                   style={isActive ? {
-                    borderColor: color + "99",
+                    borderColor: color + "4D",
                     color,
-                    backgroundColor: color + "18",
+                    backgroundColor: color + "26",
                   } : { borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
                   {TYPE_LABELS[t]}
                 </button>
@@ -362,12 +380,23 @@ export default function Alerts() {
                           {alert.icao}
                           <IataBadge icao={alert.icao} />
                         </Link>
-                        <span className="text-[9px] sm:text-[10px] font-mono text-muted-foreground border border-border px-1 py-0.5 rounded">{alert.icao.startsWith("LT") ? "DOM" : "INT"}</span>
-                        <span className="text-[10px] sm:text-xs text-muted-foreground font-mono">{format(new Date(alert.detectedAt), "dd MMM HH:mm")} UTC</span>
+                        <span className="text-[10px] sm:text-xs text-muted-foreground font-mono">{new Date(alert.detectedAt).toLocaleString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }) + " UTC"}</span>
                         <span className="text-[10px] sm:text-xs text-muted-foreground font-mono hidden sm:inline">({formatDistanceToNow(new Date(alert.detectedAt), { addSuffix: true })})</span>
                         {isAcked(alert) && <span className="text-[10px] sm:text-xs bg-muted text-muted-foreground font-mono px-1.5 sm:px-2 py-0.5 rounded">ACK</span>}
                       </div>
                       <TafText raw={alert.rawText} />
+                      {/* View Changes button — only when previousRawText exists */}
+                      {(alert as any).previousRawText && (
+                        <button
+                          onClick={() => openDiffModal(alert)}
+                          className="mt-1.5 sm:mt-2 inline-flex items-center gap-1.5 px-3 sm:px-3 py-1.5 rounded-md border border-sky-400/30 text-[11px] font-mono text-sky-400 hover:bg-sky-400/10 hover:text-sky-300 transition-all"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-sky-400">
+                            <rect x="2" y="4" width="8" height="16" rx="1"/><rect x="14" y="4" width="8" height="16" rx="1"/>
+                          </svg>
+                          View Changes
+                        </button>
+                      )}
                     </div>
                   </div>
                   {!isAcked(alert) && (
@@ -395,6 +424,133 @@ export default function Alerts() {
         )}
       </main>
       <Footer />
+
+      {/* TafDiffModal */}
+      {diffAlertId !== null && (
+        <TafDiffModal
+          open={diffModalOpen}
+          onClose={() => { setDiffModalOpen(false); setDiffAlertId(null); }}
+          alertId={diffAlertId}
+          alertType={diffAlertType}
+          icao={diffAlertIcao}
+        />
+      )}
+
+      {/* ── Test Alert Panel (hidden by default, toggle via secret) ── */}
+      {testPanelVisible && (
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur border-t border-border px-3 py-2">
+        <div className="max-w-7xl mx-auto flex items-center gap-2 sm:gap-3">
+          <span className="text-[10px] sm:text-xs font-mono text-muted-foreground font-bold tracking-wider">TEST</span>
+          <button
+            onClick={async () => {
+              try {
+                const res = await customFetch("/api/alerts/test", { method: "POST" }) as any;
+                console.log("[TestPanel] POST /api/alerts/test response:", res);
+
+                // Ensure notification permission
+                if (typeof Notification !== "undefined" && Notification.permission !== "granted") {
+                  await Notification.requestPermission();
+                }
+
+                // Play sound directly
+                try { playAlertSound(); } catch (e) { console.warn("[TestPanel] Sound error:", e); }
+
+                // Show notification directly (sadece tek notification — polling invalidation kaldırıldı)
+                if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+                  const icao = res?.icao || "TEST";
+                  const type = res?.type || "SPECI";
+                  const n = new Notification(`AERO-SENTINEL — Test ${type}`, {
+                    body: `${icao}: Test alert created successfully`,
+                    icon: `${import.meta.env.BASE_URL}alert-icon.png`,
+                    tag: `test-alert-${Date.now()}`,
+                    requireInteraction: false,
+                  });
+                  setTimeout(() => n.close(), 30_000);
+                  console.log("[TestPanel] Notification shown for", icao);
+                } else {
+                  console.warn("[TestPanel] Notification permission:", Notification.permission);
+                }
+
+                // Sadece alert listesini güncelle, recent alerts'i invalidate ETME (çift bildirim engeli)
+                await queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
+              } catch (e) { console.error("[TestPanel] Test alert failed:", e); }
+            }}
+            className="px-2 sm:px-3 py-1 rounded text-[10px] sm:text-xs font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 transition-colors"
+          >
+            + Single
+          </button>
+          <button
+            id="test-alert-start"
+            onClick={() => {
+              const sendTest = async () => {
+                try {
+                  const res = await customFetch("/api/alerts/test", { method: "POST" }) as any;
+
+                  // Doğrudan ses çal
+                  try { playAlertSound(); } catch (e) { console.warn("[TestPanel] Sound error:", e); }
+
+                  // Doğrudan bildirim göster
+                  if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+                    const icao = res?.icao || "TEST";
+                    const type = res?.type || "SPECI";
+                    const n = new Notification(`AERO-SENTINEL — Test ${type}`, {
+                      body: `${icao}: Test alert (auto)`,
+                      icon: `${import.meta.env.BASE_URL}alert-icon.png`,
+                      tag: `test-alert-${Date.now()}`,
+                      requireInteraction: false,
+                    });
+                    setTimeout(() => n.close(), 30_000);
+                  }
+
+                  // Sadece alert listesini güncelle (çift bildirim engeli)
+                  await queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
+                } catch (e) { console.error("[TestPanel] Test alert failed:", e); }
+              };
+              sendTest();
+              const id = window.setInterval(sendTest, 30_000);
+              (window as any).__testAlertInterval = id;
+              const btn = document.getElementById("test-alert-start");
+              const stopBtn = document.getElementById("test-alert-stop");
+              if (btn) btn.style.display = "none";
+              if (stopBtn) stopBtn.style.display = "flex";
+            }}
+            className="px-2 sm:px-3 py-1 rounded text-[10px] sm:text-xs font-mono font-bold bg-sky-500/20 text-sky-400 border border-sky-500/40 hover:bg-sky-500/30 transition-colors"
+          >
+            ▶ Start 30s
+          </button>
+          <button
+            id="test-alert-stop"
+            onClick={() => {
+              const id = (window as any).__testAlertInterval;
+              if (id) clearInterval(id);
+              (window as any).__testAlertInterval = null;
+              const btn = document.getElementById("test-alert-start");
+              const stopBtn = document.getElementById("test-alert-stop");
+              if (btn) btn.style.display = "flex";
+              if (stopBtn) stopBtn.style.display = "none";
+            }}
+            style={{ display: "none" }}
+            className="px-2 sm:px-3 py-1 rounded text-[10px] sm:text-xs font-mono font-bold bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 transition-colors"
+          >
+            ■ Stop
+          </button>
+          <button
+            onClick={async () => {
+              try {
+                await customFetch("/api/alerts/test", { method: "DELETE" });
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() }),
+                  queryClient.invalidateQueries({ queryKey: getGetRecentAlertsQueryKey() }),
+                ]);
+              } catch (e) { console.error("Delete test alerts failed", e); }
+            }}
+            className="px-2 sm:px-3 py-1 rounded text-[10px] sm:text-xs font-mono font-bold bg-red-500/15 text-red-400/80 border border-red-500/30 hover:bg-red-500/25 transition-colors"
+          >
+            🗑 Delete All
+          </button>
+        </div>
+      </div>
+      )}
     </div>
   );
 }

@@ -56,8 +56,23 @@ export function Footer() {
     { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 180_000, refetchIntervalInBackground: true } }
   );
 
-  const unacknowledgedCount = allAlerts
-    ? allAlerts.filter((a) => isWatching(a.icao) && !a.acknowledged && !localAckedSet.has(a.id)).length
+  // Deduplicate by ICAO (keep latest), same as Alerts.tsx / NavHeader.tsx
+  const dedupedAlerts = useMemo(() => {
+    if (!allAlerts) return [];
+    const seen = new Map<string, number>();
+    return allAlerts.filter((a) => {
+      const prev = seen.get(a.icao);
+      const ts = new Date(a.detectedAt).getTime();
+      if (prev === undefined || ts > prev) {
+        seen.set(a.icao, ts);
+        return true;
+      }
+      return false;
+    });
+  }, [allAlerts]);
+
+  const unacknowledgedCount = dedupedAlerts
+    ? dedupedAlerts.filter((a) => isWatching(a.icao) && !a.acknowledged && !localAckedSet.has(a.id)).length
     : 0;
 
   const isActive = (href: string) =>

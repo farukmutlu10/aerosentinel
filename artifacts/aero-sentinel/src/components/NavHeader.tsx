@@ -112,7 +112,7 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
   }, [allAlerts]);
 
   const unacknowledgedCount = dedupedAlerts
-    ? dedupedAlerts.filter((a) => isWatching(a.icao) && !localAckedSet.has(a.id)).length
+    ? dedupedAlerts.filter((a) => isWatching(a.icao) && !a.acknowledged && !localAckedSet.has(a.id)).length
     : 0;
 
   const isActive = (href: string) =>

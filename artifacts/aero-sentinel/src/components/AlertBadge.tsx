@@ -9,7 +9,7 @@ const CONFIG: Record<AlertType, { label: string; className: string }> = {
 export function AlertBadge({ type }: { type: AlertType }) {
   const cfg = CONFIG[type];
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-bold border ${cfg.className}`}>
+    <span className={`inline-flex items-center justify-center min-w-[68px] px-2 py-0.5 rounded text-xs font-mono font-bold border ${cfg.className}`}>
       {cfg.label}
     </span>
   );

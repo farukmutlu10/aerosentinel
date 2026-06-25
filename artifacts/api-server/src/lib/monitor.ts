@@ -74,10 +74,11 @@ async function scanTaf(ids: string) {
     if (!icao) continue;
     sonGorulenTs[icao] = now;
     if (sonGorulenTaf[icao] !== rawTaf) {
+      const previousRawText = sonGorulenTaf[icao] ?? null;
       sonGorulenTaf[icao] = rawTaf;
       if (rawTaf.includes("AMD") || rawTaf.includes("COR")) {
         const alertType = rawTaf.includes("AMD") ? "TAF_AMD" : "TAF_COR";
-        await db.insert(alertsTable).values({ type: alertType, icao, rawText: rawTaf });
+        await db.insert(alertsTable).values({ type: alertType, icao, rawText: rawTaf, previousRawText });
       }
     }
   }
@@ -93,9 +94,10 @@ async function scanMetar(ids: string) {
     if (!icao) continue;
     sonGorulenTs[icao] = now;
     if (sonGorulenMetar[icao] !== rawMetar) {
+      const previousRawText = sonGorulenMetar[icao] ?? null;
       sonGorulenMetar[icao] = rawMetar;
       if (rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ")) {
-        await db.insert(alertsTable).values({ type: "SPECI", icao, rawText: rawMetar });
+        await db.insert(alertsTable).values({ type: "SPECI", icao, rawText: rawMetar, previousRawText });
       }
     }
   }

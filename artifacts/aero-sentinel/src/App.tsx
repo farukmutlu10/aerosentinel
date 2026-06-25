@@ -11,7 +11,7 @@ import { WatchlistProvider } from "@/context/WatchlistContext";
 import { TimezoneProvider } from "@/components/ClockDisplay";
 import { useAlertNotifications } from "@/hooks/useAlertNotifications";
 import { useTheme } from "@/hooks/useTheme";
-import { createContext, useContext, useEffect } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { initGA, trackPageView } from "@/lib/ga";
 import { usePersistedState } from "@/hooks/usePersistedState";
 
@@ -32,11 +32,49 @@ interface LocalAckCtx {
 const LocalAckContext = createContext<LocalAckCtx>({ localAcked: [], setLocalAcked: () => {} });
 export const useLocalAck = () => useContext(LocalAckContext);
 
+// ── Test panel context — always-mounted, toggled via secret input ───────────
+interface TestPanelCtx {
+  testPanelVisible: boolean;
+  setTestPanelVisible: React.Dispatch<React.SetStateAction<boolean>>;
+}
+const TestPanelContext = createContext<TestPanelCtx>({
+  testPanelVisible: false,
+  setTestPanelVisible: () => {},
+});
+export const useTestPanel = () => useContext(TestPanelContext);
+
 function AppInner() {
-  const { permission, requestPermission, dismiss, showBanner, dismissed } = useAlertNotifications();
+  const { permission, requestPermission, dismiss, showBanner, dismissed, forceCheck } = useAlertNotifications();
   const { theme, toggleTheme } = useTheme();
   const [localAcked, setLocalAcked] = usePersistedState<number[]>("as-acked-ids-v2", []);
   const [location] = useLocation();
+  const [testPanelVisible, setTestPanelVisible] = useState(false);
+
+  // ─── Cross-window sync for localAcked ──────────────────────────────────────
+  // Kiosk modu (window.open) ile ana site arasındaki senkronizasyon için
+  // Başka bir pencerede localAcked değiştiğinde bu pencereyi de güncelle.
+  useEffect(() => {
+    const KEY = "as-acked-ids-v2";
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key !== KEY) return;
+      try {
+        const newVal: number[] = e.newValue !== null ? JSON.parse(e.newValue) : [];
+        setLocalAcked((prev) => {
+          if (JSON.stringify(prev) === JSON.stringify(newVal)) return prev;
+          return newVal;
+        });
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [setLocalAcked]);
+
+  // Secret test-toggle listener — lives here (always mounted) so it works from any page
+  useEffect(() => {
+    const handler = () => setTestPanelVisible((prev) => !prev);
+    window.addEventListener("test-toggle", handler);
+    return () => window.removeEventListener("test-toggle", handler);
+  }, []);
 
   // Sayfa görüntüleme takibi
   useEffect(() => {
@@ -44,6 +82,7 @@ function AppInner() {
   }, [location]);
 
   return (
+    <TestPanelContext.Provider value={{ testPanelVisible, setTestPanelVisible }}>
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
       <LocalAckContext.Provider value={{ localAcked, setLocalAcked }}>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
@@ -93,6 +132,7 @@ function AppInner() {
         <Toaster />
       </LocalAckContext.Provider>
     </ThemeContext.Provider>
+    </TestPanelContext.Provider>
   );
 }
 

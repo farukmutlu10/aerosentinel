@@ -48,6 +48,12 @@ const MIGRATIONS: Array<{ name: string; sql: string }> = [
       ALTER TABLE watchlist ADD CONSTRAINT watchlist_user_icao_unique UNIQUE (user_id, icao);
     `,
   },
+  {
+    name: "003_add_previous_raw_text",
+    sql: `
+      ALTER TABLE alerts ADD COLUMN IF NOT EXISTS previous_raw_text text;
+    `,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {
