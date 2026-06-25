@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useGetRecentAlerts, getGetRecentAlertsQueryKey, listAlerts } from "@workspace/api-client-react";
+import { useListAlerts, getListAlertsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAlertSound } from "@/hooks/useAlertSound";
+import { useWatchlist } from "@/context/WatchlistContext";
 
 const TYPE_LABELS: Record<string, string> = {
   TAF_AMD: "TAF Revision (AMD)",
@@ -10,207 +11,156 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const AUTO_CLOSE_MS = 30_000;
-
-// ─── Service Worker ile notification göster ───────────────────────────────────
-// Service Worker notification'ları Opera dahil TÜM tarayıcılarda çalışır.
-// `new Notification()` Opera'da sessizce başarısız olabilir.
-async function showSWNotification(
-  title: string,
-  options: NotificationOptions
-): Promise<boolean> {
-  try {
-    // Service Worker kullanılabilir mi?
-    if (!("serviceWorker" in navigator)) return false;
-
-    const registration = await navigator.serviceWorker.ready;
-    if (!registration) return false;
-
-    // Service Worker notification izni var mı?
-    if (Notification.permission !== "granted") return false;
-
-    await registration.showNotification(title, {
-      ...options,
-      // SW notification'larda icon zorunlu — PNG kullan
-      icon: options.icon || `${self.location.origin}/alert-icon.png`,
-    });
-    return true;
-  } catch (err) {
-    console.warn("[AeroNotif] SW notification hatası:", err);
-    return false;
-  }
-}
-
-// ─── Fallback: `new Notification()` ──────────────────────────────────────────
-// SW çalışmıyorsa (eski tarayıcılar) native notification dene
-function showNativeNotification(
-  title: string,
-  options: NotificationOptions
-): Notification | null {
-  try {
-    return new Notification(title, options);
-  } catch (err) {
-    console.warn("[AeroNotif] Native notification hatası:", err);
-    return null;
-  }
-}
-
-// ─── Bildirim gönder (öncelik: SW → Native) ─────────────────────────────────
-async function sendNotification(
-  title: string,
-  options: NotificationOptions
-): Promise<Notification | null> {
-  // 1. Service Worker notification dene (Opera dahil her yerde çalışır)
-  const swOk = await showSWNotification(title, options);
-  if (swOk) return null; // SW notification başarılı, native'e gerek yok
-
-  // 2. Fallback: native Notification
-  return showNativeNotification(title, options);
-}
-
-// ─── sessionStorage key ──────────────────────────────────────────────────────
+const LOG = "[AeroNotif]";
+const log = (...args: unknown[]) => console.log(LOG, new Date().toISOString(), ...args);
 const INIT_KEY = "alert-notifications-initialized";
+
+async function showSWNotification(title: string, options: NotificationOptions): Promise<boolean> {
+  try {
+    if (!("serviceWorker" in navigator)) return false;
+    const registration = await navigator.serviceWorker.ready;
+    if (!registration || Notification.permission !== "granted") return false;
+    await registration.showNotification(title, { ...options, icon: options.icon || `${self.location.origin}/alert-icon.png` });
+    return true;
+  } catch (err) { log("⚠️ SW notification hatası:", err); return false; }
+}
+
+function showNativeNotification(title: string, options: NotificationOptions): Notification | null {
+  try { return new Notification(title, options); } catch (err) { log("⚠️ Native notification hatası:", err); return null; }
+}
+
+async function sendNotification(title: string, options: NotificationOptions): Promise<Notification | null> {
+  const native = showNativeNotification(title, options);
+  if (native) return native;
+  await showSWNotification(title, options);
+  return null;
+}
 
 export function useAlertNotifications() {
   const { play: playAlert } = useAlertSound();
+  const { effectiveIcaos } = useWatchlist();
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [dismissed, setDismissed] = useState(false);
   const seenIds = useRef<Set<number>>(new Set());
-  const openNotifs = useRef<Map<number, Notification>>(new Map());
   const queryClient = useQueryClient();
   const isFirstLoad = useRef(true);
+  const pollCount = useRef(0);
+  const watchlistSet = useRef<Set<string>>(new Set());
 
-  // ─── İlk yükleme: permission ve dismissed kontrolü ────────────────────────
+  useEffect(() => {
+    const newSet = new Set(effectiveIcaos.map(s => s.toUpperCase()));
+    const oldSize = watchlistSet.current.size;
+    watchlistSet.current = newSet;
+    if (oldSize > 0 && newSet.size !== oldSize) {
+      seenIds.current.clear();
+      isFirstLoad.current = true;
+      log(`Watchlist değişti (${oldSize} → ${newSet.size}): seenIds sıfırlandı`);
+    }
+  }, [effectiveIcaos]);
+
   useEffect(() => {
     if (typeof Notification !== "undefined") {
       setPermission(Notification.permission);
-    }
+      log("Başlangıç: permission =", Notification.permission);
+    } else { log("⚠️ Notification API desteklenmiyor!"); }
     const wasDismissed = sessionStorage.getItem("notif-dismissed") === "1";
     setDismissed(wasDismissed);
   }, []);
 
-  // ─── Yeni eklenen meydanlar için seenIds'e ekle ───────────────────────────
-  useEffect(() => {
-    const handler = async (e: Event) => {
-      const icao = (e as CustomEvent<string>).detail;
-      if (!icao) return;
-      try {
-        const alerts = await listAlerts({ icao, limit: 50 });
-        alerts.forEach((a) => seenIds.current.add(a.id));
-      } catch { /* ignore */ }
-    };
-    window.addEventListener("watchlist-airport-added", handler);
-    return () => window.removeEventListener("watchlist-airport-added", handler);
-  }, []);
-
-  // ─── Manuel bildirim kontrolü ─────────────────────────────────────────────
   const forceCheck = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: getGetRecentAlertsQueryKey() });
+    log("forceCheck: query invalidation tetikleniyor");
+    await queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
   }, [queryClient]);
 
-  // ─── Polling — 15 saniye aralıkla ─────────────────────────────────────────
-  const { data: recent, error: recentError } = useGetRecentAlerts({
-    query: {
-      queryKey: getGetRecentAlertsQueryKey(),
-      refetchInterval: 15_000,
-      refetchIntervalInBackground: true,
-      refetchOnWindowFocus: true,
-      refetchOnReconnect: true,
-      refetchOnMount: true,
-      retry: 3,
-    },
-  });
+  // ─── Polling — useListAlerts ile (Alerts sayfasıyla aynı API) ──────────────
+  const { data: allAlerts, error: recentError, isLoading } = useListAlerts(
+    { limit: 100 },
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 15_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, refetchOnReconnect: true, refetchOnMount: true, retry: 3 } }
+  );
 
-  // ─── API hata loglaması ───────────────────────────────────────────────────
+  useEffect(() => { if (recentError) log("⚠️ API HATASI:", recentError.message || recentError); }, [recentError]);
+
   useEffect(() => {
-    if (recentError) {
-      console.error("[AeroNotif] API hatası:", recentError.message || recentError);
-    }
-  }, [recentError]);
+    pollCount.current++;
+    log(`Poll #${pollCount.current}: alerts.length = ${allAlerts?.length ?? 0} | isFirstLoad: ${isFirstLoad.current} | permission: ${typeof Notification !== "undefined" ? Notification.permission : "N/A"} | seenIds: ${seenIds.current.size} | loading: ${isLoading}`);
+    if (allAlerts && allAlerts.length > 0) log("  Alert IDs:", allAlerts.slice(0, 15).map(a => `${a.id}(${a.icao}:${a.type})`).join(", "));
+  }, [allAlerts]);
 
   // ─── Ana bildirim effect'i ─────────────────────────────────────────────────
   useEffect(() => {
-    if (!recent?.length) return;
+    if (!allAlerts?.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }
 
-    // İlk yükleme — mevcut alert'leri seenIds'e ekle
     if (isFirstLoad.current) {
       isFirstLoad.current = false;
-      recent.forEach((a) => seenIds.current.add(a.id));
-      if (sessionStorage.getItem(INIT_KEY) !== "1") {
-        sessionStorage.setItem(INIT_KEY, "1");
-      }
+      allAlerts.forEach((a) => seenIds.current.add(a.id));
+      if (sessionStorage.getItem(INIT_KEY) !== "1") sessionStorage.setItem(INIT_KEY, "1");
+      log(`İlk yükleme: ${allAlerts.length} alert seenIds'e eklendi (bildirim gönderilmedi)`);
       return;
     }
 
-    // Notification izni yoksa çık
     if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+      log("⚠️ Notification izni yok!");
       return;
     }
 
-    // Yeni alert'ler için bildirim gönder
-    for (const alert of recent) {
+    // ─── YENİ ALERT'LERİ ALGILA VE BİLDİRİM GÖNDER ─────────────────────────
+    // watchlist filtresi + ICAO bazında deduplikasyon
+    const notifiedIcaos = new Set<string>();
+    let newAlertCount = 0;
+    let skippedCount = 0;
+
+    for (const alert of allAlerts) {
       if (seenIds.current.has(alert.id)) continue;
+
+      // Watchlist filtresi
+      if (watchlistSet.current.size > 0 && !watchlistSet.current.has(alert.icao.toUpperCase())) {
+        skippedCount++;
+        seenIds.current.add(alert.id);
+        continue;
+      }
+
+      // ICAO deduplikasyon — aynı ICAO için sadece ilk alert
+      if (notifiedIcaos.has(alert.icao.toUpperCase())) {
+        seenIds.current.add(alert.id);
+        skippedCount++;
+        continue;
+      }
+
       seenIds.current.add(alert.id);
+      notifiedIcaos.add(alert.icao.toUpperCase());
+      newAlertCount++;
+
+      log("🔔 YENİ ALERT BİLDİRİM:", alert.id, alert.type, alert.icao);
 
       const title = `AERO-SENTINEL — ${TYPE_LABELS[alert.type] ?? alert.type}`;
       const body = `${alert.icao}: ${alert.rawText.slice(0, 120)}`;
       const icon = `${import.meta.env.BASE_URL}alert-icon.png`;
 
-      // Bildirim gönder (SW veya Native)
-      sendNotification(title, {
-        body,
-        icon,
-        tag: `aero-alert-${alert.id}`,
-        requireInteraction: false,
-      }).then((n) => {
-        // Native notification ise auto-close kur
+      sendNotification(title, { body, icon, tag: `aero-alert-${alert.icao}`, requireInteraction: false }).then((n) => {
         if (n) {
-          openNotifs.current.set(alert.id, n);
-          const timer = setTimeout(() => {
-            n.close();
-            openNotifs.current.delete(alert.id);
-          }, AUTO_CLOSE_MS);
-
-          n.onclick = () => {
-            clearTimeout(timer);
-            window.focus();
-            n.close();
-            openNotifs.current.delete(alert.id);
-          };
-
-          n.onclose = () => {
-            clearTimeout(timer);
-            openNotifs.current.delete(alert.id);
-          };
+          const timer = setTimeout(() => n.close(), AUTO_CLOSE_MS);
+          n.onclick = () => { clearTimeout(timer); window.focus(); n.close(); };
+          n.onclose = () => clearTimeout(timer);
         }
       });
 
-      // Ses çal
       try { playAlert(); } catch { /* ignore */ }
     }
-  }, [recent, permission, playAlert]);
 
-  // ─── İzin isteme ──────────────────────────────────────────────────────────
+    if (skippedCount > 0) log(`⏭️ ${skippedCount} alert atlandı (watchlist dışı veya duplicate)`);
+    if (newAlertCount === 0) log("Yeni alert yok (tümü seenIds'de veya duplicate)");
+  }, [allAlerts, permission, playAlert]);
+
   const requestPermission = async () => {
     if (typeof Notification === "undefined") return;
     try {
       const p = await Notification.requestPermission();
       setPermission(p);
-      if (p === "granted") {
-        sessionStorage.removeItem(INIT_KEY);
-        sessionStorage.removeItem("notif-dismissed");
-        setDismissed(false);
-      }
-    } catch {
-      Notification.requestPermission((p) => setPermission(p));
-    }
+      if (p === "granted") { sessionStorage.removeItem(INIT_KEY); sessionStorage.removeItem("notif-dismissed"); setDismissed(false); }
+    } catch { Notification.requestPermission((p) => setPermission(p)); }
   };
 
-  const dismiss = () => {
-    sessionStorage.setItem("notif-dismissed", "1");
-    setDismissed(true);
-  };
-
+  const dismiss = () => { sessionStorage.setItem("notif-dismissed", "1"); setDismissed(true); };
   const showBanner = permission === "default" && !dismissed;
-
   return { permission, requestPermission, dismiss, showBanner, dismissed, forceCheck };
 }

@@ -1,81 +1,80 @@
 import { useCallback, useEffect } from "react";
 
-// ─── Programatik WAV beep oluştur ───────────────────────────────────────────
-// AudioContext user gesture gerektirir, bu yüzden <audio> elementi ile
-// programatik WAV beep oluşturuyoruz. Bu yöntem user gesture gerektirmez.
-function createBeepWavUrl(): string {
-  const sampleRate = 22050;
-  const durationMs = 350;
-  const numSamples = Math.floor(sampleRate * durationMs / 1000);
-  const numChannels = 1;
-  const bytesPerSample = 2;
-  const blockAlign = numChannels * bytesPerSample;
-  const byteRate = sampleRate * blockAlign;
-  const dataSize = numSamples * blockAlign;
-  const fileSize = 44 + dataSize;
+// ─── AudioContext tabanlı beep ───────────────────────────────────────────────
+// Tarayıcılar user gesture olmadan AudioContext'i suspended tutar.
+// Bu yüzden unlock mekanizması gerekiyor.
 
-  const buffer = new ArrayBuffer(fileSize);
-  const view = new DataView(buffer);
+let audioCtx: AudioContext | null = null;
+let _audioUnlocked = false;
 
-  const writeStr = (offset: number, str: string) => {
-    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+function getCtx(): AudioContext {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+  return audioCtx;
+}
+
+// ─── AudioContext unlock — sayfa yüklendiğinde hemen çağrılır ────────────────
+function setupAudioUnlock() {
+  if (_audioUnlocked || typeof window === "undefined") return;
+  _audioUnlocked = true;
+
+  const unlock = () => {
+    try {
+      const ctx = getCtx();
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+    } catch { /* ignore */ }
+    window.removeEventListener("click", unlock);
+    window.removeEventListener("keydown", unlock);
+    window.removeEventListener("touchstart", unlock);
+    window.removeEventListener("pointerdown", unlock);
   };
 
-  writeStr(0, "RIFF");
-  view.setUint32(4, fileSize - 8, true);
-  writeStr(8, "WAVE");
-  writeStr(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bytesPerSample * 8, true);
-  writeStr(36, "data");
-  view.setUint32(40, dataSize, true);
-
-  for (let i = 0; i < numSamples; i++) {
-    const t = i / sampleRate;
-    let sample = 0;
-
-    if (t < 0.15) {
-      const env = Math.max(0, 1 - t / 0.15);
-      sample += Math.sin(2 * Math.PI * 1200 * t) * 0.3 * env;
-    }
-    if (t >= 0.08 && t < 0.20) {
-      const env = Math.max(0, 1 - (t - 0.08) / 0.12);
-      sample += Math.sin(2 * Math.PI * 900 * t) * 0.25 * env;
-    }
-    if (t >= 0.15 && t < 0.35) {
-      const env = Math.max(0, 1 - (t - 0.15) / 0.20);
-      sample += Math.sin(2 * Math.PI * 600 * t) * 0.3 * env;
-    }
-
-    view.setInt16(44 + i * bytesPerSample, Math.max(-1, Math.min(1, sample)) * 32767, true);
-  }
-
-  const blob = new Blob([buffer], { type: "audio/wav" });
-  return URL.createObjectURL(blob);
+  window.addEventListener("click", unlock, { once: true });
+  window.addEventListener("keydown", unlock, { once: true });
+  window.addEventListener("touchstart", unlock, { once: true });
+  window.addEventListener("pointerdown", unlock, { once: true });
 }
 
-// ─── Global beep URL (bir kez oluştur) ──────────────────────────────────────
-let _beepUrl: string | null = null;
-function getBeepUrl(): string {
-  if (!_beepUrl) _beepUrl = createBeepWavUrl();
-  return _beepUrl;
+function playTone(freq: number, duration: number, startTime: number, volume = 0.25, type: OscillatorType = "sine") {
+  const ctx = getCtx();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, startTime);
+  gain.gain.setValueAtTime(volume, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration);
 }
 
-// ─── Audio elementi ile beep çal ────────────────────────────────────────────
+// ─── Public: beep çal ───────────────────────────────────────────────────────
 export function playAlertSound() {
   try {
-    const audio = new Audio(getBeepUrl());
-    audio.volume = 0.5;
-    audio.play().catch(() => {});
-  } catch { /* ignore */ }
+    const ctx = getCtx();
+    // AudioContext suspended ise resume et
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+    const t = ctx.currentTime;
+    playTone(1200, 0.15, t, 0.25, "sine");
+    playTone(900, 0.12, t + 0.08, 0.2, "sine");
+    playTone(600, 0.2, t + 0.15, 0.25, "sine");
+  } catch (err) {
+    console.warn("[AeroSound] beep hatası:", err);
+  }
 }
 
 export function useAlertSound() {
+  // ─── Sayfa yüklendiğinde AudioContext unlock'ı hemen başlat ─────────────
+  useEffect(() => {
+    setupAudioUnlock();
+  }, []);
+
   const soundEnabled = useCallback(() => {
     return localStorage.getItem("aerosentinel-sound") !== "0";
   }, []);
@@ -85,7 +84,9 @@ export function useAlertSound() {
   }, []);
 
   const play = useCallback(() => {
-    if (soundEnabled()) playAlertSound();
+    if (soundEnabled()) {
+      playAlertSound();
+    }
   }, [soundEnabled]);
 
   return { play, setEnabled, isEnabled: soundEnabled };
