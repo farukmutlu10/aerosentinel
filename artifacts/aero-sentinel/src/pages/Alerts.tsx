@@ -535,14 +535,36 @@ export default function Alerts() {
             ■ Stop
           </button>
           <button
-            onClick={async () => {
+            onClick={async (e) => {
+              e.preventDefault();
+              const btn = e.currentTarget;
+              const origText = btn.textContent;
+              btn.textContent = "⏳ Deleting...";
+              btn.style.opacity = "0.5";
               try {
-                await customFetch("/api/alerts/test", { method: "DELETE" });
+                console.log("[TestPanel] DELETE /api/alerts/test gönderiliyor...");
+                // Doğrudan fetch kullan — customFetch yerine
+                const deviceId = localStorage.getItem("aero-device-id") || "legacy";
+                const apiUrl = "https://workspaceapi-server-production-b312.up.railway.app/api/alerts/test";
+                console.log("[TestPanel] URL:", apiUrl);
+                const res = await fetch(apiUrl, {
+                  method: "DELETE",
+                  headers: { "X-Device-ID": deviceId },
+                });
+                const data = await res.json();
+                console.log("[TestPanel] DELETE response:", res.status, data);
                 await Promise.all([
                   queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() }),
                   queryClient.invalidateQueries({ queryKey: getGetRecentAlertsQueryKey() }),
                 ]);
-              } catch (e) { console.error("Delete test alerts failed", e); }
+                btn.textContent = `✅ Deleted ${data.deleted || 0}`;
+                setTimeout(() => { btn.textContent = origText; btn.style.opacity = "1"; }, 2000);
+                console.log("[TestPanel] Delete tamamlandı");
+              } catch (e) {
+                console.error("[TestPanel] Delete FAILED:", e);
+                btn.textContent = "❌ Failed";
+                setTimeout(() => { btn.textContent = origText; btn.style.opacity = "1"; }, 2000);
+              }
             }}
             className="px-2 sm:px-3 py-1 rounded text-[10px] sm:text-xs font-mono font-bold bg-red-500/15 text-red-400/80 border border-red-500/30 hover:bg-red-500/25 transition-colors"
           >

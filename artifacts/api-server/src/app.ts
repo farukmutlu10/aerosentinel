@@ -22,6 +22,8 @@ const allowedOrigins = process.env.NODE_ENV === "production"
       "https://aerosentinel.app",
       "https://www.aerosentinel.app",
       "https://aerosentinel.pages.dev",
+      "https://preview.aerosentinel.pages.dev",
+      "https://production.aerosentinel.pages.dev",
     ]
   : ["http://localhost:3000", "http://localhost:5001"];
 
