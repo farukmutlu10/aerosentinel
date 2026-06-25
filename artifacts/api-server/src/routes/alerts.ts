@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, alertsTable, watchlistTable } from "@workspace/db";
-import { eq, and, desc, sql, gte, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, gte, inArray, like } from "drizzle-orm";
 import {
   ListAlertsQueryParams,
   AcknowledgeAlertParams,
@@ -21,7 +21,7 @@ globalThis.__alertsCache ??= new Map<string, CacheEntry>();
 const cache = globalThis.__alertsCache;
 
 const SUMMARY_CACHE_TTL = 60_000;
-const RECENT_CACHE_TTL  = 60_000;
+const RECENT_CACHE_TTL  = 0; // Notification polling için cache kaldırıldı — her poll fresh veri dönsün
 
 function cacheAge(ts: number): string {
   return `${Math.round((Date.now() - ts) / 1000)}s`;
@@ -67,7 +67,16 @@ router.get("/alerts", async (req, res) => {
   }
 
   const alerts = await db
-    .select()
+    .select({
+      id: alertsTable.id,
+      type: alertsTable.type,
+      icao: alertsTable.icao,
+      rawText: alertsTable.rawText,
+      previousRawText: alertsTable.previousRawText,
+      detectedAt: alertsTable.detectedAt,
+      acknowledged: alertsTable.acknowledged,
+      acknowledgedAt: alertsTable.acknowledgedAt,
+    })
     .from(alertsTable)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(alertsTable.detectedAt))
@@ -193,16 +202,23 @@ router.get("/alerts/recent", async (req, res) => {
   }
 
   const alerts = await db
-    .select()
+    .select({
+      id: alertsTable.id,
+      type: alertsTable.type,
+      icao: alertsTable.icao,
+      rawText: alertsTable.rawText,
+      previousRawText: alertsTable.previousRawText,
+      detectedAt: alertsTable.detectedAt,
+      acknowledged: alertsTable.acknowledged,
+      acknowledgedAt: alertsTable.acknowledgedAt,
+    })
     .from(alertsTable)
     .where(inArray(alertsTable.icao, userIcaos))
     .orderBy(desc(alertsTable.detectedAt))
     .limit(limit)
     .offset(offset);
 
-  if (canUseCache) {
-    cache.set(cacheKey, { data: alerts, ts: now });
-  }
+  // Cache devre dışı (RECENT_CACHE_TTL = 0) — write kaldırıldı
 
   return res.json(alerts);
 });
@@ -238,6 +254,65 @@ router.patch("/alerts/:id/acknowledge", async (req, res) => {
   if (!updated) return res.status(404).json({ error: "Alert not found" });
   invalidateAckCaches();
   return res.json(updated);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/alerts/:id/diff", async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+  const rows = await db.select().from(alertsTable).where(eq(alertsTable.id, id)).limit(1);
+  if (rows.length === 0) return res.status(404).json({ error: "Alert not found" });
+
+  const alert = rows[0];
+  return res.json({
+    id: alert.id,
+    type: alert.type,
+    icao: alert.icao,
+    current: alert.rawText,
+    previous: alert.previousRawText,
+    detectedAt: alert.detectedAt,
+  });
+});
+
+// ── Test Alert Endpoints ────────────────────────────────────────────────────
+
+router.post("/alerts/test", async (req, res) => {
+  const userId = getDeviceId(req);
+  // Kullanıcının watchlist'inden rastgele ICAO seç, yoksa UUWW kullan
+  const defaultIcaos = ["UUWW", "ULLI", "LTFJ", "EGSS"];
+  let icao = defaultIcaos[Math.floor(Math.random() * defaultIcaos.length)];
+
+  try {
+    const userWatchlist = await db
+      .select({ icao: watchlistTable.icao })
+      .from(watchlistTable)
+      .where(eq(watchlistTable.userId, userId));
+    if (userWatchlist.length > 0) {
+      icao = userWatchlist[Math.floor(Math.random() * userWatchlist.length)].icao;
+    }
+  } catch {}
+
+  const types = ["SPECI", "TAF_AMD", "TAF_COR"];
+  const type = types[Math.floor(Math.random() * types.length)];
+  const rawText = `TEST ${type} ${icao} ${new Date().toISOString().slice(0, 10).replace(/-/g, "")} Test alert for notification testing`;
+
+  await db.insert(alertsTable).values({ type, icao, rawText, previousRawText: null });
+
+  // Cache invalidation
+  globalThis.__alertsCache?.clear();
+
+  return res.json({ ok: true, type, icao });
+});
+
+router.delete("/alerts/test", async (req, res) => {
+  await db.delete(alertsTable).where(eq(alertsTable.icao, "TEST1"));
+  await db.delete(alertsTable).where(eq(alertsTable.icao, "TEST2"));
+  await db.delete(alertsTable).where(eq(alertsTable.icao, "TEST3"));
+  await db.delete(alertsTable).where(eq(alertsTable.icao, "TEST4"));
+  await db.delete(alertsTable).where(eq(alertsTable.icao, "TEST5"));
+  return res.json({ ok: true, deleted: "test alerts" });
 });
 
 export default router;
