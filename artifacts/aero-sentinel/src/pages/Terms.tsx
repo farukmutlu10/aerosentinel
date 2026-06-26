@@ -181,13 +181,12 @@ export default function Terms() {
             9. Contact
           </h2>
           <p>
-            For any questions about these Terms of Service, please reach out
-            through the AERO-SENTINEL platform at{" "}
+            For any questions about these Terms of Service, please contact us at{" "}
             <a
-              href="https://aerosentinel.app"
+              href="mailto:contact@aerosentinel.app"
               className="text-sky-400 hover:text-sky-300 underline"
             >
-              aerosentinel.app
+              contact@aerosentinel.app
             </a>
             .
           </p>

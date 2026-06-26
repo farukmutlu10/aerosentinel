@@ -224,12 +224,12 @@ export default function Privacy() {
           </h2>
           <p>
             If you have any questions or concerns about this Privacy Policy,
-            please contact us through the AERO-SENTINEL platform at{" "}
+            please contact us at{" "}
             <a
-              href="https://aerosentinel.app"
+              href="mailto:contact@aerosentinel.app"
               className="text-sky-400 hover:text-sky-300 underline"
             >
-              aerosentinel.app
+              contact@aerosentinel.app
             </a>
             .
           </p>
