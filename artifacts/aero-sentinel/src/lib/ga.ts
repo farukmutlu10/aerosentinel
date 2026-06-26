@@ -7,6 +7,9 @@ const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID;
  * VITE_GA_MEASUREMENT_ID env değişkeni tanımlıysa aktif olur.
  */
 export function initGA(): void {
+  // Consent Mode v2 defaults — sadece index.html'de tanımlı (gtag('consent', 'default', ...))
+  // Burada tekrar tetiklemiyoruz çünkü React GA initialize ettiğinde consent defaults zaten çalışmış olur.
+
   if (!GA_MEASUREMENT_ID) {
     console.info("[GA] Measurement ID tanımlı değil — Analytics devre dışı.");
     return;
@@ -21,6 +24,32 @@ export function initGA(): void {
   });
 
   console.info("[GA] Google Analytics başlatıldı.");
+}
+
+/**
+ * Consent Mode v2 — update consent based on user preferences.
+ * Called when user accepts all, rejects all, or saves granular preferences.
+ */
+export function updateConsent(preferences: { analytics: boolean; marketing: boolean }): void {
+  window.gtag?.("consent", "update", {
+    analytics_storage: preferences.analytics ? "granted" : "denied",
+    ad_storage: preferences.marketing ? "granted" : "denied",
+    ad_user_data: preferences.marketing ? "granted" : "denied",
+    ad_personalization: preferences.marketing ? "granted" : "denied",
+  });
+}
+
+/**
+ * Consent Mode v2 — reject all consent.
+ * Called when user clicks "Reject All".
+ */
+export function rejectAllConsent(): void {
+  window.gtag?.("consent", "update", {
+    analytics_storage: "denied",
+    ad_storage: "denied",
+    ad_user_data: "denied",
+    ad_personalization: "denied",
+  });
 }
 
 /**

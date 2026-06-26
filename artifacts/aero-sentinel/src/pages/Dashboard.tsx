@@ -12,6 +12,7 @@ import { ColoredRawText } from "@/components/ColoredRawText";
 import { ClockBadge, useSelectedTimezone } from "@/components/ClockDisplay";
 import { IataBadge } from "@/components/IataBadge";
 import { AdSlot } from "@/components/ads/AdSlot";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
@@ -262,7 +263,7 @@ export default function Dashboard() {
         try {
           const n = new Notification(`⚠ CRITICAL — ${w.icao}`, {
             body,
-            icon: `${import.meta.env.BASE_URL}alert-icon.png`,
+            icon: `${import.meta.env.BASE_URL}alert-icon.png?v=7`,
             tag: `crit-${w.icao}-${Date.now()}`,
             requireInteraction: false,
           });
@@ -479,9 +480,21 @@ export default function Dashboard() {
                 )}
               </div>
               {!hasFilter && (
-                <p className="text-xs text-muted-foreground font-mono mt-2">
-                  Watchlist empty — showing default <span className="text-primary font-bold">LTFH</span>.
-                </p>
+                <div className="mt-2 py-3 px-3 bg-background/50 border border-border/40 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground mt-0.5 flex-shrink-0">
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                    <div>
+                      <p className="text-xs font-mono text-muted-foreground">
+                        No airports in your watchlist yet. Add airports from the Airports page to get started.
+                      </p>
+                      <p className="text-[10px] font-mono text-muted-foreground/60 mt-1">
+                        Default: <span className="text-primary font-bold">LTFH</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -558,9 +571,21 @@ export default function Dashboard() {
                   )}
                 </div>
                 {!hasFilter && (
-                  <p className="text-xs text-muted-foreground font-mono mt-2">
-                    Empty — default <span className="text-primary font-bold">LTFH</span>.
-                  </p>
+                  <div className="mt-2 py-2 px-2.5 bg-background/50 border border-border/40 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground mt-0.5 flex-shrink-0">
+                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                      </svg>
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground">
+                          No airports in your watchlist yet. Add airports from the Airports page to get started.
+                        </p>
+                        <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5">
+                          Default: <span className="text-primary font-bold">LTFH</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
               {/* Sticky bottom buttons */}
@@ -916,11 +941,28 @@ export default function Dashboard() {
 
           {weatherLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-4">
-              {[...Array(6)].map((_, i) => <div key={i} className="h-32 sm:h-40 rounded-lg bg-card animate-pulse border border-border" />)}
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="rounded-lg bg-card border border-border overflow-hidden">
+                  <Skeleton className="h-32 sm:h-40 rounded-none" />
+                </div>
+              ))}
             </div>
           ) : displayed.length === 0 ? (
-            <div className="bg-card border border-border rounded-lg p-6 sm:p-12 text-center">
-              <p className="text-muted-foreground font-mono text-xs sm:text-sm">No airports match current filters</p>
+            <div className="bg-card border border-border rounded-lg p-6 sm:p-12 text-center space-y-3">
+              <div className="w-12 h-12 mx-auto rounded-full bg-muted/30 border border-border flex items-center justify-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-mono font-bold text-foreground">No airports match current filters</p>
+                <p className="text-xs font-mono text-muted-foreground mt-1">Try adjusting your filters or adding more airports to your watchlist.</p>
+              </div>
+              {isFiltered && (
+                <button onClick={resetFilters} className="px-4 py-2 text-xs font-mono font-bold rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-colors">
+                  Reset Filters
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-4">

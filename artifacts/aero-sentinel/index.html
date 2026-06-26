@@ -6,12 +6,19 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
 
+  // 1. Consent defaults — EN ÖNCE (veri toplanmadan önce)
+  gtag('consent', 'default', {
+    analytics_storage: 'denied',
+    ad_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied'
+  });
+
+  // 2. GA config — consent defaults'dan SONRA
+  gtag('js', new Date());
   gtag('config', 'G-24QTMD5Q4S');
 </script>
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2662411656601000"
-     crossorigin="anonymous"></script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>AERO-SENTINEL — Real-Time Aviation Weather Monitoring, TAF/METAR Alerts & Flight Analysis</title>
@@ -22,20 +29,20 @@
     <meta property="og:title" content="AERO-SENTINEL — Real-Time Aviation Weather Monitoring & TAF/METAR Alerts" />
     <meta property="og:description" content="Professional aviation weather monitoring platform with real-time TAF/METAR tracking, SPECI alerts, flight analysis, and personalized watchlists. Built for pilots and aviation professionals." />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://preview.aerosentinel.pages.dev" />
+    <meta property="og:url" content="https://aerosentinel.app" />
     <meta property="og:image" content="/opengraph.jpg" />
     <meta property="og:site_name" content="AERO-SENTINEL" />
     <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="AERO-SENTINEL — Real-Time Aviation Weather Monitoring & Alerts" />
     <meta name="twitter:description" content="Professional aviation weather platform: real-time TAF/METAR tracking, SPECI alerts, flight analysis, and watchlist management for pilots and dispatchers." />
-    <link rel="canonical" href="https://preview.aerosentinel.pages.dev" />
+    <link rel="canonical" href="https://aerosentinel.app" />
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
       "name": "AERO-SENTINEL",
-      "url": "https://preview.aerosentinel.pages.dev",
+      "url": "https://aerosentinel.app",
       "description": "Professional aviation weather monitoring platform providing real-time TAF, METAR, and SPECI alerts for pilots, dispatchers, and aviation professionals.",
       "applicationCategory": "UtilitiesApplication",
       "operatingSystem": "Web",
@@ -51,7 +58,10 @@
         "Personalized airport watchlists",
         "Global airport weather data",
         "PWA support for kiosk mode"
-      ]
+      ],
+      "aboutPage": "https://aerosentinel.app/about",
+      "privacyPolicy": "https://aerosentinel.app/privacy",
+      "termsOfService": "https://aerosentinel.app/terms"
     }
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -62,10 +72,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-    <!-- Google AdSense script -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2662411656601000"
-      crossorigin="anonymous"></script>
 
     <script>
       (function() {

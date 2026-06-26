@@ -1094,7 +1094,34 @@ export default function Airports() {
                 </div>
               </div>
 
-              {/* Flight table */}
+              {/* Flight table or empty state */}
+              {displayPairs.length === 0 && analysis.done ? (
+                <div className="bg-card border border-border rounded-lg p-8 sm:p-12 text-center space-y-3">
+                  <div className="w-12 h-12 mx-auto rounded-full bg-muted/30 border border-border flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-mono font-bold text-foreground">No flights match your filters</p>
+                    <p className="text-xs font-mono text-muted-foreground mt-1">Try adjusting your search criteria or clearing filters.</p>
+                  </div>
+                  {hasActiveFilter && (
+                    <button
+                      onClick={() => {
+                        setFilterFlight(new Set()); setFlightSearch("");
+                        setFilterReg(new Set()); setRegSearch("");
+                        setFilterFrom(new Set()); setFromSearch("");
+                        setFilterTo(new Set()); setToSearch("");
+                        setEtdFrom(""); setEtdTo("");
+                        setFilterAnalysis("ALL");
+                      }}
+                      className="px-4 py-2 text-xs font-mono font-bold rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-colors">
+                      Clear Filters
+                    </button>
+                  )}
+                </div>
+              ) : (
               <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-xs font-mono">
                   <thead>
@@ -1176,6 +1203,7 @@ export default function Airports() {
                   </tbody>
                 </table>
               </div>
+              )}
 
               {/* Sponsor placeholder — AdSense onayı sonrası gerçek reklam gösterilecek */}
               <AdSlot

@@ -43,7 +43,7 @@ async function showSWNotification(title: string, options: NotificationOptions): 
     if (!("serviceWorker" in navigator)) return false;
     const registration = await navigator.serviceWorker.ready;
     if (!registration || Notification.permission !== "granted") return false;
-    await registration.showNotification(title, { ...options, icon: options.icon || `${self.location.origin}/alert-icon.png` });
+    await registration.showNotification(title, { ...options, icon: options.icon || `${self.location.origin}/alert-icon.png?v=7` });
     return true;
   } catch (err) { log("⚠️ SW notification hatası:", err); return false; }
 }
@@ -62,8 +62,6 @@ async function sendNotification(title: string, options: NotificationOptions): Pr
 export function useAlertNotifications() {
   const { play: playAlert } = useAlertSound();
   const { effectiveIcaos } = useWatchlist();
-  const [permission, setPermission] = useState<NotificationPermission>("default");
-  const [dismissed, setDismissed] = useState(false);
   const [pendingToasts, setPendingToasts] = useState<Array<{
     id: string;
     title: string;
@@ -93,15 +91,6 @@ export function useAlertNotifications() {
     }
   }, [effectiveIcaos]);
 
-  useEffect(() => {
-    if (typeof Notification !== "undefined") {
-      setPermission(Notification.permission);
-      log("Başlangıç: permission =", Notification.permission, "| sessionStorage'da seenIds:", seenIds.current.size);
-    } else { log("⚠️ Notification API desteklenmiyor!"); }
-    const wasDismissed = sessionStorage.getItem("notif-dismissed") === "1";
-    setDismissed(wasDismissed);
-  }, []);
-
   const forceCheck = useCallback(async () => {
     log("forceCheck: query invalidation tetikleniyor");
     await queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
@@ -123,6 +112,14 @@ export function useAlertNotifications() {
 
   // ─── Ana bildirim effect'i ─────────────────────────────────────────────────
   useEffect(() => {
+    // Cookie consent guard — banner kapanana kadar bildirim tetikleme
+    const raw = localStorage.getItem('aero-cookie-consent');
+    const consent = raw ? JSON.parse(raw) : null;
+    if (!consent) {
+      log("⏳ Cookie consent henüz verilmedi — bildirim beklemeye alındı");
+      return;
+    }
+
     if (!allAlerts?.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }
 
     // İlk yükleme: sessionStorage'dan yüklenen seenIds zaten var.
@@ -144,10 +141,6 @@ export function useAlertNotifications() {
       const newOnLoad = allAlerts.filter((a) => !seenIds.current.has(a.id));
       log(`Sayfa yenileme: ${newOnLoad.length} yeni alert sessionStorage'da yok → bildirim tetiklenecek`);
       // isFirstLoad sonrası normal akışa devam et (return yok)
-    }
-
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") {
-      log("⚠️ Notification izni yok — in-app toast kullanılacak");
     }
 
     // ─── YENİ ALERT'LERİ ALGILA VE BİLDİRİM GÖNDER ─────────────────────────
@@ -181,7 +174,7 @@ export function useAlertNotifications() {
       const label = TYPE_LABELS[alert.type] ?? alert.type;
       const title = `AERO-SENTINEL — ${label}`;
       const body = `${alert.icao}: ${alert.rawText.slice(0, 120)}`;
-      const icon = `${import.meta.env.BASE_URL}alert-icon.png`;
+      const icon = `${import.meta.env.BASE_URL}alert-icon.png?v=7`;
 
       log("🔔 YENİ ALERT BİLDİRİM:", alert.id, alert.type, alert.icao);
 
@@ -216,18 +209,7 @@ export function useAlertNotifications() {
     if (skippedCount > 0) log(`⏭️ ${skippedCount} alert atlandı (watchlist dışı veya duplicate)`);
     if (newAlertCount === 0) log("Yeni alert yok (tümü seenIds'de veya duplicate)");
     else log(`✅ ${newAlertCount} yeni alert için bildirim gönderildi`);
-  }, [allAlerts, permission, playAlert]);
+  }, [allAlerts, playAlert]);
 
-  const requestPermission = async () => {
-    if (typeof Notification === "undefined") return;
-    try {
-      const p = await Notification.requestPermission();
-      setPermission(p);
-      if (p === "granted") { sessionStorage.removeItem("notif-dismissed"); setDismissed(false); }
-    } catch { Notification.requestPermission((p) => setPermission(p)); }
-  };
-
-  const dismiss = () => { sessionStorage.setItem("notif-dismissed", "1"); setDismissed(true); };
-  const showBanner = permission === "default" && !dismissed;
-  return { permission, requestPermission, dismiss, showBanner, dismissed, forceCheck, pendingToasts, dismissToast };
+  return { forceCheck, pendingToasts, dismissToast };
 }

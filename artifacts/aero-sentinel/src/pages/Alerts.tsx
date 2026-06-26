@@ -17,6 +17,7 @@ import { AlertBadge } from "@/components/AlertBadge";
 import { IataBadge } from "@/components/IataBadge";
 import { TafText } from "@/components/TafText";
 import { AdSlot } from "@/components/ads/AdSlot";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TafDiffModal } from "@/components/TafDiffModal";
 import { useAlertSound, playAlertSound } from "@/hooks/useAlertSound";
 import { formatDistanceToNow, format } from "date-fns";
@@ -338,7 +339,7 @@ export default function Alerts() {
               color: "rgba(212,168,67,0.7)",
               borderColor: "rgba(212,168,67,0.3)",
             }}>
-            {hideAcknowledged ? "Show All" : "Hide Ack"}
+            {hideAcknowledged ? "Show All" : "Hide ACK'ed"}
           </button>
           {isFiltered && <div className="w-px h-5" style={{ backgroundColor: "rgba(212,168,67,0.3)" }} />}
           {isFiltered && (
@@ -407,7 +408,7 @@ export default function Alerts() {
                 color: "rgba(212,168,67,0.7)",
                 borderColor: "rgba(212,168,67,0.3)",
               }}>
-              {hideAcknowledged ? "Show All" : "Hide Ack"}
+              {hideAcknowledged ? "Show All" : "Hide ACK'ed"}
             </button>
             {isFiltered && <div className="w-px h-5" style={{ backgroundColor: "rgba(212,168,67,0.3)" }} />}
             {isFiltered && (
@@ -439,12 +440,30 @@ export default function Alerts() {
         {/* Alert list */}
         {isLoading ? (
           <div className="space-y-2">
-            {[...Array(8)].map((_, i) => <div key={i} className="h-20 sm:h-24 rounded-lg bg-card animate-pulse border border-border" />)}
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="rounded-lg bg-card border border-border overflow-hidden">
+                <Skeleton className="h-20 sm:h-24 rounded-none" />
+              </div>
+            ))}
           </div>
         ) : !alerts.length ? (
           <div className="space-y-3">
-            <div className="bg-card border border-border rounded-lg p-8 sm:p-16 text-center">
-              <p className="text-muted-foreground font-mono text-xs sm:text-sm">No alerts match current filters</p>
+            <div className="bg-card border border-border rounded-lg p-8 sm:p-16 text-center space-y-3">
+              <div className="w-12 h-12 mx-auto rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-mono font-bold text-foreground">No alerts at the moment</p>
+                <p className="text-xs font-mono text-muted-foreground mt-1">AeroSentinel is monitoring airports for weather changes.</p>
+              </div>
+              {isFiltered && (
+                <button onClick={resetFilters} className="px-4 py-2 text-xs font-mono font-bold rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-colors">
+                  Reset Filters
+                </button>
+              )}
             </div>
             <AdSlot
               slot="alerts-infeed"
@@ -667,7 +686,7 @@ export default function Alerts() {
                   const type = res?.type || "SPECI";
                   const n = new Notification(`AERO-SENTINEL — Test ${type}`, {
                     body: `${icao}: Test alert created successfully`,
-                    icon: `${import.meta.env.BASE_URL}alert-icon.png`,
+                    icon: `${import.meta.env.BASE_URL}alert-icon.png?v=7`,
                     tag: `test-alert-${Date.now()}`,
                     requireInteraction: false,
                   });
@@ -701,7 +720,7 @@ export default function Alerts() {
                     const type = res?.type || "SPECI";
                     const n = new Notification(`AERO-SENTINEL — Test ${type}`, {
                       body: `${icao}: Test alert (auto)`,
-                      icon: `${import.meta.env.BASE_URL}alert-icon.png`,
+                      icon: `${import.meta.env.BASE_URL}alert-icon.png?v=7`,
                       tag: `test-alert-${Date.now()}`,
                       requireInteraction: false,
                     });
