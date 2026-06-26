@@ -27,6 +27,10 @@ import { useTheme } from "@/hooks/useTheme";
 import { createContext, useContext, useEffect, useState } from "react";
 import { initGA, trackPageView } from "@/lib/ga";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { CookieConsent } from "@/components/CookieConsent";
+import { AdSenseConsent } from "@/components/AdSenseConsent";
+import { BackToTop } from "@/components/BackToTop";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 20_000, retry: 1 } },
@@ -110,6 +114,7 @@ function AppInner() {
     <TestPanelContext.Provider value={{ testPanelVisible, setTestPanelVisible }}>
     <ThemeContext.Provider value={{ theme, toggleTheme, transitioning, pendingTheme, completeTransition }}>
       <LocalAckContext.Provider value={{ localAcked, setLocalAcked }}>
+        <ErrorBoundary>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Switch>
             <Route path="/" component={Dashboard} />
@@ -132,6 +137,7 @@ function AppInner() {
             <Route component={NotFound} />
           </Switch>
         </WouterRouter>
+        </ErrorBoundary>
 
         {showBanner && (
           <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:bottom-4 z-50 max-w-xs">
@@ -193,6 +199,9 @@ function AppInner() {
           <ThemeTransition targetTheme={pendingTheme} onComplete={completeTransition} />
         )}
         <Toaster />
+        <CookieConsent />
+        <AdSenseConsent />
+        <BackToTop />
       </LocalAckContext.Provider>
     </ThemeContext.Provider>
     </TestPanelContext.Provider>

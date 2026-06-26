@@ -251,7 +251,24 @@ export default function Privacy() {
           </p>
         </div>
 
-        <div className="mt-10 flex flex-wrap gap-4 text-sm">
+        {/* Manage Cookie Preferences */}
+        <div className="mt-10 p-4 bg-card border border-border rounded-lg">
+          <h3 className="text-sm font-mono font-bold text-foreground mb-2">Cookie Preferences</h3>
+          <p className="text-xs text-muted-foreground font-mono mb-3">
+            You can change your cookie preferences at any time. Click the button below to manage your consent.
+          </p>
+          <button
+            onClick={() => {
+              localStorage.removeItem("aero-cookie-consent");
+              window.location.reload();
+            }}
+            className="px-4 py-2 text-xs font-mono font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+          >
+            Manage Cookie Preferences
+          </button>
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-4 text-sm">
           <Link
             href="/about"
             className="text-sky-400 hover:text-sky-300 transition-colors underline underline-offset-4"
