@@ -6,6 +6,8 @@
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="108" fill="url(#bg)"/>
-  <rect x="218" y="80" width="76" height="230" rx="38" fill="white"/>
-  <circle cx="256" cy="388" r="38" fill="white"/>
+  <!-- Exclamation bar — MUCH thicker, fills more of the icon -->
+  <rect x="188" y="56" width="136" height="280" rx="68" fill="white"/>
+  <!-- Exclamation dot — larger -->
+  <circle cx="256" cy="420" r="52" fill="white"/>
 </svg>
