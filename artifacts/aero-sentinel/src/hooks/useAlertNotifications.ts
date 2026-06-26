@@ -60,17 +60,8 @@ async function sendNotification(title: string, options: NotificationOptions): Pr
 }
 
 export function useAlertNotifications() {
-  // Cookie consent guard — banner kapanana kadar hiçbir bildirim tetiklenmemeli
-  const cookieConsentRaw = localStorage.getItem('aero-cookie-consent');
-  const cookieConsent = cookieConsentRaw ? JSON.parse(cookieConsentRaw) : null;
-  // Bildirim izni cookie consent'ten bağımsızdır.
-  // Sadece banner hâlâ açıksa (hiçbir consent verilmemişse) bekleme yap.
-  const hasAnyConsent = cookieConsent !== null;
-
   const { play: playAlert } = useAlertSound();
   const { effectiveIcaos } = useWatchlist();
-  const [permission, setPermission] = useState<NotificationPermission>("default");
-  const [dismissed, setDismissed] = useState(false);
   const [pendingToasts, setPendingToasts] = useState<Array<{
     id: string;
     title: string;
@@ -100,15 +91,6 @@ export function useAlertNotifications() {
     }
   }, [effectiveIcaos]);
 
-  useEffect(() => {
-    if (typeof Notification !== "undefined") {
-      setPermission(Notification.permission);
-      log("Başlangıç: permission =", Notification.permission, "| sessionStorage'da seenIds:", seenIds.current.size);
-    } else { log("⚠️ Notification API desteklenmiyor!"); }
-    const wasDismissed = sessionStorage.getItem("notif-dismissed") === "1";
-    setDismissed(wasDismissed);
-  }, []);
-
   const forceCheck = useCallback(async () => {
     log("forceCheck: query invalidation tetikleniyor");
     await queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
@@ -136,11 +118,6 @@ export function useAlertNotifications() {
     if (!consent) {
       log("⏳ Cookie consent henüz verilmedi — bildirim beklemeye alındı");
       return;
-    }
-
-    // Notification.requestPermission() removed — NotificationBanner handles permission flow
-    if (typeof Notification !== "undefined" && Notification.permission === "default") {
-      log("⚠️ Notification izni henüz verilmedi — NotificationBanner üzerinden istenecek");
     }
 
     if (!allAlerts?.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }
@@ -232,19 +209,7 @@ export function useAlertNotifications() {
     if (skippedCount > 0) log(`⏭️ ${skippedCount} alert atlandı (watchlist dışı veya duplicate)`);
     if (newAlertCount === 0) log("Yeni alert yok (tümü seenIds'de veya duplicate)");
     else log(`✅ ${newAlertCount} yeni alert için bildirim gönderildi`);
-  }, [allAlerts, permission, playAlert]);
+  }, [allAlerts, playAlert]);
 
-  const requestPermission = async () => {
-    if (typeof Notification === "undefined") return;
-    try {
-      const p = await Notification.requestPermission();
-      setPermission(p);
-      if (p === "granted") { sessionStorage.removeItem("notif-dismissed"); setDismissed(false); }
-    } catch { Notification.requestPermission((p) => setPermission(p)); }
-  };
-
-  const dismiss = () => { sessionStorage.setItem("notif-dismissed", "1"); setDismissed(true); };
-  // Banner sadece consent henüz verilmemişse gösterilsin
-  const showBanner = permission === "default" && !dismissed && !hasAnyConsent;
-  return { permission, requestPermission, dismiss, showBanner, dismissed, forceCheck, pendingToasts, dismissToast };
+  return { forceCheck, pendingToasts, dismissToast };
 }
