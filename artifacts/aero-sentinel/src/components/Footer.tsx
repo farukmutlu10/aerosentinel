@@ -84,6 +84,9 @@ export function Footer() {
       <footer className="hidden sm:block mt-16 border-t border-border/40 py-6 px-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4 text-xs font-mono text-muted-foreground/50">
+            <Link href="/features" className="hover:text-muted-foreground transition-colors">Features</Link>
+            <Link href="/faq" className="hover:text-muted-foreground transition-colors">FAQ</Link>
+            <Link href="/use-cases" className="hover:text-muted-foreground transition-colors">Use Cases</Link>
             <Link href="/about" className="hover:text-muted-foreground transition-colors">About</Link>
             <Link href="/blog" className="hover:text-muted-foreground transition-colors">Blog</Link>
             <Link href="/privacy" className="hover:text-muted-foreground transition-colors">Privacy</Link>

@@ -13,6 +13,11 @@ import Terms from "@/pages/Terms";
 import Contact from "@/pages/Contact";
 import Blog from "@/pages/Blog";
 import BlogPost from "@/pages/BlogPost";
+import Features from "@/pages/Features";
+import FeatureDetail from "@/pages/FeatureDetail";
+import FAQ from "@/pages/FAQ";
+import UseCases from "@/pages/UseCases";
+import UseCaseDetail from "@/pages/UseCaseDetail";
 import { WatchlistProvider } from "@/context/WatchlistContext";
 import { TimezoneProvider } from "@/components/ClockDisplay";
 import { useAlertNotifications } from "@/hooks/useAlertNotifications";
@@ -119,6 +124,11 @@ function AppInner() {
             <Route path="/contact" component={Contact} />
             <Route path="/blog" component={Blog} />
             <Route path="/blog/:slug" component={BlogPost} />
+            <Route path="/features" component={Features} />
+            <Route path="/features/:slug" component={FeatureDetail} />
+            <Route path="/faq" component={FAQ} />
+            <Route path="/use-cases" component={UseCases} />
+            <Route path="/use-cases/:slug" component={UseCaseDetail} />
             <Route component={NotFound} />
           </Switch>
         </WouterRouter>
