@@ -667,7 +667,7 @@ export default function Alerts() {
                   const type = res?.type || "SPECI";
                   const n = new Notification(`AERO-SENTINEL — Test ${type}`, {
                     body: `${icao}: Test alert created successfully`,
-                    icon: `${import.meta.env.BASE_URL}alert-icon.png`,
+                    icon: `${import.meta.env.BASE_URL}alert-icon.png?v=7`,
                     tag: `test-alert-${Date.now()}`,
                     requireInteraction: false,
                   });
@@ -701,7 +701,7 @@ export default function Alerts() {
                     const type = res?.type || "SPECI";
                     const n = new Notification(`AERO-SENTINEL — Test ${type}`, {
                       body: `${icao}: Test alert (auto)`,
-                      icon: `${import.meta.env.BASE_URL}alert-icon.png`,
+                      icon: `${import.meta.env.BASE_URL}alert-icon.png?v=7`,
                       tag: `test-alert-${Date.now()}`,
                       requireInteraction: false,
                     });

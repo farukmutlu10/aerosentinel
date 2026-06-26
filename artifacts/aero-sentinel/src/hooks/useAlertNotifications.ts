@@ -43,7 +43,7 @@ async function showSWNotification(title: string, options: NotificationOptions): 
     if (!("serviceWorker" in navigator)) return false;
     const registration = await navigator.serviceWorker.ready;
     if (!registration || Notification.permission !== "granted") return false;
-    await registration.showNotification(title, { ...options, icon: options.icon || `${self.location.origin}/alert-icon.png` });
+    await registration.showNotification(title, { ...options, icon: options.icon || `${self.location.origin}/alert-icon.png?v=7` });
     return true;
   } catch (err) { log("⚠️ SW notification hatası:", err); return false; }
 }
@@ -181,7 +181,7 @@ export function useAlertNotifications() {
       const label = TYPE_LABELS[alert.type] ?? alert.type;
       const title = `AERO-SENTINEL — ${label}`;
       const body = `${alert.icao}: ${alert.rawText.slice(0, 120)}`;
-      const icon = `${import.meta.env.BASE_URL}alert-icon.png`;
+      const icon = `${import.meta.env.BASE_URL}alert-icon.png?v=7`;
 
       log("🔔 YENİ ALERT BİLDİRİM:", alert.id, alert.type, alert.icao);
 

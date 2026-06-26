@@ -262,7 +262,7 @@ export default function Dashboard() {
         try {
           const n = new Notification(`⚠ CRITICAL — ${w.icao}`, {
             body,
-            icon: `${import.meta.env.BASE_URL}alert-icon.png`,
+            icon: `${import.meta.env.BASE_URL}alert-icon.png?v=7`,
             tag: `crit-${w.icao}-${Date.now()}`,
             requireInteraction: false,
           });
