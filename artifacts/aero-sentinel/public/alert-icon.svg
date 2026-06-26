@@ -5,9 +5,7 @@
       <stop offset="100%" stop-color="#d97706"/>
     </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
-  <!-- Exclamation bar — MUCH thicker, fills more of the icon -->
-  <rect x="188" y="56" width="136" height="280" rx="68" fill="white"/>
-  <!-- Exclamation dot — larger -->
-  <circle cx="256" cy="420" r="52" fill="white"/>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect x="180" y="48" width="152" height="290" rx="76" fill="white"/>
+  <circle cx="256" cy="428" r="56" fill="white"/>
 </svg>

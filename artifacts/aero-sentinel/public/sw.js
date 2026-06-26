@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aerosentinel-v5';
+const CACHE_NAME = 'aerosentinel-v6';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
