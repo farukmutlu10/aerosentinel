@@ -26,6 +26,7 @@ function setupAudioUnlock() {
         ctx.resume().catch(() => {});
       }
     } catch { /* ignore */ }
+    // Tüm event listener'ları tek seferde kaldır
     window.removeEventListener("click", unlock);
     window.removeEventListener("keydown", unlock);
     window.removeEventListener("touchstart", unlock);
@@ -56,9 +57,22 @@ function playTone(freq: number, duration: number, startTime: number, volume = 0.
 export function playAlertSound() {
   try {
     const ctx = getCtx();
-    // AudioContext suspended ise resume et
+    // AudioContext suspended ise resume et (notification geldiğinde bile çalışsın)
     if (ctx.state === "suspended") {
-      ctx.resume().catch(() => {});
+      ctx.resume().then(() => {
+        // Resume başarılı olduktan sonra sesi çal
+        const t = ctx.currentTime;
+        playTone(1200, 0.15, t, 0.25, "sine");
+        playTone(900, 0.12, t + 0.08, 0.2, "sine");
+        playTone(600, 0.2, t + 0.15, 0.25, "sine");
+      }).catch(() => {
+        // Resume başarısız olursa yine de dene
+        const t = ctx.currentTime;
+        playTone(1200, 0.15, t, 0.25, "sine");
+        playTone(900, 0.12, t + 0.08, 0.2, "sine");
+        playTone(600, 0.2, t + 0.15, 0.25, "sine");
+      });
+      return;
     }
     const t = ctx.currentTime;
     playTone(1200, 0.15, t, 0.25, "sine");

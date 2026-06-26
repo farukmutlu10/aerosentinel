@@ -24,16 +24,24 @@ const allowedOrigins = process.env.NODE_ENV === "production"
       "https://aerosentinel.pages.dev",
       "https://preview.aerosentinel.pages.dev",
       "https://production.aerosentinel.pages.dev",
+      "https://*.aerosentinel.pages.dev",
     ]
-  : ["http://localhost:3000", "http://localhost:5001"];
+  : [
+      "http://localhost:5173",
+      "http://localhost:3000",
+      "http://localhost:5001",
+    ];
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.some(o => o.endsWith(".*") ? origin.startsWith(o.replace(".*", "")) : o === origin)) {
-      callback(null, true);
-    } else {
-      callback(null, true); // Hata fırlatma, herkese izin ver (debug için)
-    }
+    const isAllowed = allowedOrigins.some((o) => {
+      if (o.includes("*")) {
+        const pattern = o.replace("*.", "");
+        return origin === pattern || origin.endsWith(pattern.replace("https://", "https://*."));
+      }
+      return origin === o;
+    });
+    callback(null, isAllowed || !origin);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -47,10 +55,10 @@ if (process.env.NODE_ENV === "production") {
   }));
 }
 
-// Rate limiting — 100 requests/min per IP
+// Rate limiting — 200 requests/min per IP
 const limiter = rateLimit({
   windowMs: 60_000,
-  max: 100,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later." },

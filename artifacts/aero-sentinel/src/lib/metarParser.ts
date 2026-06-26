@@ -45,6 +45,9 @@ export interface MetarParsed {
   ceiling?: { feet: number; type: "BKN" | "OVC" | "VV" };
   wind?: WindData;
   phenomena: Array<{ code: string; label: string; danger: boolean }>;
+  temperature?: number;
+  dewpoint?: number;
+  pressure?: { value: number; unit: "hPa" | "inHg" };
   valid: boolean;
 }
 
@@ -88,7 +91,7 @@ export const RED_WX = new Set([
   "TSSN", "+TSSN", "TSGR", "TSPL",
   "-FZRA", "FZRA", "+FZRA",
   "FZDZ", "-FZDZ", "+FZDZ",
-  "FZFG",
+  "FZFG", "FZSN",
   "BLSN", "+BLSN", "-BLSN", "DRSN",
   "-RASN", "RASN", "+RASN",
   "SHGR", "SHGS",
@@ -102,9 +105,6 @@ export function hasCritWx(raw: string): boolean {
     const escaped = code.replace(/[+]/g, "\\+");
     if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(raw)) return true;
   }
-  if (/\b(BL|DR)(SN)\b/.test(raw)) return true;
-  if (/\bFZ(FG|DZ|SN)\b/.test(raw)) return true;
-  if (/\bTS(SN|GR|PL)\b/.test(raw)) return true;
   return false;
 }
 
@@ -128,6 +128,11 @@ export function hasBadgeWind(raw: string | null): boolean {
     const spd = parseInt(m[1]);
     const gst = m[2] ? parseInt(m[2]) : 0;
     if (spd >= 13 || gst >= 15) return true;
+  }
+  for (const m of raw.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KMH\b/g)) {
+    const spd = Math.round(parseInt(m[1]) * 0.5399568);
+    const gst = m[2] ? Math.round(parseInt(m[2]) * 0.5399568) : 0;
+    if (spd >= 25 || gst >= 29) return true;
   }
   return false;
 }
@@ -154,7 +159,7 @@ function parseWind(raw: string): WindData | undefined {
     const gustMPS = mpsM.groups.gst ? parseInt(mpsM.groups.gst) : undefined;
     const g = gustMPS ?? 0;
     let dangerColor: string;
-    if (sustainedMPS >= 8 || g >= 12) dangerColor = "#ef4444";
+    if (sustainedMPS >= 12 || g >= 20) dangerColor = "#ef4444";
     else if (sustainedMPS >= 6 || g >= 10) dangerColor = "#f97316";
     else dangerColor = "";
     return {
@@ -167,18 +172,65 @@ function parseWind(raw: string): WindData | undefined {
       isMps: true,
     };
   }
+  // Try KMH
+  const kmhM = raw.match(/\b(?<dir>\d{3}|VRB)(?<spd>\d{2,3})(?:G(?<gst>\d{2,3}))?KMH\b/);
+  if (kmhM?.groups) {
+    const sustainedKMH = parseInt(kmhM.groups.spd);
+    const gustKMH = kmhM.groups.gst ? parseInt(kmhM.groups.gst) : undefined;
+    const sustainedKt = Math.round(sustainedKMH * 0.5399568);
+    const gustKt = gustKMH ? Math.round(gustKMH * 0.5399568) : undefined;
+    const g = gustKt ?? 0;
+    let dangerColor: string;
+    if (sustainedKt >= 15 || g >= 25) dangerColor = "#ef4444";
+    else if (sustainedKt >= 12 || g >= 20) dangerColor = "#f97316";
+    else dangerColor = "";
+    return {
+      direction: kmhM.groups.dir,
+      sustainedKt,
+      gustKt,
+      dangerColor,
+      windBadge: sustainedKt >= 25 || g >= 29,
+      raw: kmhM[0],
+    };
+  }
   return undefined;
 }
 
 function parseVisibility(raw: string): { meters?: number; cavok: boolean } {
-  if (/\b(CAVOK|NSC|NCD|SKC|CLR)\b/.test(raw)) return { meters: 9999, cavok: true };
-  const m = raw.match(/(?:^|\s)(?<vis>\d{4})(?!\/)(?:\s|$)/);
-  if (m?.groups) return { meters: parseInt(m.groups.vis), cavok: false };
+  // Only true CAVOK sets cavok: true
+  if (/\bCAVOK\b/.test(raw)) return { meters: 9999, cavok: true };
+  // NSC/SKC/NCD/CLR — no significant clouds; visibility not specified by these codes
+  // Do NOT return cavok: true for these; they are cloud descriptors, not visibility guarantees.
+  if (/\b(NSC|NCD|SKC|CLR)\b/.test(raw)) return { cavok: false };
+  // SM format — check before meter regex
+  // P6SM (more than 6 SM)
+  if (/\bP6SM\b/.test(raw)) return { meters: 9999, cavok: false };
+  // Whole + fraction SM: "1 1/2SM" (space-separated in raw)
+  const smMixed = raw.match(/(?:^|\s)(\d+)\s+(\d+)\/(\d+)SM\b/);
+  if (smMixed) {
+    const whole = parseInt(smMixed[1]);
+    const num = parseInt(smMixed[2]);
+    const den = parseInt(smMixed[3]);
+    return { meters: Math.round((whole + num / den) * 1609), cavok: false };
+  }
+  // Fraction-only SM: "1/2SM", "3/4SM"
+  const smFrac = raw.match(/(?:^|\s)(\d+)\/(\d+)SM\b/);
+  if (smFrac) {
+    return { meters: Math.round((parseInt(smFrac[1]) / parseInt(smFrac[2])) * 1609), cavok: false };
+  }
+  // Integer SM: "10SM"
+  const smInt = raw.match(/(?:^|\s)(\d+)SM\b/);
+  if (smInt) {
+    return { meters: Math.round(parseInt(smInt[1]) * 1609), cavok: false };
+  }
+  // Meter format
+  const m = raw.match(/(?:^|\s)(?<vis>\d{4,5})(?!\/)(?:\s|$)/);
+  if (m?.groups) { const v = parseInt(m.groups.vis); return { meters: v > 9999 ? 9999 : v, cavok: false }; }
   return { cavok: false };
 }
 
 function parseCeiling(raw: string): { feet: number; type: "BKN" | "OVC" | "VV" } | undefined {
-  const layers = [...raw.matchAll(/\b(?<type>BKN|OVC|VV)(?<h>\d{3})\b/g)];
+  const layers = [...raw.matchAll(/\b(?<type>BKN|OVC|VV)(?<h>\d{3})(?:CB)?\b/g)];
   if (!layers.length) return undefined;
   let lowest = Infinity, lowestType: "BKN" | "OVC" | "VV" = "BKN";
   for (const l of layers) {
@@ -191,7 +243,7 @@ function parseCeiling(raw: string): { feet: number; type: "BKN" | "OVC" | "VV" }
 
 function parsePhenomena(raw: string) {
   const found: Array<{ code: string; label: string; danger: boolean }> = [];
-  const wxPat = /\b(\+?(?:TS|SH|FZ|DR|BL|VC|MI|PR|BC)?(?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS|NSW)[\w]*|\+SN|GR|TS|FG|VA|VCSH|VCTS)\b/g;
+  const wxPat = /\b([-+]?(?:TS|SH|FZ|DR|BL|VC|MI|PR|BC)?(?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS|NSW)|[-+]?SN|GR|TS|FG|VA|VCSH|VCTS)\b/g;
   const seen = new Set<string>();
   for (const m of raw.matchAll(wxPat)) {
     const code = m[1];
@@ -227,7 +279,29 @@ export function parseMetar(raw: string): MetarParsed {
   const ceiling = parseCeiling(raw);
   const phenomena = parsePhenomena(raw);
   const flightCategory = categorizeFlight(vis, ceiling);
-  return { stationId, raw, flightCategory, categoryColor: CATEGORY_COLOR[flightCategory], visibility: vis, cavok, ceiling, wind, phenomena, valid: true };
+
+  // Extract temperature & dewpoint (M = minus prefix)
+  let temperature: number | undefined;
+  let dewpoint: number | undefined;
+  const tdMatch = raw.match(/\b(M?\d{2})\/(M?\d{2})\b/);
+  if (tdMatch) {
+    temperature = tdMatch[1].startsWith("M") ? -parseInt(tdMatch[1].slice(1)) : parseInt(tdMatch[1]);
+    dewpoint = tdMatch[2].startsWith("M") ? -parseInt(tdMatch[2].slice(1)) : parseInt(tdMatch[2]);
+  }
+
+  // Extract pressure (QNH in hPa or altimeter in inHg)
+  let pressure: { value: number; unit: "hPa" | "inHg" } | undefined;
+  const qnhMatch = raw.match(/\bQ(\d{4})\b/);
+  if (qnhMatch) {
+    pressure = { value: parseInt(qnhMatch[1]), unit: "hPa" };
+  } else {
+    const altMatch = raw.match(/\bA(\d{4})\b/);
+    if (altMatch) {
+      pressure = { value: parseInt(altMatch[1]), unit: "inHg" };
+    }
+  }
+
+  return { stationId, raw, flightCategory, categoryColor: CATEGORY_COLOR[flightCategory], visibility: vis, cavok, ceiling, wind, phenomena, temperature, dewpoint, pressure, valid: true };
 }
 
 // ── Tokenizer ─────────────────────────────────────────────────────────────────
@@ -300,7 +374,7 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
       color = "#38BDF8"; bold = true;
     } else if (t === "CB") {
       color = "#d1a054"; title = "Cumulonimbus";
-    } else if (/^(BECMG|TEMPO|INTER|PROB\d{2})$/.test(t) || /^FM\d{6}$/.test(t) || /^AT\d{4}$/.test(t) || /^TL\d{4}$/.test(t)) {
+    } else if (/^(BECMG|TEMPO|INTER|PROB\d{2})$/.test(t) || /^FM\d{4,6}$/.test(t) || /^AT\d{4}$/.test(t) || /^TL\d{4}$/.test(t)) {
       bold = true; color = "currentColor"; title = "TAF change group";
     } else if (/^[-+]?(?:TS|SH|FZ|DR|BL|VC|MI|PR|BC|NSW)/.test(t) || /(?:DZ|RA|SN|SG|IC|PL|GR|GS|BR|FG|FU|VA|DU|SA|HZ|PO|CB|FC|SQ|SS|DS)/.test(t)) {
       const wx = wxColor(t);
@@ -327,6 +401,20 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
       } else if (spd >= 6 || gst >= 10) {
         color = "#f97316"; title = `Wind: Strong (${spd} MPS${gst ? `/G${gst} MPS` : ""})`;
       }
+    } else if (/^(VRB|\d{3})\d{2,3}(G\d{2,3})?KMH$/.test(t)) {
+      const spdKMH = parseInt(t.match(/(?:VRB|\d{3})(\d{2,3})/)?.[1] ?? "0");
+      const gstKMH = parseInt(t.match(/G(\d{2,3})/)?.[1] ?? "0");
+      const spd = Math.round(spdKMH * 0.5399568);
+      const gst = gstKMH ? Math.round(gstKMH * 0.5399568) : 0;
+      if (spd >= 15 || gst >= 25) {
+        color = "#ef4444"; title = `Wind: Dangerous (${spdKMH} km/h${gstKMH ? `/G${gstKMH} km/h` : ""})`;
+      } else if (spd >= 12 || gst >= 20) {
+        color = "#f97316"; title = `Wind: Strong (${spdKMH} km/h${gstKMH ? `/G${gstKMH} km/h` : ""})`;
+      }
+    } else if (/^\d{3}V\d{3}$/.test(t)) {
+      color = "#64748b"; title = `Variable wind direction: ${t}`;
+    } else if (/^R\d{2}[LCR]?\/\d{4}(?:V\d{4})?[UDN]?$/.test(t)) {
+      color = "#64748b"; title = `RVR: ${t}`;
     } else if (/^(CAVOK|NSC|NCD|SKC|CLR)$/.test(t)) {
       color = "#64748b"; title = t === "CAVOK" ? "Ceiling And Visibility OK" : "No Significant Clouds";
     } else if (/^\d{4}$/.test(t) && !t.includes("/")) {
@@ -351,8 +439,6 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
       color = "#94a3b8"; title = "Temp/Dew";
     } else if (/^Q\d{4}$/.test(t) || /^A\d{4}$/.test(t)) {
       color = "#94a3b8"; title = `QNH: ${t.slice(1)} ${t.startsWith("Q") ? "hPa" : "inHg"}`;
-    } else if (/^(BECMG|TEMPO|INTER|PROB\d{2})$/.test(t) || /^FM\d{6}$/.test(t) || /^AT\d{4}$/.test(t) || /^TL\d{4}$/.test(t)) {
-      bold = true; title = "TAF change group";
     } else if (t === "NOSIG") {
       color = "#64748b"; title = "No Significant Change";
     } else if (/^(RMK|TX|TN)/.test(t)) {
@@ -442,7 +528,17 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number, etaDay: number
 
   const normalized = rawTaf.replace(/\r?\n/g, " ").replace(/\s{2,}/g, " ");
   const groupRe = /(?=\b(?:BECMG|TEMPO|PROB\d{2}|FM\d{4,6})\b)/g;
-  const parts = normalized.split(groupRe);
+  const rawParts = normalized.split(groupRe);
+  // Fix #9: Merge standalone PROB groups with following TEMPO groups
+  const parts: string[] = [];
+  for (let pi = 0; pi < rawParts.length; pi++) {
+    if (/^PROB\d{2}$/.test(rawParts[pi].trim()) && pi + 1 < rawParts.length && /^\s*TEMPO\b/.test(rawParts[pi + 1])) {
+      parts.push(rawParts[pi] + rawParts[pi + 1]);
+      pi++;
+    } else {
+      parts.push(rawParts[pi]);
+    }
+  }
 
   let worstCat: FlightCategory = FlightCategory.VFR;
   const order = [FlightCategory.VFR, FlightCategory.MVFR, FlightCategory.IFR, FlightCategory.LIFR];
@@ -456,28 +552,55 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number, etaDay: number
   let hasOverlap = false;
 
   for (const group of parts) {
-    // Capture full DDHHMM for FM, and full DDHH/DDHH for period groups
-    const fmMatch     = group.match(/\bFM(\d{2})(\d{2})(\d{2})\b/);   // [1]=day [2]=hour [3]=min
+    // Fix #1: FM flexible matching — FMddhhmm (6), FMddhh (4), FMhhmm (4)
+    const fmMatch6 = group.match(/\bFM(\d{2})(\d{2})(\d{2})\b/);   // FMddhhmm
+    const fmMatch4 = !fmMatch6 ? group.match(/\bFM(\d{2})(\d{2})\b/) : null;
+    let fmDay: number | null = null;
+    let fmHour: number | null = null;
+    if (fmMatch6) {
+      fmDay = parseInt(fmMatch6[1]);
+      fmHour = parseInt(fmMatch6[2]);
+    } else if (fmMatch4) {
+      const first = parseInt(fmMatch4[1]);
+      const second = parseInt(fmMatch4[2]);
+      if (first > 23) { // FMddhh — first pair can't be hour (max 23)
+        fmDay = first;
+        fmHour = second;
+      } else { // FMhhmm — no day info
+        fmHour = first;
+      }
+    }
     const periodMatch = group.match(/\b(\d{2})(\d{2})\/(\d{2})(\d{2})\b/); // [1]=sDay [2]=sHour [3]=eDay [4]=eHour
 
     let overlaps = false;
 
     if (etaDay !== null) {
       // ── Day-aware matching ─────────────────────────────────────────────────
-      if (fmMatch) {
-        const fmAbs = parseInt(fmMatch[1]) * 24 + parseInt(fmMatch[2]);
+      if (fmDay !== null && fmHour !== null) {
+        // Fix #4: month boundary correction
+        let tafDay = fmDay;
+        if (tafDay > etaDay + 15) tafDay -= 31;
+        const fmAbs = tafDay * 24 + fmHour;
         overlaps = fmAbs >= absMin && fmAbs <= absMax;
+      } else if (fmHour !== null) {
+        // FM with no day info — fall back to hour-only matching
+        overlaps = hourInWindow(fmHour);
       } else if (periodMatch) {
-        const periodAbsStart = parseInt(periodMatch[1]) * 24 + parseInt(periodMatch[2]);
-        const periodAbsEnd   = parseInt(periodMatch[3]) * 24 + parseInt(periodMatch[4]);
+        let startDay = parseInt(periodMatch[1]);
+        let endDay = parseInt(periodMatch[3]);
+        // Fix #4: month boundary correction
+        if (startDay > etaDay + 15) startDay -= 31;
+        if (endDay > etaDay + 15) endDay -= 31;
+        const periodAbsStart = startDay * 24 + parseInt(periodMatch[2]);
+        const periodAbsEnd   = endDay * 24 + parseInt(periodMatch[4]);
         overlaps = periodAbsStart <= absMax && periodAbsEnd >= absMin;
       } else {
         overlaps = true; // base (header) group — always include
       }
     } else {
       // ── Hour-only matching (legacy, no date info) ──────────────────────────
-      if (fmMatch) {
-        overlaps = hourInWindow(parseInt(fmMatch[2]));
+      if (fmHour !== null) {
+        overlaps = hourInWindow(fmHour);
       } else if (periodMatch) {
         const startH = parseInt(periodMatch[2]);
         const endH   = parseInt(periodMatch[4]);
@@ -498,19 +621,19 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number, etaDay: number
     if (!overlaps) continue;
     hasOverlap = true;
 
-    const visMatch = group.match(/(?:^|\s)(\d{4})(?!\/)(?:\s|$)/);
+    const visMatch = group.match(/(?:^|\s)(\d{4,5})(?!\/)(?:\s|$)/);
     if (visMatch) {
-      const v = parseInt(visMatch[1]);
-      if (v <= 9999 && (worstVis === null || v < worstVis)) worstVis = v;
+      const v = Math.min(parseInt(visMatch[1]), 9999);
+      if (worstVis === null || v < worstVis) worstVis = v;
     }
-    if (/\b(CAVOK|NSC)\b/.test(group) && worstVis === null) worstVis = 9999;
+    if (/\bCAVOK\b/.test(group) && worstVis === null) worstVis = 9999;
 
     for (const m of group.matchAll(/\b(?:BKN|OVC|VV)(\d{3})\b/g)) {
       const ft = parseInt(m[1]) * 100;
       if (worstCeil === null || ft < worstCeil) { worstCeil = ft; worstCeilRaw = m[0]; }
     }
 
-    const groupVis = visMatch ? parseInt(visMatch[1]) : (/\b(CAVOK|NSC)\b/.test(group) ? 9999 : undefined);
+    const groupVis = visMatch ? Math.min(parseInt(visMatch[1]), 9999) : (/\bCAVOK\b/.test(group) ? 9999 : undefined);
     const groupCeil = (() => {
       let lowest: number | null = null;
       for (const m of group.matchAll(/\b(?:BKN|OVC|VV)(\d{3})\b/g)) {
@@ -542,7 +665,7 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number, etaDay: number
     }
     if (!critWindRaw) {
       for (const m of group.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?MPS\b/g)) {
-        if (parseInt(m[1]) >= 13 || (m[2] && parseInt(m[2]) >= 15)) { critWindRaw = m[0]; break; }
+        if (parseInt(m[1]) >= 12 || (m[2] && parseInt(m[2]) >= 20)) { critWindRaw = m[0]; break; }
       }
     }
     // ORANGE wind detection: sustained ≥15 KT or gusts ≥20 KT (below red threshold)
@@ -553,7 +676,7 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number, etaDay: number
     }
     if (!orangeWindRaw && !critWindRaw) {
       for (const m of group.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?MPS\b/g)) {
-        if (parseInt(m[1]) >= 8 || (m[2] && parseInt(m[2]) >= 11)) { orangeWindRaw = m[0]; break; }
+        if (parseInt(m[1]) >= 6 || (m[2] && parseInt(m[2]) >= 10)) { orangeWindRaw = m[0]; break; }
       }
     }
   }

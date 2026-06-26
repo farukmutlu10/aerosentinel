@@ -42,6 +42,9 @@ router.get("/airports/weather", (_req, res) => {
 
 router.get("/airports/:icao/taf", async (req, res) => {
   const icao = req.params.icao?.toUpperCase();
+  if (!icao || !/^[A-Z]{4}$/.test(icao)) {
+    return res.status(400).json({ error: "Invalid ICAO code" });
+  }
   if (getAirports().includes(icao)) {
     const rawTaf = await getCurrentTaf(icao);
     if (!rawTaf) return res.status(404).json({ error: "No TAF data yet" });
@@ -54,6 +57,9 @@ router.get("/airports/:icao/taf", async (req, res) => {
 
 router.get("/airports/:icao/metar", async (req, res) => {
   const icao = req.params.icao?.toUpperCase();
+  if (!icao || !/^[A-Z]{4}$/.test(icao)) {
+    return res.status(400).json({ error: "Invalid ICAO code" });
+  }
   if (getAirports().includes(icao)) {
     const rawMetar = await getCurrentMetar(icao);
     if (!rawMetar) return res.status(404).json({ error: "No METAR data yet" });

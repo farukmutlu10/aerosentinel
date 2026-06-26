@@ -133,8 +133,8 @@ export function TafDiffModal({ open, onClose, alertId, alertType, icao }: TafDif
             </div>
           ) : (
             <div className="space-y-3">
-              <DiffBlock lines={diff.previous} variant="previous" />
               <DiffBlock lines={diff.current} variant="current" />
+              <DiffBlock lines={diff.previous} variant="previous" />
             </div>
           )}
         </div>

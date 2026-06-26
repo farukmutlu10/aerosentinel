@@ -8,8 +8,8 @@
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "deploy:preview": "vite build --config vite.config.ts && wrangler pages deploy dist/public --project-name=aerosentinel --branch=preview",
-    "deploy:production": "vite build --config vite.config.ts && wrangler pages deploy dist/public --project-name=aerosentinel --branch=production"
+    "deploy:preview": "vite build && wrangler pages deploy dist/public --project-name=aerosentinel",
+    "deploy:production": "vite build && wrangler pages deploy dist/public --project-name=aerosentinel --branch=main"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

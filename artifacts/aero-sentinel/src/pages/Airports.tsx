@@ -261,17 +261,25 @@ async function fetchTafBatch(icaos: string[]): Promise<Record<string, string | n
   if (icaos.length === 0) return {};
   const results: Record<string, string | null> = {};
   const BATCH = 20;
+  const batches: string[][] = [];
   for (let i = 0; i < icaos.length; i += BATCH) {
-    const batch = icaos.slice(i, i + BATCH);
-    try {
-      const r = await fetch(`/api/watchlist/weather?icaos=${batch.join(",")}`);
-      if (r.ok) {
-        const data: Array<{ icao: string; rawTaf: string | null }> = await r.json();
-        for (const item of data) results[item.icao] = item.rawTaf ?? null;
-      } else {
-        for (const icao of batch) results[icao] = null;
+    batches.push(icaos.slice(i, i + BATCH));
+  }
+  const settled = await Promise.allSettled(
+    batches.map((batch) =>
+      fetch(`/api/watchlist/weather?icaos=${batch.join(",")}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+    )
+  );
+  for (let bi = 0; bi < batches.length; bi++) {
+    const batch = batches[bi];
+    const value = settled[bi].status === "fulfilled" ? settled[bi].value : null;
+    if (Array.isArray(value)) {
+      for (const item of value as Array<{ icao: string; rawTaf: string | null }>) {
+        results[item.icao] = item.rawTaf ?? null;
       }
-    } catch {
+    } else {
       for (const icao of batch) results[icao] = null;
     }
   }
@@ -295,7 +303,7 @@ function AnalysisCell({ result }: { result: TafWindowResult | null | undefined }
   if (result === undefined) return <span className="text-muted-foreground/40 text-[10px] font-mono">—</span>;
   if (result === null) return (
     <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border"
-      style={{ color: "#f59e0b", borderColor: "#f59e0b30", backgroundColor: "#f59e0b0a" }}>
+      style={{ color: "#a1a1aa", borderColor: "#a1a1aa30", backgroundColor: "#a1a1aa0a" }}>
       NO TAF
     </span>
   );
@@ -608,18 +616,53 @@ export default function Airports() {
 
   useEffect(() => {
     if (flights.length === 0) { localStorage.removeItem(ANALYZE_KEY); return; }
+    const stateToSave = {
+      flights, fileName, tafMap: analysis.tafMap,
+      filterFlight: [...filterFlight], filterReg: [...filterReg],
+      filterFrom: [...filterFrom], filterTo: [...filterTo],
+      etdFrom, etdTo,
+    };
     try {
-      localStorage.setItem(ANALYZE_KEY, JSON.stringify({
-        flights, fileName, tafMap: analysis.tafMap,
-        filterFlight: [...filterFlight], filterReg: [...filterReg],
-        filterFrom: [...filterFrom], filterTo: [...filterTo],
-        etdFrom, etdTo,
-      }));
+      const payload = JSON.stringify(stateToSave);
+      if (payload.length > 4 * 1024 * 1024) {
+        // Payload too large — strip TAF data and save lightweight version
+        const lightweight = { ...stateToSave, tafData: {}, metarCache: {} };
+        try { localStorage.setItem(ANALYZE_KEY, JSON.stringify(lightweight)); } catch { /* ignore */ }
+      } else {
+        try { localStorage.setItem(ANALYZE_KEY, payload); } catch { /* ignore */ }
+      }
     } catch {}
   }, [flights, fileName, analysis.tafMap, filterFlight, filterReg, filterFrom, filterTo, etdFrom, etdTo]);
 
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Pull-to-refresh (mobile)
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isPulling, setIsPulling] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const touchStartY = useRef(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (window.scrollY === 0) {
+      setIsPulling(true);
+      touchStartY.current = e.touches[0].clientY;
+    }
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isPulling) return;
+    const delta = e.touches[0].clientY - touchStartY.current;
+    if (delta > 0) setPullDistance(Math.min(delta, 100));
+  };
+  const handleTouchEnd = () => {
+    if (pullDistance > 60 && flights.length > 0 && !analysis.loading) {
+      setIsRefreshing(true);
+      refreshTaf();
+      setTimeout(() => setIsRefreshing(false), 600);
+    }
+    setPullDistance(0);
+    setIsPulling(false);
+  };
 
   // Unique column values for dropdown filters
   const allFlightNums = useMemo(() =>
@@ -724,12 +767,20 @@ export default function Airports() {
     setFilterAnalysis("ALL");
   };
 
+  const refreshInProgress = useRef(false);
+
   const refreshTaf = async () => {
-    if (flights.length === 0 || analysis.loading) return;
+    if (flights.length === 0 || analysis.loading || refreshInProgress.current) return;
+    refreshInProgress.current = true;
     const uniqueIcaos = [...new Set(flights.map((r) => r.toIcao).filter((x) => x.length === 4))];
     const oldTafMap = analysis.tafMap;
     setAnalysis((prev) => ({ ...prev, loading: true, done: false }));
-    const newTafMap = await fetchTafBatch(uniqueIcaos);
+    let newTafMap: Record<string, string | null>;
+    try {
+      newTafMap = await fetchTafBatch(uniqueIcaos);
+    } finally {
+      refreshInProgress.current = false;
+    }
     setAnalysis({ tafMap: newTafMap, loading: false, done: true, error: null });
     // Detect which flights have a changed TAF ANALYSIS result (category / ceiling / phenomena / wind)
     // We compare the serialised TafWindowResult per flight — raw TAF rewording with same analysis won't trigger
@@ -801,7 +852,29 @@ export default function Airports() {
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5">
+      <main
+        className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+
+        {/* Pull-to-refresh indicator (mobile) */}
+        {pullDistance > 0 && (
+          <div className="flex items-center justify-center sm:hidden py-2" style={{ height: Math.min(pullDistance / 2, 50) }}>
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className={`text-primary ${pullDistance > 60 ? "" : "opacity-50"} ${isRefreshing ? "animate-spin" : ""}`}
+              style={{ transform: `rotate(${pullDistance * 3}deg)` }}
+            >
+              <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+              <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+            </svg>
+            <span className="text-[10px] font-mono text-muted-foreground ml-2">
+              {pullDistance > 60 ? "Release to refresh" : "Pull to refresh"}
+            </span>
+          </div>
+        )}
 
         {/* Page header */}
         <div className="flex items-center gap-3 mb-5 border-b border-border pb-3">
@@ -908,7 +981,14 @@ export default function Airports() {
                   <input
                     type="text"
                     value={etdFrom}
-                    onChange={(e) => setEtdFrom(e.target.value.replace(/[^0-9:]/g, "").slice(0, 5))}
+                    onChange={(e) => {
+                      const cleaned = e.target.value.replace(/[^0-9:]/g, "").slice(0, 5);
+                      if (cleaned.includes(":")) {
+                        const [h, m] = cleaned.split(":");
+                        if (parseInt(h) > 23 || parseInt(m) > 59) return;
+                      }
+                      setEtdFrom(cleaned);
+                    }}
                     placeholder="0000"
                     maxLength={5}
                     className="w-16 px-2 py-1 text-xs font-mono border border-border rounded bg-background focus:outline-none focus:border-primary text-center tabular-nums"
@@ -917,7 +997,14 @@ export default function Airports() {
                   <input
                     type="text"
                     value={etdTo}
-                    onChange={(e) => setEtdTo(e.target.value.replace(/[^0-9:]/g, "").slice(0, 5))}
+                    onChange={(e) => {
+                      const cleaned = e.target.value.replace(/[^0-9:]/g, "").slice(0, 5);
+                      if (cleaned.includes(":")) {
+                        const [h, m] = cleaned.split(":");
+                        if (parseInt(h) > 23 || parseInt(m) > 59) return;
+                      }
+                      setEtdTo(cleaned);
+                    }}
                     placeholder="2359"
                     maxLength={5}
                     className="w-16 px-2 py-1 text-xs font-mono border border-border rounded bg-background focus:outline-none focus:border-primary text-center tabular-nums"

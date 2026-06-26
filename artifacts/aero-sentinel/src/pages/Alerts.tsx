@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback, Fragment } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { Link } from "wouter";
 import {
   useListAlerts, getListAlertsQueryKey,
@@ -22,7 +22,6 @@ import { useAlertSound, playAlertSound } from "@/hooks/useAlertSound";
 import { formatDistanceToNow, format } from "date-fns";
 
 type AlertType = "TAF_AMD" | "TAF_COR" | "SPECI";
-type RouteFilter = "ALL" | "DOM" | "INT";
 type SortMode = "newest" | "oldest" | "icao-az";
 
 const ALL_ALERT_TYPES: AlertType[] = ["TAF_AMD", "TAF_COR", "SPECI"];
@@ -46,7 +45,6 @@ const SORT_OPTIONS: { value: SortMode; label: string }[] = [
 ];
 
 const DEFAULT_TYPES = ALL_ALERT_TYPES as string[];
-const DEFAULT_ROUTE: RouteFilter = "ALL";
 const DEFAULT_SORT: SortMode = "newest";
 const DEFAULT_HIDE_ACK = false;
 
@@ -113,7 +111,6 @@ const IconSpeci = () => (
 export default function Alerts() {
   // v2 key for type filter — now an array of active types (all active by default)
   const [activeTypesArr, setActiveTypesArr] = usePersistedState<string[]>("as-alerts-types-v2", DEFAULT_TYPES);
-  const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-alerts-route", DEFAULT_ROUTE);
   const [sortMode, setSortMode] = usePersistedState<SortMode>("as-alerts-sort", DEFAULT_SORT);
   const [hideAcknowledged, setHideAcknowledged] = usePersistedState<boolean>("as-alerts-hide-ack", DEFAULT_HIDE_ACK);
   // Per-user ACK: shared via LocalAckContext (persisted in localStorage)
@@ -121,7 +118,21 @@ export default function Alerts() {
   const [ackingAll, setAckingAll] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(20);
+  const [swipeHintDismissed, setSwipeHintDismissed] = useState(() => !!sessionStorage.getItem("swipe-ack-seen"));
   const { testPanelVisible } = useTestPanel();
+
+  // Pull-to-refresh (mobile)
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isPulling, setIsPulling] = useState(false);
+  const touchStartY = useRef(0);
+
+
+  // Swipe-to-ACK (mobile)
+  const [swipedId, setSwipedId] = useState<number | null>(null);
+  const [swipeX, setSwipeX] = useState(0);
+  const swipeXRef = useRef(0);
+  const swipedIdRef = useRef<number | null>(null);
+  const touchStartX = useRef(0);
 
   // TafDiffModal state
   const [diffModalOpen, setDiffModalOpen] = useState(false);
@@ -137,6 +148,32 @@ export default function Alerts() {
     setDiffModalOpen(true);
   };
 
+  // In-app toast "VIEW" butonu için event listener
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.alertId) {
+        openDiffModal({ id: detail.alertId, type: detail.alertType, icao: detail.icao });
+      }
+    };
+    window.addEventListener("open-diff-modal", handler);
+    return () => window.removeEventListener("open-diff-modal", handler);
+  }, []);
+
+  // Monitor sayfasından navigate edildiğinde sessionStorage'daki pending modal'ı aç
+  useEffect(() => {
+    const pending = sessionStorage.getItem("pending-diff-modal");
+    if (pending) {
+      try {
+        const detail = JSON.parse(pending);
+        sessionStorage.removeItem("pending-diff-modal");
+        if (detail.alertId) {
+          openDiffModal({ id: detail.alertId, type: detail.alertType, icao: detail.icao });
+        }
+      } catch { sessionStorage.removeItem("pending-diff-modal"); }
+    }
+  }, []);
+
   const activeTypesSet = new Set<string>(activeTypesArr);
   const localAckedSet = useMemo(() => new Set(localAcked), [localAcked]);
   const isAcked = useCallback((a: { id: number }) => localAckedSet.has(a.id), [localAckedSet]);
@@ -150,11 +187,10 @@ export default function Alerts() {
 
   const isFiltered =
     DEFAULT_TYPES.some((t) => !activeTypesArr.includes(t)) ||
-    routeFilter !== DEFAULT_ROUTE || sortMode !== DEFAULT_SORT || hideAcknowledged !== DEFAULT_HIDE_ACK;
+    sortMode !== DEFAULT_SORT || hideAcknowledged !== DEFAULT_HIDE_ACK;
 
   const resetFilters = () => {
     setActiveTypesArr(DEFAULT_TYPES);
-    setRouteFilter(DEFAULT_ROUTE);
     setSortMode(DEFAULT_SORT);
     setHideAcknowledged(DEFAULT_HIDE_ACK);
   };
@@ -194,14 +230,12 @@ export default function Alerts() {
     list = list.filter((a) => activeTypesSet.has(a.type));
     if (hideAcknowledged) list = list.filter((a) => !isAcked(a));
     list = list.filter((a) => isWatching(a.icao) || a.icao.startsWith("TEST"));
-    if (routeFilter === "DOM") list = list.filter((a) => a.icao.startsWith("LT"));
-    else if (routeFilter === "INT") list = list.filter((a) => !a.icao.startsWith("LT"));
     const sorted = [...list];
     if (sortMode === "newest") sorted.sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime());
     else if (sortMode === "oldest") sorted.sort((a, b) => new Date(a.detectedAt).getTime() - new Date(b.detectedAt).getTime());
     else sorted.sort((a, b) => a.icao.localeCompare(b.icao));
     return sorted;
-  }, [allAlerts, activeTypesArr, hideAcknowledged, localAcked, isWatching, routeFilter, sortMode]);
+  }, [allAlerts, activeTypesArr, hideAcknowledged, localAcked, isWatching, sortMode]);
 
   const handleAckAll = () => {
     setAckingAll(true);
@@ -220,10 +254,41 @@ export default function Alerts() {
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-0 py-1.5 sm:py-3 space-y-1.5 sm:space-y-3">
+      <main
+        className="flex-1 max-w-7xl mx-auto w-full px-0 py-1.5 sm:py-3 space-y-1.5 sm:space-y-3"
+        onTouchStart={(e) => { if (window.scrollY === 0) { setIsPulling(true); touchStartY.current = e.touches[0].clientX; } }}
+        onTouchMove={(e) => { if (!isPulling) return; const delta = e.touches[0].clientY - touchStartY.current; if (delta > 0) setPullDistance(Math.min(delta, 100)); }}
+        onTouchEnd={() => { if (pullDistance > 60) handleRefresh(); setPullDistance(0); setIsPulling(false); }}
+      >
+        {/* Pull-to-refresh indicator (mobile) */}
+        {pullDistance > 0 && (
+          <div className="flex items-center justify-center sm:hidden py-2" style={{ height: Math.min(pullDistance / 2, 50) }}>
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className={`text-primary ${pullDistance > 60 ? "" : "opacity-50"} ${isRefreshing ? "animate-spin" : ""}`}
+              style={{ transform: `rotate(${pullDistance * 3}deg)` }}
+            >
+              <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+              <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+            </svg>
+            <span className="text-[10px] font-mono text-muted-foreground ml-2">
+              {pullDistance > 60 ? "Release to refresh" : "Pull to refresh"}
+            </span>
+          </div>
+        )}
 
-        {/* Stats — flex row, cards fill full width, gap between cards is 1px */}
-        <div className="flex flex-wrap sm:flex-nowrap" style={{gap:"10px"}}>
+        {/* Stats — Mobile: 2×2 grid + full-width clock | Desktop: flex row */}
+        <div className="grid grid-cols-2 gap-1.5 sm:hidden">
+          <StatCard label="Total" value={dash ?? String(totalAlerts)} icon={<IconList />} bg="rgba(100,116,139,0.06)" border="0.5px solid rgba(100,116,139,0.15)" numberColor="rgba(100,116,139,0.9)" labelColor="rgba(100,116,139,0.5)" barFill="rgba(255,255,255,0.2)" barWidth={100} />
+          <StatCard label="Unacked" value={dash ?? String(unackedCount)} icon={<IconAlert />} bg="rgba(226,75,74,0.08)" border="0.5px solid rgba(226,75,74,0.25)" numberColor="#e24b4a" labelColor="rgba(226,75,74,0.6)" barFill="#e24b4a" barWidth={totalAlerts > 0 ? (unackedCount / totalAlerts) * 100 : 0} pulse={unackedCount > 0} />
+          <StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} icon={<IconTaf />} bg="rgba(239,159,39,0.07)" border="0.5px solid rgba(239,159,39,0.2)" numberColor="#ef9f27" labelColor="rgba(239,159,39,0.6)" barFill="#ef9f27" barWidth={totalAlerts > 0 ? (tafRevisions / totalAlerts) * 100 : 0} />
+          <StatCard label="SPECI" value={dash ?? String(speciAlerts)} icon={<IconSpeci />} bg="rgba(255,140,50,0.07)" border="0.5px solid rgba(255,140,50,0.2)" numberColor="#ff8c32" labelColor="rgba(255,140,50,0.6)" barFill="#ff8c32" barWidth={totalAlerts > 0 ? (speciAlerts / totalAlerts) * 100 : 0} />
+        </div>
+        <div className="sm:hidden">
+          <ClockCard />
+        </div>
+        {/* Desktop: flex row */}
+        <div className="hidden sm:flex sm:flex-nowrap" style={{gap:"10px"}}>
           <div className="w-full sm:flex-1"><StatCard label="Total" value={dash ?? String(totalAlerts)} icon={<IconList />} bg="rgba(100,116,139,0.06)" border="0.5px solid rgba(100,116,139,0.15)" numberColor="rgba(100,116,139,0.9)" labelColor="rgba(100,116,139,0.5)" barFill="rgba(255,255,255,0.2)" barWidth={100} /></div>
           <div className="w-full sm:flex-1"><StatCard label="Unacked" value={dash ?? String(unackedCount)} icon={<IconAlert />} bg="rgba(226,75,74,0.08)" border="0.5px solid rgba(226,75,74,0.25)" numberColor="#e24b4a" labelColor="rgba(226,75,74,0.6)" barFill="#e24b4a" barWidth={totalAlerts > 0 ? (unackedCount / totalAlerts) * 100 : 0} pulse={unackedCount > 0} /></div>
           <div className="w-full sm:flex-1"><StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} icon={<IconTaf />} bg="rgba(239,159,39,0.07)" border="0.5px solid rgba(239,159,39,0.2)" numberColor="#ef9f27" labelColor="rgba(239,159,39,0.6)" barFill="#ef9f27" barWidth={totalAlerts > 0 ? (tafRevisions / totalAlerts) * 100 : 0} /></div>
@@ -233,92 +298,142 @@ export default function Alerts() {
           </div>
         </div>
 
-        {/* Filter row */}
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+        {/* ═══════ Alert Filters ═══════ */}
 
-          {/* Type filters */}
-          <div className="flex items-center gap-0">
-            {ALL_ALERT_TYPES.map((t) => {
-              const isActive = activeTypesSet.has(t);
-              const color = TYPE_COLORS[t];
-              return (
-                <button key={t} onClick={() => toggleType(t)}
-                  className="px-2 py-0.5 rounded text-xs font-mono font-bold border transition-colors"
-                  style={isActive ? {
-                    borderColor: color + "4D",
-                    color,
-                    backgroundColor: color + "26",
-                  } : { borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
-                  {TYPE_LABELS[t]}
-                </button>
-              );
-            })}
-          </div>
-
-          <span className="text-border text-xs hidden sm:inline">|</span>
-
-          {/* DOM/INT */}
-          <div className="flex items-center gap-0 bg-card border border-border rounded-lg p-0.5">
-            {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
-              <button key={f} onClick={() => setRouteFilter(f)}
-                className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1.5 rounded text-[10px] sm:text-xs font-mono font-medium transition-colors ${routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-                {f}
+        {/* Desktop filters — eski düzen */}
+        <div className="hidden sm:flex sm:flex-wrap sm:items-center sm:gap-2 mb-2">
+          <div className="filter-group">
+            {ALL_ALERT_TYPES.map((t) => (
+              <button key={t} onClick={() => toggleType(t)} className="filter-btn"
+                style={activeTypesSet.has(t) ? {
+                  backgroundColor: TYPE_COLORS[t] + "26",
+                  color: TYPE_COLORS[t],
+                  borderColor: TYPE_COLORS[t],
+                } : {
+                  backgroundColor: "transparent",
+                  color: TYPE_COLORS[t] + "99",
+                  borderColor: TYPE_COLORS[t] + "4D",
+                }}>
+                {TYPE_LABELS[t]}
               </button>
             ))}
           </div>
-
-          <span className="text-border text-xs hidden sm:inline">|</span>
-
-          {/* Sort */}
-          <div className="flex items-center gap-0 bg-card border border-border rounded-lg p-0.5">
+          <span className="text-border text-xs">|</span>
+          <div className="filter-group">
             {SORT_OPTIONS.map((s) => (
-              <button key={s.value} onClick={() => setSortMode(s.value)}
-                className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1.5 rounded text-[10px] sm:text-xs font-mono transition-colors ${sortMode === s.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+              <button key={s.value} onClick={() => setSortMode(s.value)} className="filter-btn"
+                style={sortMode === s.value ? { backgroundColor: "rgba(212,168,67,0.15)", color: "#d4a843", borderColor: "#d4a843" } : { backgroundColor: "transparent", color: "rgba(212,168,67,0.6)", borderColor: "rgba(212,168,67,0.3)" }}>
                 {s.label}
               </button>
             ))}
           </div>
-
-          <span className="text-border text-xs hidden sm:inline">|</span>
-
-          {/* Hide acknowledged — only filters, does NOT auto-ack */}
-          <button onClick={() => setHideAcknowledged(!hideAcknowledged)}
-            className={`px-2 sm:px-3 py-0.5 sm:py-1.5 rounded text-[10px] sm:text-xs font-mono font-medium border transition-colors ${hideAcknowledged ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"}`}>
+          <span className="text-border text-xs">|</span>
+          <button onClick={() => setHideAcknowledged(!hideAcknowledged)} className="filter-btn"
+            style={hideAcknowledged ? {
+              backgroundColor: "rgba(212,168,67,0.15)",
+              color: "#d4a843",
+              borderColor: "rgba(212,168,67,0.5)",
+            } : {
+              backgroundColor: "transparent",
+              color: "rgba(212,168,67,0.7)",
+              borderColor: "rgba(212,168,67,0.3)",
+            }}>
             {hideAcknowledged ? "Show All" : "Hide Ack"}
           </button>
-
+          {isFiltered && <div className="w-px h-5" style={{ backgroundColor: "rgba(212,168,67,0.3)" }} />}
           {isFiltered && (
-            <button onClick={resetFilters} title="Reset all filters"
-              className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 sm:py-1.5 rounded text-[10px] sm:text-xs font-mono text-muted-foreground hover:text-destructive border border-border hover:border-destructive/50 transition-colors">
+            <button onClick={resetFilters} className="filter-btn"
+              style={{ backgroundColor: "transparent", color: "rgba(212,168,67,0.7)", borderColor: "rgba(212,168,67,0.3)" }}>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
               </svg>
-              Reset
+              <span>Reset</span>
             </button>
           )}
-
-          {unackedCount > 0 && (
-            <button onClick={handleAckAll} disabled={ackingAll}
-              className="ml-auto px-2 sm:px-3 py-0.5 sm:py-1.5 text-[10px] sm:text-xs font-mono font-bold border border-green-500/40 text-green-400 rounded hover:bg-green-500/10 transition-colors disabled:opacity-50 flex items-center gap-1">
-              {ackingAll ? "..." : `ACK ALL (${unackedCount})`}
+          <div className="ml-auto flex items-center gap-2">
+            {unackedCount > 0 && (
+              <button onClick={handleAckAll} disabled={ackingAll} className="filter-btn" style={{ borderColor: "rgba(16,185,129,0.6)", color: "#10b981", backgroundColor: "rgba(16,185,129,0.12)" }}>
+                {ackingAll ? "..." : `ACK All (${unackedCount})`}
+              </button>
+            )}
+            <button onClick={handleRefresh} disabled={isRefreshing} className="filter-btn flex items-center gap-1.5" style={{ borderColor: "rgba(56,189,248,0.4)", color: "#38bdf8", backgroundColor: "rgba(56,189,248,0.08)" }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={isRefreshing ? "animate-spin" : ""}>
+                <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+              </svg>
+              <span>{isRefreshing ? "..." : "REFRESH"}</span>
             </button>
-          )}
+          </div>
+        </div>
 
-          {/* REFRESH - far right */}
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            title="Refresh alerts"
-            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-mono font-bold border transition-all disabled:opacity-50 ml-auto"
-            style={{ borderColor: "#38BDF840", color: "#38BDF8", backgroundColor: "#38BDF810" }}
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-              className={isRefreshing ? "animate-spin" : ""}>
-              <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
-              <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-            </svg>
-            {isRefreshing ? "..." : "REFRESH"}
-          </button>
+        {/* Mobil filters — yeni tasarım */}
+        <div className="sm:hidden space-y-1.5 mb-3">
+          <div className="flex items-center justify-between gap-1.5 w-full flex-wrap">
+            <div className="filter-group">
+              {ALL_ALERT_TYPES.map((t) => (
+                <button key={t} onClick={() => toggleType(t)} className="filter-btn"
+                  style={activeTypesSet.has(t) ? {
+                    backgroundColor: TYPE_COLORS[t] + "26",
+                    color: TYPE_COLORS[t],
+                    borderColor: TYPE_COLORS[t],
+                  } : {
+                    backgroundColor: "transparent",
+                    color: TYPE_COLORS[t] + "99",
+                    borderColor: TYPE_COLORS[t] + "4D",
+                  }}>
+                  {TYPE_LABELS[t]}
+                </button>
+              ))}
+            </div>
+            <div className="w-px h-5" style={{ backgroundColor: "rgba(255,255,255,0.1)" }} />
+            <div className="filter-group">
+              {SORT_OPTIONS.map((s) => (
+                <button key={s.value} onClick={() => setSortMode(s.value)} className="filter-btn"
+                  style={sortMode === s.value ? { backgroundColor: "rgba(212,168,67,0.15)", color: "#d4a843", borderColor: "#d4a843" } : { backgroundColor: "transparent", color: "rgba(212,168,67,0.6)", borderColor: "rgba(212,168,67,0.3)" }}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={() => setHideAcknowledged(!hideAcknowledged)} className="filter-btn"
+              style={hideAcknowledged ? {
+                backgroundColor: "rgba(212,168,67,0.15)",
+                color: "#d4a843",
+                borderColor: "rgba(212,168,67,0.5)",
+              } : {
+                backgroundColor: "transparent",
+                color: "rgba(212,168,67,0.7)",
+                borderColor: "rgba(212,168,67,0.3)",
+              }}>
+              {hideAcknowledged ? "Show All" : "Hide Ack"}
+            </button>
+            {isFiltered && <div className="w-px h-5" style={{ backgroundColor: "rgba(212,168,67,0.3)" }} />}
+            {isFiltered && (
+              <button onClick={resetFilters} className="filter-btn"
+                style={{ backgroundColor: "transparent", color: "rgba(212,168,67,0.7)", borderColor: "rgba(212,168,67,0.3)" }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+                </svg>
+                <span className="hidden sm:inline">Reset</span>
+              </button>
+            )}
+            <div className="flex-1" />
+            {unackedCount > 0 && (
+              <button onClick={handleAckAll} disabled={ackingAll} className="filter-btn" style={{ borderColor: "rgba(16,185,129,0.6)", color: "#10b981", backgroundColor: "rgba(16,185,129,0.12)" }}>
+                {ackingAll ? "..." : `ACK All (${unackedCount})`}
+              </button>
+            )}
+            <button onClick={handleRefresh} disabled={isRefreshing} className="filter-btn flex items-center gap-1.5" style={{ borderColor: "rgba(56,189,248,0.4)", color: "#38bdf8", backgroundColor: "rgba(56,189,248,0.08)" }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={isRefreshing ? "animate-spin" : ""}>
+                <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+              </svg>
+              <span className="hidden sm:inline">{isRefreshing ? "..." : "REFRESH"}</span>
+            </button>
+          </div>
         </div>
 
         {/* Alert list */}
@@ -367,9 +482,28 @@ export default function Alerts() {
                   />
                 )}
                 <div
-                  className={`border rounded-lg px-3 sm:px-4 py-2.5 sm:py-4 transition-opacity ${isAcked(alert) ? "opacity-65 dark:opacity-40" : ""} ${
+                  onTouchStart={(e) => { swipedIdRef.current = alert.id; setSwipedId(alert.id); touchStartX.current = e.touches[0].clientX; }}
+                  onTouchMove={(e) => {
+                    if (swipedIdRef.current !== alert.id || isAcked(alert)) return;
+                    const dx = e.touches[0].clientX - touchStartX.current;
+                    if (dx < 0) { const clamped = Math.max(dx, -80); swipeXRef.current = clamped; setSwipeX(clamped); }
+                  }}
+                  onTouchEnd={() => {
+                    if (swipeXRef.current < -50 && !isAcked(alert)) { handleAck(alert.id); }
+                    swipeXRef.current = 0; setSwipeX(0);
+                    swipedIdRef.current = null; setSwipedId(null);
+                  }}
+                  style={{ transform: `translateX(${swipedId === alert.id ? swipeX : 0}px)`, transition: "transform 0.2s ease" }}
+                  className={`relative border rounded-lg px-3 sm:px-4 py-2.5 sm:py-4 transition-opacity ${isAcked(alert) ? "opacity-65 dark:opacity-40" : ""} ${
                     alert.type === "SPECI" ? "alert-speci" : alert.type === "TAF_AMD" ? "alert-taf-amd" : "alert-taf-cor"
                   }`}>
+
+                {/* ACK indicator — visible on swipe */}
+                {swipedId === alert.id && swipeX < -20 && !isAcked(alert) && (
+                  <div className="absolute right-full top-0 bottom-0 flex items-center pr-2">
+                    <span className="text-[10px] font-mono text-emerald-400 font-bold">ACK →</span>
+                  </div>
+                )}
 
                 <div className="flex items-start justify-between gap-2 sm:gap-4">
                   <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
@@ -385,26 +519,33 @@ export default function Alerts() {
                         {isAcked(alert) && <span className="text-[10px] sm:text-xs bg-muted text-muted-foreground font-mono px-1.5 sm:px-2 py-0.5 rounded">ACK</span>}
                       </div>
                       <TafText raw={alert.rawText} />
-                      {/* View Changes button — only when previousRawText exists */}
-                      {(alert as any).previousRawText && (
-                        <button
-                          onClick={() => openDiffModal(alert)}
-                          className="mt-1.5 sm:mt-2 inline-flex items-center gap-1.5 px-3 sm:px-3 py-1.5 rounded-md border border-sky-400/30 text-[11px] font-mono text-sky-400 hover:bg-sky-400/10 hover:text-sky-300 transition-all"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-sky-400">
-                            <rect x="2" y="4" width="8" height="16" rx="1"/><rect x="14" y="4" width="8" height="16" rx="1"/>
-                          </svg>
-                          View Changes
-                        </button>
-                      )}
                     </div>
                   </div>
-                  {!isAcked(alert) && (
-                    <button onClick={() => handleAck(alert.id)}
-                      className="flex-shrink-0 self-center ml-2 sm:ml-4 px-3 sm:px-5 py-1.5 sm:py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/8 text-emerald-400 text-[10px] sm:text-xs font-mono font-bold tracking-[0.15em] sm:tracking-[0.2em] hover:bg-emerald-500/18 hover:border-emerald-400/70 hover:text-emerald-300 transition-all">
-                      ACK
-                    </button>
-                  )}
+                  {/* Sağ taraf: butonlar — yan yana, ortalanmış */}
+                  <div className="flex items-center gap-2 flex-shrink-0 self-center ml-2 sm:ml-4">
+                    {/* CHANGES butonu — ikincil, daha az vurgulu */}
+                    {(alert as any).previousRawText && (
+                      <button
+                        onClick={() => openDiffModal(alert)}
+                        className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-full border border-sky-500/30 bg-sky-500/5 text-sky-400/80 text-[10px] sm:text-[11px] font-mono font-bold tracking-wider hover:bg-sky-500/12 hover:border-sky-400/50 hover:text-sky-300 transition-all"
+                      >
+                        CHANGES
+                      </button>
+                    )}
+                    {/* ACK butonu — birincil, hap şeklinde, beyaz metin, sofistike gölge */}
+                    {!isAcked(alert) && (
+                      <button onClick={() => handleAck(alert.id)}
+                        className="flex-shrink-0 self-center ml-2 sm:ml-4 px-3 sm:px-5 py-1.5 sm:py-2 rounded-full border text-[10px] sm:text-xs font-mono font-bold tracking-[0.15em] sm:tracking-[0.2em] transition-all"
+                        style={{
+                          borderColor: "rgba(16,185,129,0.6)",
+                          color: "#10b981",
+                          backgroundColor: "rgba(16,185,129,0.12)",
+                          boxShadow: "0 2px 8px rgba(16,185,129,0.2)",
+                        }}>
+                        ACK
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
               </Fragment>
@@ -424,6 +565,71 @@ export default function Alerts() {
         )}
       </main>
       <Footer />
+
+      {/* Swipe hint — mobile only, Apple-style notification card */}
+      {!swipeHintDismissed && (
+        <div
+          className="fixed bottom-24 left-4 right-4 z-40 sm:hidden"
+          style={{
+            animation: "fadeInUp 0.4s ease-out",
+          }}
+        >
+          <div
+            className="mx-auto max-w-sm rounded-2xl overflow-hidden"
+            style={{
+              backgroundColor: "rgba(30, 30, 40, 0.92)",
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2)",
+              border: "0.5px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            <div className="flex items-start gap-3 px-4 py-3">
+              <div
+                className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: "rgba(16, 185, 129, 0.15)" }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-white leading-tight">Swipe to ACK</p>
+                <p className="text-[12px] text-white/60 mt-0.5 leading-snug">
+                  Swipe alerts <span className="text-emerald-400 font-semibold">left</span> to acknowledge
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  sessionStorage.setItem("swipe-ack-seen", "1");
+                  setSwipeHintDismissed(true);
+                }}
+                className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: "rgba(255,255,255,0.1)" }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            {/* Bottom action bar */}
+            <div
+              className="flex border-t"
+              style={{ borderColor: "rgba(255,255,255,0.06)" }}
+            >
+              <button
+                onClick={() => {
+                  sessionStorage.setItem("swipe-ack-seen", "1");
+                  setSwipeHintDismissed(true);
+                }}
+                className="flex-1 py-2.5 text-[13px] font-semibold text-emerald-400 active:bg-white/5 transition-colors"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TafDiffModal */}
       {diffAlertId !== null && (
@@ -543,16 +749,8 @@ export default function Alerts() {
               btn.style.opacity = "0.5";
               try {
                 console.log("[TestPanel] DELETE /api/alerts/test gönderiliyor...");
-                // Doğrudan fetch kullan — customFetch yerine
-                const deviceId = localStorage.getItem("aero-device-id") || "legacy";
-                const apiUrl = "https://workspaceapi-server-production-b312.up.railway.app/api/alerts/test";
-                console.log("[TestPanel] URL:", apiUrl);
-                const res = await fetch(apiUrl, {
-                  method: "DELETE",
-                  headers: { "X-Device-ID": deviceId },
-                });
-                const data = await res.json();
-                console.log("[TestPanel] DELETE response:", res.status, data);
+                const data = await customFetch("/api/alerts/test", { method: "DELETE" }) as any;
+                console.log("[TestPanel] DELETE response:", data);
                 await Promise.all([
                   queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() }),
                   queryClient.invalidateQueries({ queryKey: getGetRecentAlertsQueryKey() }),

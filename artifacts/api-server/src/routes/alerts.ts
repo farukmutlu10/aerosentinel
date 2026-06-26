@@ -307,12 +307,17 @@ router.post("/alerts/test", async (req, res) => {
 });
 
 router.delete("/alerts/test", async (req, res) => {
-  await db.delete(alertsTable).where(eq(alertsTable.icao, "TEST1"));
-  await db.delete(alertsTable).where(eq(alertsTable.icao, "TEST2"));
-  await db.delete(alertsTable).where(eq(alertsTable.icao, "TEST3"));
-  await db.delete(alertsTable).where(eq(alertsTable.icao, "TEST4"));
-  await db.delete(alertsTable).where(eq(alertsTable.icao, "TEST5"));
-  return res.json({ ok: true, deleted: "test alerts" });
+  // POST /alerts/test creates alerts with real ICAOs (from watchlist) but
+  // rawText always starts with "TEST ". Match on rawText instead of ICAO.
+  const deleted = await db
+    .delete(alertsTable)
+    .where(like(alertsTable.rawText, "TEST %"))
+    .returning();
+
+  // Invalidate caches so the UI reflects the deletion immediately
+  globalThis.__alertsCache?.clear();
+
+  return res.json({ ok: true, deleted: deleted.length });
 });
 
 export default router;

@@ -220,9 +220,10 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
           className="fixed z-[9999] bg-card border border-border rounded-lg shadow-lg p-1.5 min-w-[180px] whitespace-nowrap"
           style={{ top: dropdownPos.top, left: dropdownPos.left ?? undefined, right: dropdownPos.right ?? undefined }}
         >
+          {/* Kiosk — desktop only */}
           <button
             onClick={() => { handleKiosk(); }}
-            className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
+            className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
