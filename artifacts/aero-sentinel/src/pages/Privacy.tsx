@@ -251,8 +251,41 @@ export default function Privacy() {
           </p>
         </div>
 
-        {/* Manage Cookie Preferences */}
+        {/* Cookie Types Table */}
         <div className="mt-10 p-4 bg-card border border-border rounded-lg">
+          <h3 className="text-sm font-mono font-bold text-foreground mb-3">Cookie Types We Use</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs font-mono">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-2 pr-4 text-muted-foreground font-bold">Cookie Type</th>
+                  <th className="text-left py-2 pr-4 text-muted-foreground font-bold">Purpose</th>
+                  <th className="text-left py-2 text-muted-foreground font-bold">Duration</th>
+                </tr>
+              </thead>
+              <tbody className="text-muted-foreground">
+                <tr className="border-b border-border/50">
+                  <td className="py-2 pr-4 text-foreground">🔒 Necessary</td>
+                  <td className="py-2 pr-4">Required for site functionality (theme, state)</td>
+                  <td className="py-2">Session</td>
+                </tr>
+                <tr className="border-b border-border/50">
+                  <td className="py-2 pr-4 text-foreground">📊 Analytics</td>
+                  <td className="py-2 pr-4">Usage analytics via Google Analytics (GA4)</td>
+                  <td className="py-2">13 months</td>
+                </tr>
+                <tr>
+                  <td className="py-2 pr-4 text-foreground">📢 Marketing</td>
+                  <td className="py-2 pr-4">Personalized advertisements (Google AdSense)</td>
+                  <td className="py-2">13 months</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Manage Cookie Preferences */}
+        <div className="mt-4 p-4 bg-card border border-border rounded-lg">
           <h3 className="text-sm font-mono font-bold text-foreground mb-2">Cookie Preferences</h3>
           <p className="text-xs text-muted-foreground font-mono mb-3">
             You can change your cookie preferences at any time. Click the button below to manage your consent.

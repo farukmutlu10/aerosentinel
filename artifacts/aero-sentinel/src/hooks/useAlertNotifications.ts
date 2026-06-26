@@ -146,7 +146,20 @@ export function useAlertNotifications() {
       // isFirstLoad sonrası normal akışa devam et (return yok)
     }
 
+    // Notification izni istemeden ÖNCE cookie consent kontrolü
+    const cookieConsent = localStorage.getItem("aero-cookie-consent");
+    const hasConsent = (() => {
+      try {
+        const parsed = cookieConsent ? JSON.parse(cookieConsent) : null;
+        return parsed?.marketing === true;
+      } catch { return false; }
+    })();
+
     if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+      if (!hasConsent) {
+        log("⚠️ Notification izni yok + cookie consent yok — beklemede");
+        return; // Cookie consent verilmeden notification sorma
+      }
       log("⚠️ Notification izni yok — in-app toast kullanılacak");
     }
 

@@ -28,7 +28,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { initGA, trackPageView } from "@/lib/ga";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { CookieConsent } from "@/components/CookieConsent";
+import { CookieConsent, getCookiePreferences } from "@/components/CookieConsent";
 import { AdSenseConsent } from "@/components/AdSenseConsent";
 import { BackToTop } from "@/components/BackToTop";
 
@@ -209,9 +209,12 @@ function AppInner() {
 }
 
 function App() {
-  // Google Analytics'i başlat
+  // Google Analytics'i sadece consent verilmişse başlat
   useEffect(() => {
-    initGA();
+    const prefs = getCookiePreferences();
+    if (prefs?.analytics) {
+      initGA();
+    }
   }, []);
 
   return (
