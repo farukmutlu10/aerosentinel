@@ -2,8 +2,24 @@ import { Link } from "wouter";
 
 export default function Terms() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="max-w-3xl mx-auto px-4 py-12 sm:py-16">
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Header */}
+      <header className="border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 text-sm font-mono font-bold text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5"/>
+            <polyline points="12 19 5 12 12 5"/>
+          </svg>
+          Back to Dashboard
+        </Link>
+      </header>
+
+      {/* Content */}
+      <main className="flex-1 overflow-y-auto">
+      <div className="max-w-3xl mx-auto px-4 py-8">
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-2">
           Terms of Service
         </h1>
@@ -207,6 +223,7 @@ export default function Terms() {
           </Link>
         </div>
       </div>
+      </main>
     </div>
   );
 }
