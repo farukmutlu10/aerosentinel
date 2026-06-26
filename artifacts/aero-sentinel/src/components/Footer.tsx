@@ -82,7 +82,18 @@ export function Footer() {
     <>
       {/* Desktop footer */}
       <footer className="hidden sm:block mt-16 border-t border-border/40 py-6 px-6">
-        <div className="max-w-7xl mx-auto flex items-center justify-end">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/about" className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors font-mono tracking-wider">
+              About
+            </Link>
+            <Link href="/privacy" className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors font-mono tracking-wider">
+              Privacy
+            </Link>
+            <Link href="/terms" className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors font-mono tracking-wider">
+              Terms
+            </Link>
+          </div>
           <span className="text-xs text-muted-foreground/50 font-mono tracking-widest select-none">
             DESIGNED BY <span className="text-muted-foreground/80 font-semibold">FM</span>
           </span>

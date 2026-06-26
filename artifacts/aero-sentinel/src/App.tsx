@@ -7,6 +7,9 @@ import Dashboard from "@/pages/Dashboard";
 import Alerts from "@/pages/Alerts";
 import Airports from "@/pages/Airports";
 import AirportDetail from "@/pages/AirportDetail";
+import About from "@/pages/About";
+import Privacy from "@/pages/Privacy";
+import Terms from "@/pages/Terms";
 import { WatchlistProvider } from "@/context/WatchlistContext";
 import { TimezoneProvider } from "@/components/ClockDisplay";
 import { useAlertNotifications } from "@/hooks/useAlertNotifications";
@@ -107,6 +110,9 @@ function AppInner() {
             <Route path="/airports/:icao">
               {(params) => <AirportDetail icao={params.icao} />}
             </Route>
+            <Route path="/about" component={About} />
+            <Route path="/privacy" component={Privacy} />
+            <Route path="/terms" component={Terms} />
             <Route component={NotFound} />
           </Switch>
         </WouterRouter>
