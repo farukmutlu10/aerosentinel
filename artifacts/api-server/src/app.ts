@@ -34,6 +34,8 @@ const allowedOrigins = process.env.NODE_ENV === "production"
 
 app.use(cors({
   origin: (origin, callback) => {
+    // Origin may be undefined for non-browser requests (curl, healthchecks, server-to-server)
+    if (!origin) return callback(null, true);
     const isAllowed = allowedOrigins.some((o) => {
       if (o.includes("*")) {
         const pattern = o.replace("*.", "");
@@ -41,7 +43,7 @@ app.use(cors({
       }
       return origin === o;
     });
-    callback(null, isAllowed || !origin);
+    callback(null, isAllowed);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
