@@ -60,6 +60,11 @@ async function sendNotification(title: string, options: NotificationOptions): Pr
 }
 
 export function useAlertNotifications() {
+  // Cookie consent guard — banner kapanana kadar hiçbir bildirim tetiklenmemeli
+  const cookieConsentRaw = localStorage.getItem('aero-cookie-consent');
+  const cookieConsent = cookieConsentRaw ? JSON.parse(cookieConsentRaw) : null;
+  const hasMarketingConsent = cookieConsent?.marketing === true;
+
   const { play: playAlert } = useAlertSound();
   const { effectiveIcaos } = useWatchlist();
   const [permission, setPermission] = useState<NotificationPermission>("default");
@@ -123,6 +128,20 @@ export function useAlertNotifications() {
 
   // ─── Ana bildirim effect'i ─────────────────────────────────────────────────
   useEffect(() => {
+    // Cookie consent guard — banner kapanana kadar bildirim tetikleme
+    const raw = localStorage.getItem('aero-cookie-consent');
+    const consent = raw ? JSON.parse(raw) : null;
+    if (!consent?.marketing) {
+      log("⏳ Cookie consent henüz verilmedi — bildirim beklemeye alındı");
+      return;
+    }
+
+    // Sadece marketing consent verildiyse notification izni iste
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      // 1 saniye gecikme — banner'ın kapanmasını bekle
+      setTimeout(() => Notification.requestPermission(), 1000);
+    }
+
     if (!allAlerts?.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }
 
     // İlk yükleme: sessionStorage'dan yüklenen seenIds zaten var.
@@ -144,23 +163,6 @@ export function useAlertNotifications() {
       const newOnLoad = allAlerts.filter((a) => !seenIds.current.has(a.id));
       log(`Sayfa yenileme: ${newOnLoad.length} yeni alert sessionStorage'da yok → bildirim tetiklenecek`);
       // isFirstLoad sonrası normal akışa devam et (return yok)
-    }
-
-    // Notification izni istemeden ÖNCE cookie consent kontrolü
-    const cookieConsent = localStorage.getItem("aero-cookie-consent");
-    const hasConsent = (() => {
-      try {
-        const parsed = cookieConsent ? JSON.parse(cookieConsent) : null;
-        return parsed?.marketing === true;
-      } catch { return false; }
-    })();
-
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") {
-      if (!hasConsent) {
-        log("⚠️ Notification izni yok + cookie consent yok — beklemede");
-        return; // Cookie consent verilmeden notification sorma
-      }
-      log("⚠️ Notification izni yok — in-app toast kullanılacak");
     }
 
     // ─── YENİ ALERT'LERİ ALGILA VE BİLDİRİM GÖNDER ─────────────────────────
@@ -241,6 +243,6 @@ export function useAlertNotifications() {
   };
 
   const dismiss = () => { sessionStorage.setItem("notif-dismissed", "1"); setDismissed(true); };
-  const showBanner = permission === "default" && !dismissed;
+  const showBanner = permission === "default" && !dismissed && hasMarketingConsent;
   return { permission, requestPermission, dismiss, showBanner, dismissed, forceCheck, pendingToasts, dismissToast };
 }

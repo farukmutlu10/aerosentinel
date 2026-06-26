@@ -62,6 +62,26 @@ export function CookieConsent() {
     return undefined;
   }, []);
 
+  // Cross-tab storage event listener
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === COOKIE_KEY) {
+        const updated = getCookiePreferences();
+        if (updated) {
+          setPreferences(updated);
+          setVisible(false);
+          if (updated.analytics) {
+            initGA();
+          }
+        } else {
+          setVisible(true);
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
   const persistAndClose = (prefs: CookiePreferences) => {
     localStorage.setItem(COOKIE_KEY, JSON.stringify(prefs));
     updateConsent({ analytics: prefs.analytics, marketing: prefs.marketing });
@@ -74,6 +94,12 @@ export function CookieConsent() {
   const handleAcceptAll = () => {
     const allAccepted: CookiePreferences = { necessary: true, analytics: true, marketing: true };
     persistAndClose(allAccepted);
+
+    // Notification izni hemen iste
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      // 1 saniye gecikme — banner'ın kapanmasını bekle
+      setTimeout(() => Notification.requestPermission(), 1000);
+    }
   };
 
   const handleRejectAll = () => {
@@ -81,10 +107,16 @@ export function CookieConsent() {
     localStorage.setItem(COOKIE_KEY, JSON.stringify(allRejected));
     rejectAllConsent();
     setVisible(false);
+    // Reject all — notification izni isteme (marketing false)
   };
 
   const handleSavePreferences = () => {
     persistAndClose(preferences);
+
+    // Sadece marketing consent verildiyse notification izni iste
+    if (preferences.marketing && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      setTimeout(() => Notification.requestPermission(), 1000);
+    }
   };
 
   const toggleAnalytics = () => {
