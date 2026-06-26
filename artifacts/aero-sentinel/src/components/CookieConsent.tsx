@@ -89,6 +89,8 @@ export function CookieConsent() {
       initGA();
     }
     setVisible(false);
+    // NotificationBanner'a haber ver
+    window.dispatchEvent(new Event('aero-consent-given'));
   };
 
   const handleAcceptAll = () => {

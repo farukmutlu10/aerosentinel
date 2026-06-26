@@ -5,7 +5,7 @@ const DISMISSED_KEY = "aero-notif-banner-dismissed";
 export function NotificationBanner() {
   const [show, setShow] = useState(false);
 
-  useEffect(() => {
+  const checkAndShow = () => {
     // Koşul 1: Cookie consent verilmiş olmalı
     const consentRaw = localStorage.getItem('aero-cookie-consent');
     if (!consentRaw) return;
@@ -14,14 +14,31 @@ export function NotificationBanner() {
     if (localStorage.getItem(DISMISSED_KEY)) return;
     
     // Koşul 3: Notification izni henüz sorulmamış olmalı (sadece "default")
-    // EĞER permission "granted" veya "denied" ise → banner GÖSTERME
-    // (Kullanıcı zaten kararını vermiş)
     if (typeof Notification === 'undefined') return;
     if (Notification.permission !== 'default') return;
     
     // 2 saniye gecikme — cookie consent banner'ının kapanmasını bekle
-    const timer = setTimeout(() => setShow(true), 2000);
-    return () => clearTimeout(timer);
+    setTimeout(() => setShow(true), 2000);
+  };
+
+  useEffect(() => {
+    // İlk yüklemede kontrol et
+    checkAndShow();
+    
+    // Cookie consent verildiğinde tetiklenmesi için custom event dinle
+    const handleConsentGiven = () => checkAndShow();
+    window.addEventListener('aero-consent-given', handleConsentGiven);
+    
+    // storage event de dinle (cross-tab)
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'aero-cookie-consent') checkAndShow();
+    };
+    window.addEventListener('storage', handleStorage);
+    
+    return () => {
+      window.removeEventListener('aero-consent-given', handleConsentGiven);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   const handleAllow = async () => {
