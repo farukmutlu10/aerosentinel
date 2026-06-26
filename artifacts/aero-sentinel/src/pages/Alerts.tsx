@@ -338,7 +338,7 @@ export default function Alerts() {
               color: "rgba(212,168,67,0.7)",
               borderColor: "rgba(212,168,67,0.3)",
             }}>
-            {hideAcknowledged ? "Show All" : "Hide Ack"}
+            {hideAcknowledged ? "Show All" : "Hide ACK'ed"}
           </button>
           {isFiltered && <div className="w-px h-5" style={{ backgroundColor: "rgba(212,168,67,0.3)" }} />}
           {isFiltered && (
@@ -407,7 +407,7 @@ export default function Alerts() {
                 color: "rgba(212,168,67,0.7)",
                 borderColor: "rgba(212,168,67,0.3)",
               }}>
-              {hideAcknowledged ? "Show All" : "Hide Ack"}
+              {hideAcknowledged ? "Show All" : "Hide ACK'ed"}
             </button>
             {isFiltered && <div className="w-px h-5" style={{ backgroundColor: "rgba(212,168,67,0.3)" }} />}
             {isFiltered && (
