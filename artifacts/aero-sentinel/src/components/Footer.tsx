@@ -83,16 +83,11 @@ export function Footer() {
       {/* Desktop footer */}
       <footer className="hidden sm:block mt-16 border-t border-border/40 py-6 px-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/about" className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors font-mono tracking-wider">
-              About
-            </Link>
-            <Link href="/privacy" className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors font-mono tracking-wider">
-              Privacy
-            </Link>
-            <Link href="/terms" className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors font-mono tracking-wider">
-              Terms
-            </Link>
+          <div className="flex items-center gap-4 text-xs font-mono text-muted-foreground/50">
+            <Link href="/about" className="hover:text-muted-foreground transition-colors">About</Link>
+            <Link href="/privacy" className="hover:text-muted-foreground transition-colors">Privacy</Link>
+            <Link href="/terms" className="hover:text-muted-foreground transition-colors">Terms</Link>
+            <a href="mailto:contact@aerosentinel.app" className="hover:text-muted-foreground transition-colors">Contact Us</a>
           </div>
           <span className="text-xs text-muted-foreground/50 font-mono tracking-widest select-none">
             DESIGNED BY <span className="text-muted-foreground/80 font-semibold">FM</span>

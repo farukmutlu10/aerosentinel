@@ -10,6 +10,7 @@ import AirportDetail from "@/pages/AirportDetail";
 import About from "@/pages/About";
 import Privacy from "@/pages/Privacy";
 import Terms from "@/pages/Terms";
+import Contact from "@/pages/Contact";
 import { WatchlistProvider } from "@/context/WatchlistContext";
 import { TimezoneProvider } from "@/components/ClockDisplay";
 import { useAlertNotifications } from "@/hooks/useAlertNotifications";
@@ -113,6 +114,7 @@ function AppInner() {
             <Route path="/about" component={About} />
             <Route path="/privacy" component={Privacy} />
             <Route path="/terms" component={Terms} />
+            <Route path="/contact" component={Contact} />
             <Route component={NotFound} />
           </Switch>
         </WouterRouter>
