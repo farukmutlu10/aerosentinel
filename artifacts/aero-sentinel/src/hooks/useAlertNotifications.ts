@@ -63,7 +63,9 @@ export function useAlertNotifications() {
   // Cookie consent guard — banner kapanana kadar hiçbir bildirim tetiklenmemeli
   const cookieConsentRaw = localStorage.getItem('aero-cookie-consent');
   const cookieConsent = cookieConsentRaw ? JSON.parse(cookieConsentRaw) : null;
-  const hasMarketingConsent = cookieConsent?.marketing === true;
+  // Bildirim izni cookie consent'ten bağımsızdır.
+  // Sadece banner hâlâ açıksa (hiçbir consent verilmemişse) bekleme yap.
+  const hasAnyConsent = cookieConsent !== null;
 
   const { play: playAlert } = useAlertSound();
   const { effectiveIcaos } = useWatchlist();
@@ -131,12 +133,12 @@ export function useAlertNotifications() {
     // Cookie consent guard — banner kapanana kadar bildirim tetikleme
     const raw = localStorage.getItem('aero-cookie-consent');
     const consent = raw ? JSON.parse(raw) : null;
-    if (!consent?.marketing) {
+    if (!consent) {
       log("⏳ Cookie consent henüz verilmedi — bildirim beklemeye alındı");
       return;
     }
 
-    // Sadece marketing consent verildiyse notification izni iste
+    // Bildirim izni cookie consent'ten bağımsızdır — her durumda iste
     if (typeof Notification !== "undefined" && Notification.permission === "default") {
       // 1 saniye gecikme — banner'ın kapanmasını bekle
       setTimeout(() => Notification.requestPermission(), 1000);
@@ -243,6 +245,7 @@ export function useAlertNotifications() {
   };
 
   const dismiss = () => { sessionStorage.setItem("notif-dismissed", "1"); setDismissed(true); };
-  const showBanner = permission === "default" && !dismissed && hasMarketingConsent;
+  // Banner sadece consent henüz verilmemişse gösterilsin
+  const showBanner = permission === "default" && !dismissed && !hasAnyConsent;
   return { permission, requestPermission, dismiss, showBanner, dismissed, forceCheck, pendingToasts, dismissToast };
 }

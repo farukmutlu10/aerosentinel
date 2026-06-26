@@ -107,14 +107,18 @@ export function CookieConsent() {
     localStorage.setItem(COOKIE_KEY, JSON.stringify(allRejected));
     rejectAllConsent();
     setVisible(false);
-    // Reject all — notification izni isteme (marketing false)
+
+    // REDDETMESINE RAĞMEN bildirim izni iste — çünkü bu uygulama işlevselliği
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      setTimeout(() => Notification.requestPermission(), 1000);
+    }
   };
 
   const handleSavePreferences = () => {
     persistAndClose(preferences);
 
-    // Sadece marketing consent verildiyse notification izni iste
-    if (preferences.marketing && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    // Her durumda bildirim izni iste (uygulama işlevselliği)
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       setTimeout(() => Notification.requestPermission(), 1000);
     }
   };

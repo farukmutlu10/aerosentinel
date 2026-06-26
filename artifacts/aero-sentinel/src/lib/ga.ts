@@ -7,13 +7,8 @@ const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID;
  * VITE_GA_MEASUREMENT_ID env değişkeni tanımlıysa aktif olur.
  */
 export function initGA(): void {
-  // GA Consent Mode v2 — defaults: denied until user consents
-  window.gtag?.("consent", "default", {
-    analytics_storage: "denied",
-    ad_storage: "denied",
-    ad_user_data: "denied",
-    ad_personalization: "denied",
-  });
+  // Consent Mode v2 defaults — sadece index.html'de tanımlı (gtag('consent', 'default', ...))
+  // Burada tekrar tetiklemiyoruz çünkü React GA initialize ettiğinde consent defaults zaten çalışmış olur.
 
   if (!GA_MEASUREMENT_ID) {
     console.info("[GA] Measurement ID tanımlı değil — Analytics devre dışı.");
