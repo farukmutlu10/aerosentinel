@@ -85,6 +85,7 @@ export function Footer() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4 text-xs font-mono text-muted-foreground/50">
             <Link href="/about" className="hover:text-muted-foreground transition-colors">About</Link>
+            <Link href="/blog" className="hover:text-muted-foreground transition-colors">Blog</Link>
             <Link href="/privacy" className="hover:text-muted-foreground transition-colors">Privacy</Link>
             <Link href="/terms" className="hover:text-muted-foreground transition-colors">Terms</Link>
             <a href="mailto:contact@aerosentinel.app" className="hover:text-muted-foreground transition-colors">Contact Us</a>

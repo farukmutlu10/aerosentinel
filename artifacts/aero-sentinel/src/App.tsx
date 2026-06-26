@@ -11,6 +11,8 @@ import About from "@/pages/About";
 import Privacy from "@/pages/Privacy";
 import Terms from "@/pages/Terms";
 import Contact from "@/pages/Contact";
+import Blog from "@/pages/Blog";
+import BlogPost from "@/pages/BlogPost";
 import { WatchlistProvider } from "@/context/WatchlistContext";
 import { TimezoneProvider } from "@/components/ClockDisplay";
 import { useAlertNotifications } from "@/hooks/useAlertNotifications";
@@ -115,6 +117,8 @@ function AppInner() {
             <Route path="/privacy" component={Privacy} />
             <Route path="/terms" component={Terms} />
             <Route path="/contact" component={Contact} />
+            <Route path="/blog" component={Blog} />
+            <Route path="/blog/:slug" component={BlogPost} />
             <Route component={NotFound} />
           </Switch>
         </WouterRouter>
