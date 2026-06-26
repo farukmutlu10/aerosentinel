@@ -1,31 +1,40 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 type Theme = "dark" | "light";
-
-function getInitial(): Theme {
-  try {
-    const stored = localStorage.getItem("aero-sentinel-theme");
-    if (stored === "light" || stored === "dark") return stored;
-  } catch {}
-  return "dark";
-}
+const KEY = "aero-sentinel-theme";
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(getInitial);
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      const stored = localStorage.getItem(KEY);
+      if (stored === "light" || stored === "dark") return stored;
+    } catch {}
+    return "dark";
+  });
+
+  const [transitioning, setTransitioning] = useState(false);
+  const [pendingTheme, setPendingTheme] = useState<Theme | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
-      root.classList.remove("light");
-    } else {
-      root.classList.remove("dark");
-      root.classList.add("light");
-    }
-    localStorage.setItem("aero-sentinel-theme", theme);
+    if (theme === "dark") root.classList.add("dark");
+    else root.classList.remove("dark");
+    try { localStorage.setItem(KEY, theme); } catch {}
   }, [theme]);
 
-  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+  const toggleTheme = useCallback(() => {
+    const next = theme === "dark" ? "light" : "dark";
+    setPendingTheme(next);
+    setTransitioning(true);
+  }, [theme]);
 
-  return { theme, toggleTheme };
+  const completeTransition = useCallback(() => {
+    if (pendingTheme) {
+      setTheme(pendingTheme);
+      setPendingTheme(null);
+    }
+    setTransitioning(false);
+  }, [pendingTheme]);
+
+  return { theme, toggleTheme, transitioning, pendingTheme, completeTransition };
 }

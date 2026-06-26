@@ -10,6 +10,7 @@ export function usePersistedState<T>(key: string, defaultValue: T): [T, (val: T 
     }
   });
 
+  // LocalStorage'a yaz
   useEffect(() => {
     try {
       localStorage.setItem(key, JSON.stringify(state));

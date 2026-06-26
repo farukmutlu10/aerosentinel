@@ -9,6 +9,7 @@ export const alertsTable = pgTable("alerts", {
   type: alertTypeEnum("type").notNull(),
   icao: text("icao").notNull(),
   rawText: text("raw_text").notNull(),
+  previousRawText: text("previous_raw_text"),
   detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
   acknowledged: boolean("acknowledged").notNull().default(false),
   acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),

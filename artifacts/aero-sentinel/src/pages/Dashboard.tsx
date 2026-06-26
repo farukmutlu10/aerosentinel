@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef, type KeyboardEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { createPortal } from "react-dom";
 import {
   useGetMonitorStatus, getGetMonitorStatusQueryKey,
 } from "@workspace/api-client-react";
@@ -8,11 +9,14 @@ import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { TafText } from "@/components/TafText";
 import { ColoredRawText } from "@/components/ColoredRawText";
-import { ClockBadge } from "@/components/ClockDisplay";
+import { ClockBadge, useSelectedTimezone } from "@/components/ClockDisplay";
+import { IataBadge } from "@/components/IataBadge";
+import { AdSlot } from "@/components/ads/AdSlot";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { normalizeIcao } from "@/lib/icaoUtils";
+import { iataToIcao } from "@/lib/iataMap";
 import {
   parseMetar, FlightCategory, CATEGORY_COLOR,
   extractTimeSlots, parseTafWorstCategory,
@@ -54,8 +58,8 @@ function useWatchlistWeather(icaos: string[]) {
 
 const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "alpha", label: "A–Z" },
-  { value: "lifr-first", label: "Worst First" },
-  { value: "vfr-first", label: "Best First" },
+  { value: "lifr-first", label: "Worst" },
+  { value: "vfr-first", label: "Best" },
 ];
 
 const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
@@ -87,12 +91,19 @@ function worstOf(a: FlightCategory, b: FlightCategory): FlightCategory {
 export default function Dashboard() {
   const { theme, toggleTheme } = useThemeContext();
   const { effectiveIcaos, watchedIcaos, addIcao, removeIcao, clearWatchlist, hasFilter } = useWatchlist();
+  const [selectedTz] = useSelectedTimezone();
+  const isIstanbul = selectedTz === "Europe/Istanbul";
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // v2 key — avoids stale localStorage with old format (without CRIT)
   const [activeCatsArr, setActiveCatsArr] = usePersistedState<string[]>("as-dash-cats-v2", DEFAULT_CATS);
   const [view, setView] = usePersistedState<ViewMode>("as-dash-view", DEFAULT_VIEW);
-  const [routeFilter, setRouteFilter] = usePersistedState<RouteFilter>("as-dash-route", DEFAULT_ROUTE);
+  const [routeFilter, setRouteFilter] = useState<RouteFilter>(DEFAULT_ROUTE);
+
+  // Reset route filter to ALL when timezone is not Istanbul
+  useEffect(() => {
+    if (!isIstanbul && routeFilter !== "ALL") setRouteFilter("ALL");
+  }, [isIstanbul]);
   const [sortMode, setSortMode] = usePersistedState<SortMode>("as-dash-sort", DEFAULT_SORT);
   const [timeFilters, setTimeFilters] = usePersistedState<string[]>("as-dash-time-multi", []);
   const [icaoSearch, setIcaoSearch] = usePersistedState<string>("as-dash-icao-search", "");
@@ -101,6 +112,15 @@ export default function Dashboard() {
   const timeRef = useRef<HTMLDivElement>(null);
   const [wlInput, setWlInput] = useState("");
   const wlInputRef = useRef<HTMLInputElement>(null);
+  const [copiedWatchlist, setCopiedWatchlist] = useState(false);
+
+  // Pull-to-refresh (mobile)
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isPulling, setIsPulling] = useState(false);
+  const touchStartY = useRef(0);
+
+  // Mobile watchlist bottom sheet
+  const [watchlistSheetOpen, setWatchlistSheetOpen] = useState(false);
 
   // Notification tracking
   const prevWeatherRef = useRef<Map<string, { rawMetar: string | null; rawTaf: string | null }>>(new Map());
@@ -122,9 +142,16 @@ export default function Dashboard() {
     const codes = wlInput.split(/[,\s]+/).filter(Boolean);
     const skipped: string[] = [];
     codes.forEach((c) => {
-      const icao = normalizeIcao(c);
-      if (icao.length === 4) addIcao(icao);
-      else if (icao.length > 0) skipped.push(c);
+      const raw = c.trim().toUpperCase();
+      if (raw.length === 4) {
+        addIcao(raw);
+      } else if (raw.length === 3) {
+        const resolved = iataToIcao(raw);
+        if (resolved) addIcao(resolved);
+        else skipped.push(c);
+      } else if (raw.length > 0) {
+        skipped.push(c);
+      }
     });
     setWlInput(skipped.length > 0 ? skipped.join(",") : "");
     wlInputRef.current?.focus();
@@ -140,17 +167,30 @@ export default function Dashboard() {
     const val = e.target.value
       .replace(/[İı]/g, "I").replace(/[Şş]/g, "S").replace(/[Ğğ]/g, "G")
       .replace(/[Üü]/g, "U").replace(/[Öö]/g, "O").replace(/[Çç]/g, "C")
-      .toUpperCase().replace(/[^A-Z0-9,\s]/g, "");
+      .toUpperCase().replace(/[\n\r]/g, ",").replace(/[^A-Z0-9,\s]/g, "").replace(/,{2,}/g, ",");
     setWlInput(val);
+    if (/[\n\r]/.test(e.target.value)) {
+      setTimeout(() => handleWlAdd(), 0);
+    }
   };
 
   useEffect(() => {
     if (!timeOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (timeRef.current && !timeRef.current.contains(e.target as Node)) setTimeOpen(false);
+    const handler = (e: MouseEvent | TouchEvent) => {
+      if (timeRef.current && !timeRef.current.contains(e.target as Node)) {
+        setTimeOpen(false);
+      }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    // Document'a timeout ile ekle ki pull-to-refresh'ten SONRA çalışsın
+    const timer = setTimeout(() => {
+      document.addEventListener("click", handler);
+      document.addEventListener("touchstart", handler, { passive: true });
+    }, 100);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("click", handler);
+      document.removeEventListener("touchstart", handler);
+    };
   }, [timeOpen]);
 
   const { data: monitor } = useGetMonitorStatus({
@@ -162,6 +202,29 @@ export default function Dashboard() {
     setIsRefreshing(true);
     await refreshWeather();
     setTimeout(() => setIsRefreshing(false), 600);
+  };
+
+  // ── Pull-to-refresh handlers (mobile) ──
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (timeOpen) return;
+    if (window.scrollY === 0) {
+      setIsPulling(true);
+      touchStartY.current = e.touches[0].clientY;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isPulling) return;
+    const delta = e.touches[0].clientY - touchStartY.current;
+    if (delta > 0) setPullDistance(Math.min(delta, 100));
+  };
+
+  const handleTouchEnd = () => {
+    if (pullDistance > 60) {
+      handleRefresh();
+    }
+    setPullDistance(0);
+    setIsPulling(false);
   };
 
   // ── CRIT / Wind notifications ─────────────────────────────────────────────
@@ -296,163 +359,457 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader monitorStatus={monitor} theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5 space-y-3">
+      <main
+        className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 py-3 sm:py-5 space-y-2 sm:space-y-3"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {/* Pull-to-refresh indicator (mobile) */}
+        {pullDistance > 0 && (
+          <div className="flex items-center justify-center sm:hidden py-2" style={{ height: Math.min(pullDistance / 2, 50) }}>
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className={`text-primary ${pullDistance > 60 ? "" : "opacity-50"} ${isRefreshing ? "animate-spin" : ""}`}
+              style={{ transform: `rotate(${pullDistance * 3}deg)` }}
+            >
+              <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+              <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+            </svg>
+            <span className="text-[10px] font-mono text-muted-foreground ml-2">
+              {pullDistance > 60 ? "Release to refresh" : "Pull to refresh"}
+            </span>
+          </div>
+        )}
 
         {/* Monitor bar */}
-        <div className="bg-card border border-border rounded-lg px-4 py-2 flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-4 text-xs font-mono flex-wrap">
+        <div className="bg-card border border-border rounded-lg px-3 sm:px-4 py-2 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 sm:gap-4 text-[10px] sm:text-xs font-mono flex-wrap">
             <span className="text-muted-foreground tracking-widest">MONITOR</span>
             <span className={monitorData?.running ? "text-green-400 font-bold flex items-center gap-1.5" : "text-red-400 font-bold"}>
               {monitorData?.running
                 ? <><div className="w-1.5 h-1.5 rounded-full bg-green-400 sentinel-pulse flex-shrink-0" />LIVE</>
                 : "STOPPED"}
             </span>
-            <span className="text-border">|</span>
-            <span className="text-muted-foreground">SCANS TODAY</span>
+            <span className="text-border hidden sm:inline">|</span>
+            <span className="text-muted-foreground">SCANS</span>
             <span className="tabular-nums">{monitorData?.scanCountToday ?? monitorData?.scanCount ?? 0}</span>
-            {watchedIcaos.length > 0 && (
-              <><span className="text-border">|</span>
-              <span className="text-sky-400">WATCHLIST {watchedIcaos.length}</span></>
-            )}
+            <span className="text-border hidden sm:inline">|</span>
+            <span className="text-muted-foreground hidden sm:inline">INTERVAL</span>
+            <span className="tabular-nums hidden sm:inline">60s</span>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] text-muted-foreground font-mono">INTERVAL: 60s</span>
+          <div className="flex items-center gap-2 sm:gap-3">
             <ClockBadge />
           </div>
         </div>
 
-        {/* Collapsible watchlist */}
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <button
+        {/* ── Watchlist — Desktop: inline collapsible ── */}
+        <div className="bg-card border border-border rounded-lg overflow-hidden hidden sm:block">
+          <div
             onClick={() => setWatchlistOpen((o) => !o)}
-            className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-mono hover:bg-muted/30 transition-colors"
+            className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-mono hover:bg-muted/30 transition-colors cursor-pointer select-none"
           >
             <div className="flex items-center gap-2">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-sky-400">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#d4a843]">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
               </svg>
-              <span className="text-sky-400 tracking-widest">WATCHED AIRPORTS</span>
-              <span className="text-muted-foreground">
-                {watchedIcaos.length > 0 ? `${watchedIcaos.length} airports` : "default: LTFH"}
+              <span className="text-[#d4a843] tracking-widest">WATCHED AIRPORTS</span>
+              <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 rounded text-[9px] font-mono font-bold"
+                style={{
+                  backgroundColor: "rgba(212,168,67,0.12)",
+                  color: "#d4a843",
+                  border: "1px solid rgba(212,168,67,0.3)"
+                }}>
+                {watchedIcaos.length}
               </span>
             </div>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-              className={`text-muted-foreground transition-transform duration-200 ${watchlistOpen ? "rotate-180" : ""}`}>
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </button>
+            <div className="flex items-center gap-2">
+              {hasFilter && (
+                <div className="inline-flex items-stretch border border-border rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => { navigator.clipboard?.writeText(watchedIcaos.join(',')); setCopiedWatchlist(true); setTimeout(() => setCopiedWatchlist(false), 3000); }}
+                    className="flex items-center gap-1.5 text-xs font-mono bg-transparent hover:bg-muted/30 transition-colors px-4 py-1.5"
+                    style={{ color: copiedWatchlist ? '#d4a843' : undefined }}
+                  >
+                    {copiedWatchlist ? (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    ) : (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    )}
+                    <span className={!copiedWatchlist ? 'text-muted-foreground' : ''}>{copiedWatchlist ? 'Copied' : 'Copy All'}</span>
+                  </button>
+                  <div className="w-px bg-border self-stretch" />
+                  <button
+                    onClick={clearWatchlist}
+                    className="flex items-center gap-1.5 text-xs font-mono bg-transparent text-red-500/85 hover:bg-red-500/10 transition-colors px-4 py-1.5"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    Clear All
+                  </button>
+                </div>
+              )}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={`text-muted-foreground transition-transform duration-200 ${watchlistOpen ? "rotate-180" : ""}`}>
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </div>
+          </div>
 
           {watchlistOpen && (
             <div className="border-t border-border/60 px-4 py-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">WATCHLIST — Monitored Airports</span>
-                {hasFilter && (
-                  <button onClick={clearWatchlist} className="text-xs font-mono text-muted-foreground hover:text-destructive transition-colors">Clear All</button>
-                )}
-              </div>
               <div
                 className="flex flex-wrap items-center gap-1.5 min-h-[42px] bg-background border border-input rounded-md px-2 py-1.5 cursor-text focus-within:border-primary transition-colors"
                 onClick={() => wlInputRef.current?.focus()}
               >
                 {watchedIcaos.map((icao) => (
                   <span key={icao} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-primary/15 border border-primary/30 text-primary text-xs font-mono font-bold">
-                    {icao}
+                    <span>{icao}</span>
                     <button type="button" onClick={(e) => { e.stopPropagation(); removeIcao(icao); }}
                       className="text-primary/60 hover:text-primary transition-colors leading-none">✕</button>
                   </span>
                 ))}
                 <input ref={wlInputRef} type="text" value={wlInput}
                   onChange={handleWlInputChange} onKeyDown={handleWlKeyDown}
-                  placeholder={watchedIcaos.length === 0 ? "Enter ICAO and press Enter — e.g. LTFJ,LTAC,LTFM" : "Add (comma-separated)..."}
-                  className="flex-1 min-w-[200px] bg-transparent text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none py-0.5"
+                  placeholder={watchedIcaos.length === 0 ? "Search by ICAO or IATA — separate multiple codes with comma or space." : ""}
+                  className="flex-1 min-w-[80px] bg-transparent text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none py-0.5"
                 />
-                {wlInput.replace(/[,\s]/g, "").length >= 4 && (
+                {wlInput.replace(/[,\s]/g, "").length >= 3 && (
                   <button type="button" onClick={handleWlAdd}
                     className="px-2 py-0.5 text-xs font-mono bg-primary text-primary-foreground rounded hover:opacity-90 transition-opacity">ADD</button>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground font-mono mt-2">
-                {hasFilter
-                  ? <span className="text-sky-400">{watchedIcaos.length} airports monitored — this browser only.</span>
-                  : <span>Watchlist empty — showing default <span className="text-primary font-bold">LTFH</span>. Add any 4-letter ICAO code.</span>}
-              </p>
+              {!hasFilter && (
+                <p className="text-xs text-muted-foreground font-mono mt-2">
+                  Watchlist empty — showing default <span className="text-primary font-bold">LTFH</span>.
+                </p>
+              )}
             </div>
           )}
         </div>
 
+        {/* ── Watchlist — Mobile: header tap opens bottom sheet ── */}
+        <div className="sm:hidden bg-card border border-border rounded-lg overflow-hidden">
+          <div
+            onClick={() => setWatchlistSheetOpen(true)}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs font-mono hover:bg-muted/30 transition-colors cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-1.5">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#d4a843]">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              </svg>
+              <span className="text-[#d4a843] tracking-widest">WATCHLIST</span>
+              <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 rounded text-[9px] font-mono font-bold"
+                style={{
+                  backgroundColor: "rgba(212,168,67,0.12)",
+                  color: "#d4a843",
+                  border: "1px solid rgba(212,168,67,0.3)"
+                }}>
+                {watchedIcaos.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {watchedIcaos.slice(0, 3).map((icao) => (
+                <span key={icao} className="px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary text-[9px] font-mono font-bold">{icao}</span>
+              ))}
+              {watchedIcaos.length > 3 && (
+                <span className="text-[9px] text-muted-foreground font-mono">+{watchedIcaos.length - 3}</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Watchlist Bottom Sheet (mobile only) ── */}
+        {watchlistSheetOpen && createPortal(
+          <>
+            <div className="fixed inset-0 bg-black/50 z-40 sm:hidden" onClick={() => setWatchlistSheetOpen(false)} />
+            <div className="fixed inset-x-0 bottom-0 z-50 bg-card rounded-t-2xl border-t shadow-2xl sm:hidden max-h-[80vh] flex flex-col">
+              {/* Drag handle */}
+              <div className="flex justify-center pt-2 pb-1">
+                <div className="w-8 h-1 rounded-full bg-muted-foreground/30" />
+              </div>
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-2 border-b border-border/60">
+                <span className="text-xs font-mono text-[#d4a843] tracking-widest font-bold">WATCHLIST</span>
+                <button onClick={() => setWatchlistSheetOpen(false)} className="text-muted-foreground hover:text-foreground p-1">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto px-4 pb-4">
+                <div className="flex flex-wrap items-center gap-1.5 min-h-[42px] bg-background border border-input rounded-md px-2 py-1.5 cursor-text focus-within:border-primary transition-colors"
+                  onClick={() => wlInputRef.current?.focus()}>
+                  {watchedIcaos.map((icao) => (
+                    <span key={icao} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-primary/15 border border-primary/30 text-primary text-xs font-mono font-bold">
+                      <span>{icao}</span>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); removeIcao(icao); }}
+                        className="text-primary/60 hover:text-primary transition-colors leading-none">✕</button>
+                    </span>
+                  ))}
+                  <input ref={wlInputRef} type="text" value={wlInput}
+                    onChange={handleWlInputChange} onKeyDown={handleWlKeyDown}
+                    placeholder={watchedIcaos.length === 0 ? "Search by ICAO or IATA" : ""}
+                    className="flex-1 min-w-[80px] bg-transparent text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none py-0.5"
+                  />
+                  {wlInput.replace(/[,\s]/g, "").length >= 3 && (
+                    <button type="button" onClick={handleWlAdd}
+                      className="px-2 py-0.5 text-xs font-mono bg-primary text-primary-foreground rounded hover:opacity-90 transition-opacity">ADD</button>
+                  )}
+                </div>
+                {!hasFilter && (
+                  <p className="text-xs text-muted-foreground font-mono mt-2">
+                    Empty — default <span className="text-primary font-bold">LTFH</span>.
+                  </p>
+                )}
+              </div>
+              {/* Sticky bottom buttons */}
+              <div className="flex border-t border-border px-4 py-3 gap-2">
+                <button
+                  onClick={() => { navigator.clipboard?.writeText(watchedIcaos.join(',')); setCopiedWatchlist(true); setTimeout(() => setCopiedWatchlist(false), 2000); }}
+                  className="flex-1 flex items-center justify-center gap-1.5 text-xs font-mono border border-border rounded-lg py-2 hover:bg-muted/30 transition-colors"
+                  style={{ color: copiedWatchlist ? '#d4a843' : undefined }}
+                >
+                  {copiedWatchlist ? (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  ) : (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  )}
+                  <span className={!copiedWatchlist ? 'text-muted-foreground' : ''}>{copiedWatchlist ? 'Copied' : 'Copy All'}</span>
+                </button>
+                <button
+                  onClick={() => { clearWatchlist(); setWatchlistSheetOpen(false); }}
+                  className="flex-1 flex items-center justify-center gap-1.5 text-xs font-mono border border-red-500/30 text-red-500/85 rounded-lg py-2 hover:bg-red-500/10 transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  Clear All
+                </button>
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
+
         {/* Airport Weather Section */}
         <section>
-          {/* Filter row */}
-          <div className="flex flex-wrap items-center gap-2 mb-2">
+          {/* Mobile filters — compact layout */}
+          <div className="sm:hidden space-y-1.5 mb-2">
+            {/* Row 1: Category — VFR MVFR IFR LIFR CRIT */}
+            <div className="flex items-center gap-1 w-full">
+              {ALL_CATS.map((cat) => {
+                const isActive = activeCats.has(cat);
+                return (
+                  <button key={cat} onClick={() => toggleCat(cat)}
+                    className="filter-btn flex-1"
+                    style={isActive ? {
+                      borderColor: CATEGORY_COLOR[cat] + "99",
+                      color: CATEGORY_COLOR[cat],
+                      backgroundColor: CATEGORY_COLOR[cat] + "18",
+                    } : undefined}>
+                    {cat}
+                  </button>
+                );
+              })}
+              <button onClick={toggleCritFilter}
+                className="filter-btn flex-1"
+                style={critActive ? {
+                  borderColor: "#ef444499", color: "#ef4444", backgroundColor: "#ef444418",
+                } : undefined}>
+                CRIT
+              </button>
+            </div>
+
+            {/* Row 2: Sort + View */}
+            <div className="flex items-center gap-1.5">
+              <div className="filter-group flex-1">
+                {SORT_OPTIONS.map((s) => (
+                  <button key={s.value} onClick={() => setSortMode(s.value)}
+                    className="filter-btn flex-1"
+                    style={sortMode === s.value ? {
+                      borderColor: "rgba(212, 168, 67, 0.6)",
+                      color: "#d4a843",
+                      backgroundColor: "rgba(212, 168, 67, 0.12)",
+                    } : undefined}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <div className="w-px h-5 bg-border" />
+              <div className="filter-group flex-1">
+                {VIEW_OPTIONS.map((v) => (
+                  <button key={v.value} onClick={() => { setView(v.value); setTimeFilters([]); }}
+                    className="filter-btn flex-1"
+                    style={view === v.value ? {
+                      borderColor: "rgba(212, 168, 67, 0.6)",
+                      color: "#d4a843",
+                      backgroundColor: "rgba(212, 168, 67, 0.12)",
+                    } : undefined}>
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Row 3: Route + Timestamp + Reset */}
+            <div className="flex items-center gap-1.5">
+              {isIstanbul && (
+                <div className="filter-group">
+                  {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
+                    <button key={f} onClick={() => setRouteFilter(f)}
+                      className="filter-btn"
+                      style={routeFilter === f ? { borderColor: "rgba(212,168,67,0.6)", color: "#d4a843", backgroundColor: "rgba(212,168,67,0.12)" } : {}}>
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="w-px h-5 bg-border" />
+              {!weatherLoading && allTimeSlots.length > 0 && (
+                <div className="relative" ref={timeRef}>
+                  <button onClick={() => setTimeOpen((o) => !o)}
+                    className={`filter-btn flex items-center gap-1 ${timeFilters.length > 0 ? "border-primary text-primary bg-primary/10" : ""}`}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    <span className="hidden sm:inline">Timestamp</span>
+                    {timeFilters.length > 0 && (
+                      <span className="bg-primary text-primary-foreground rounded-full text-[9px] font-bold px-1 leading-tight">{timeFilters.length}</span>
+                    )}
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${timeOpen ? "rotate-180" : ""}`}>
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </button>
+                  {timeOpen && (
+                    <div onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} className="absolute left-0 top-full mt-1 z-[60] bg-card border border-border rounded-lg shadow-lg min-w-[160px] overflow-hidden" style={{ pointerEvents: "auto" }}>
+                      {timeFilters.length > 0 && (
+                        <button onClick={(e) => { e.stopPropagation(); setTimeFilters([]); }}
+                          onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); setTimeFilters([]); }}
+                          className="w-full text-left px-3 py-2 text-xs font-mono text-muted-foreground hover:bg-muted hover:text-foreground transition-colors border-b border-border/50">
+                          Clear selection
+                        </button>
+                      )}
+                      {allTimeSlots.map((slot) => {
+                        const selected = timeFilters.includes(slot);
+                        return (
+                          <button key={slot} onClick={(e) => { e.stopPropagation(); toggleTimeSlot(slot); }}
+                            onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); toggleTimeSlot(slot); }}
+                            className="w-full text-left px-3 py-2 text-xs font-mono tabular-nums flex items-center justify-between gap-3 transition-colors"
+                            style={{ WebkitTapHighlightColor: "transparent", ...(selected ? { backgroundColor: "rgba(212,168,67,0.10)" } : {}) }}>
+                            <span>
+                              <span className={`opacity-50 ${selected ? "text-primary" : "text-muted-foreground"}`}>{slot.slice(0, 2)}</span>
+                              <span className="font-bold" style={{ color: "hsl(45 90% 50%)" }}>{slot.slice(2, 6)}</span>
+                              <span className={`opacity-50 ${selected ? "text-primary" : "text-muted-foreground"}`}>{slot.slice(6)}</span>
+                            </span>
+                            {selected && (
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-primary flex-shrink-0">
+                                <polyline points="20 6 9 17 4 12"/>
+                              </svg>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+              {isFiltered && <div className="w-px h-5" style={{ backgroundColor: "rgba(212,168,67,0.3)" }} />}
+              {isFiltered && (
+                <button onClick={resetFilters} title="Reset all filters"
+                  className="filter-btn flex items-center gap-1 text-muted-foreground hover:text-destructive hover:border-destructive/50 flex-shrink-0">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+                  </svg>
+                  <span className="hidden sm:inline">Reset</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Desktop: mevcut flex layout */}
+          <div className="hidden sm:flex sm:flex-wrap sm:items-center sm:gap-2 mb-2">
             {/* Category filters — all same toggle logic */}
             <div className="flex items-center gap-1">
               {ALL_CATS.map((cat) => {
                 const isActive = activeCats.has(cat);
                 return (
                   <button key={cat} onClick={() => toggleCat(cat)}
-                    className="px-2 py-0.5 rounded text-xs font-mono border transition-colors"
+                    className="filter-btn"
                     style={isActive ? {
                       borderColor: CATEGORY_COLOR[cat] + "99",
                       color: CATEGORY_COLOR[cat],
                       backgroundColor: CATEGORY_COLOR[cat] + "18",
-                    } : { borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
+                    } : undefined}>
                     {cat}
                   </button>
                 );
               })}
-              {/* CRIT — same toggle logic: active = crit shown, inactive = crit hidden */}
               <button onClick={toggleCritFilter}
-                className="px-2 py-0.5 rounded text-xs font-mono border transition-colors"
+                className="filter-btn"
                 style={critActive ? {
                   borderColor: "#ef444499", color: "#ef4444", backgroundColor: "#ef444418",
-                } : { borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
+                } : undefined}>
                 CRIT
               </button>
             </div>
             <span className="text-border text-xs font-mono">|</span>
 
-            {/* DOM/INT */}
-            <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
-              {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
-                <button key={f} onClick={() => setRouteFilter(f)}
-                  className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors ${routeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-                  {f}
-                </button>
-              ))}
-            </div>
-            <span className="text-border text-xs font-mono">|</span>
+            {isIstanbul && (
+              <>
+                {/* ALL/DOM/INT grubu — çerçeve içinde */}
+                <div className="filter-group">
+                  {(["ALL", "DOM", "INT"] as RouteFilter[]).map((f) => (
+                    <button key={f} onClick={() => setRouteFilter(f)}
+                      className="filter-btn"
+                      style={routeFilter === f ? { borderColor: "rgba(212,168,67,0.6)", color: "#d4a843", backgroundColor: "rgba(212,168,67,0.12)" } : {}}>
+                      {f}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-border text-xs font-mono">|</span>
+              </>
+            )}
 
-            {/* Sort */}
-            <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
+            {/* Sort grubu */}
+            <div className="filter-group">
               {SORT_OPTIONS.map((s) => (
                 <button key={s.value} onClick={() => setSortMode(s.value)}
-                  className={`px-2.5 py-1 rounded text-xs font-mono transition-colors ${sortMode === s.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                  className="filter-btn"
+                  style={sortMode === s.value ? {
+                    borderColor: "rgba(212, 168, 67, 0.6)",
+                    color: "#d4a843",
+                    backgroundColor: "rgba(212, 168, 67, 0.12)",
+                  } : undefined}>
                   {s.label}
                 </button>
               ))}
             </div>
-            <span className="text-border text-xs font-mono">|</span>
 
-            {/* View */}
-            <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
+            <div className="w-px h-5 bg-border mx-1" />
+
+            {/* View grubu */}
+            <div className="filter-group">
               {VIEW_OPTIONS.map((v) => (
                 <button key={v.value} onClick={() => { setView(v.value); setTimeFilters([]); }}
-                  className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors ${view === v.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                  className="filter-btn"
+                  style={view === v.value ? {
+                    borderColor: "rgba(212, 168, 67, 0.6)",
+                    color: "#d4a843",
+                    backgroundColor: "rgba(212, 168, 67, 0.12)",
+                  } : undefined}>
                   {v.label}
                 </button>
               ))}
             </div>
             <span className="text-border text-xs font-mono">|</span>
 
-            {/* TIME multi-select */}
             {!weatherLoading && allTimeSlots.length > 0 && (
               <div className="relative" ref={timeRef}>
                 <button onClick={() => setTimeOpen((o) => !o)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-medium border transition-colors ${timeFilters.length > 0 ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"}`}>
+                  className={`filter-btn flex items-center gap-1.5 ${timeFilters.length > 0 ? "border-primary text-primary bg-primary/10" : ""}`}>
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                   </svg>
-                  TIME
+                  <span>Timestamp</span>
                   {timeFilters.length > 0 && (
                     <span className="bg-primary text-primary-foreground rounded-full text-[9px] font-bold px-1 leading-tight">{timeFilters.length}</span>
                   )}
@@ -461,9 +818,10 @@ export default function Dashboard() {
                   </svg>
                 </button>
                 {timeOpen && (
-                  <div className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-lg min-w-[150px] overflow-hidden">
+                  <div onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} className="absolute left-0 top-full mt-1 z-[60] bg-card border border-border rounded-lg shadow-lg min-w-[150px] overflow-hidden" style={{ pointerEvents: "auto" }}>
                     {timeFilters.length > 0 && (
-                      <button onClick={() => setTimeFilters([])}
+                      <button onClick={(e) => { e.stopPropagation(); setTimeFilters([]); }}
+                        onTouchEnd={(e) => { e.stopPropagation(); setTimeFilters([]); }}
                         className="w-full text-left px-3 py-2 text-xs font-mono text-muted-foreground hover:bg-muted hover:text-foreground transition-colors border-b border-border/50">
                         Clear selection
                       </button>
@@ -471,7 +829,8 @@ export default function Dashboard() {
                     {allTimeSlots.map((slot) => {
                       const selected = timeFilters.includes(slot);
                       return (
-                        <button key={slot} onClick={() => toggleTimeSlot(slot)}
+                        <button key={slot} onClick={(e) => { e.stopPropagation(); toggleTimeSlot(slot); }}
+                          onTouchEnd={(e) => { e.stopPropagation(); toggleTimeSlot(slot); }}
                           className={`w-full text-left px-3 py-2 text-xs font-mono tabular-nums flex items-center justify-between gap-3 transition-colors ${selected ? "bg-primary/10" : "hover:bg-muted"}`}>
                           <span>
                             <span className={`opacity-50 ${selected ? "text-primary" : "text-muted-foreground"}`}>{slot.slice(0, 2)}</span>
@@ -491,9 +850,10 @@ export default function Dashboard() {
               </div>
             )}
 
+            {isFiltered && <div className="w-px h-5" style={{ backgroundColor: "rgba(212,168,67,0.3)" }} />}
             {isFiltered && (
               <button onClick={resetFilters} title="Reset all filters"
-                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-mono text-muted-foreground hover:text-destructive border border-border hover:border-destructive/50 transition-colors">
+                className="filter-btn flex items-center gap-1 text-muted-foreground hover:text-destructive hover:border-destructive/50">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
                 </svg>
@@ -501,62 +861,116 @@ export default function Dashboard() {
               </button>
             )}
 
-            <span className="text-muted-foreground text-xs font-mono ml-auto">
+          </div>
+
+
+          {/* ICAO search — sticky on mobile */}
+          <div className="sticky top-12 z-30 bg-background py-2 mb-2 sm:mb-3 -mx-3 px-3 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:z-auto">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="relative flex-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                  className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Filter — e.g. LTFH,LTAC"
+                  value={icaoSearch}
+                  onChange={(e) => setIcaoSearch(e.target.value.toUpperCase().replace(/[^A-Z0-9,\s]/g, ""))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && icaoSearch === "TEST3411TEST55") {
+                      window.dispatchEvent(new CustomEvent("test-toggle"));
+                      setIcaoSearch("");
+                    }
+                  }}
+                  className={`w-full h-[30px] sm:h-[34px] pl-7 sm:pl-8 pr-6 sm:pr-7 rounded-lg text-[10px] sm:text-xs font-mono border bg-card transition-colors focus:outline-none focus:border-primary ${icaoSearch ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
+                />
+                {icaoSearch && (
+                  <button onClick={() => setIcaoSearch("")}
+                    className="absolute right-2 sm:right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors text-sm leading-none">×</button>
+                )}
+              </div>
+              {/* REFRESH — icon on mobile, text on desktop */}
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                title="Refresh weather data"
+                className="filter-btn flex items-center gap-1 sm:gap-1.5 font-bold disabled:opacity-50 flex-shrink-0 transition-all"
+                style={{ borderColor: "#38BDF840", color: "#38BDF8", backgroundColor: "#38BDF810" }}
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={isRefreshing ? "animate-spin" : ""}>
+                  <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                  <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                </svg>
+                <span className="hidden sm:inline">{isRefreshing ? "..." : "REFRESH"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Airport count — right-aligned between search and cards */}
+          <div className="flex justify-end mb-2 sm:mb-3">
+            <span className="text-muted-foreground text-[10px] sm:text-xs font-mono">
               {weatherLoading ? "loading..." : `${displayed.length} airports`}
             </span>
           </div>
 
-          {/* ICAO search + REFRESH (same height) */}
-          <div className="flex items-center gap-2 mb-3">
-            <div className="relative flex-1">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <input
-                type="text"
-                placeholder="Filter airports — e.g. LTFH,LTAC,LTFJ or LTFH LTAC LTFJ"
-                value={icaoSearch}
-                onChange={(e) => setIcaoSearch(e.target.value.toUpperCase().replace(/[^A-Z0-9,\s]/g, ""))}
-                className={`w-full h-[34px] pl-8 pr-7 rounded-lg text-xs font-mono border bg-card transition-colors focus:outline-none focus:border-primary ${icaoSearch ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
-              />
-              {icaoSearch && (
-                <button onClick={() => setIcaoSearch("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors text-sm leading-none">×</button>
-              )}
-            </div>
-            <button
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              title="Refresh weather data"
-              className="h-[34px] flex items-center gap-1.5 px-3 rounded-lg text-[11px] font-mono font-bold border transition-all disabled:opacity-50 flex-shrink-0"
-              style={{ borderColor: "#38BDF840", color: "#38BDF8", backgroundColor: "#38BDF810" }}
-            >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={isRefreshing ? "animate-spin" : ""}>
-                <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
-                <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-              </svg>
-              {isRefreshing ? "..." : "REFRESH"}
-            </button>
-          </div>
-
           {weatherLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {[...Array(6)].map((_, i) => <div key={i} className="h-40 rounded-lg bg-card animate-pulse border border-border" />)}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-4">
+              {[...Array(6)].map((_, i) => <div key={i} className="h-32 sm:h-40 rounded-lg bg-card animate-pulse border border-border" />)}
             </div>
           ) : displayed.length === 0 ? (
-            <div className="bg-card border border-border rounded-lg p-12 text-center">
-              <p className="text-muted-foreground font-mono text-sm">No airports match current filters</p>
+            <div className="bg-card border border-border rounded-lg p-6 sm:p-12 text-center">
+              <p className="text-muted-foreground font-mono text-xs sm:text-sm">No airports match current filters</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {displayed.map((a) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-4">
+              {displayed.slice(0, 2).map((a) => (
+                <WeatherCard key={a.icao} icao={a.icao} rawTaf={a.rawTaf} rawMetar={a.rawMetar} parsed={a.parsed} view={view} />
+              ))}
+              {/* Sponsor — 2. ve 3. kart arasında */}
+              <AdSlot
+                slot="monitor-infeed"
+                sponsor={{
+                  name: "AERO-SENTINEL",
+                  url: "#",
+                  description: "Premium aviation weather monitoring",
+                }}
+              />
+              {displayed.slice(2, 5).map((a) => (
+                <WeatherCard key={a.icao} icao={a.icao} rawTaf={a.rawTaf} rawMetar={a.rawMetar} parsed={a.parsed} view={view} />
+              ))}
+              {/* Sponsor — 5. ve 6. kart arasında */}
+              {displayed.length > 5 && (
+                <AdSlot
+                  slot="monitor-infeed"
+                  sponsor={{
+                    name: "AERO-SENTINEL",
+                    url: "#",
+                    description: "Premium aviation weather monitoring",
+                  }}
+                />
+              )}
+              {displayed.slice(5).map((a) => (
                 <WeatherCard key={a.icao} icao={a.icao} rawTaf={a.rawTaf} rawMetar={a.rawMetar} parsed={a.parsed} view={view} />
               ))}
             </div>
           )}
         </section>
       </main>
+
+      {/* FAB — mobile only */}
+      <div className="fixed bottom-20 right-4 z-40 sm:hidden">
+        <button
+          onClick={() => setWatchlistSheetOpen(true)}
+          className="w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+          style={{ boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+      </div>
+
       <Footer />
     </div>
   );
@@ -617,7 +1031,10 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
       <div className="flex-1 min-w-0">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/60">
-          <span className="font-mono font-bold text-base tracking-wider">{icao}</span>
+          <span className="font-mono font-bold text-xs sm:text-sm tracking-wider inline-flex items-center gap-1.5">
+            {icao}
+            <IataBadge icao={icao} />
+          </span>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
             {/* Single category badge — worst in BOTH mode */}
             {view === "TAF" && rawTaf && tafWorst && (
@@ -663,9 +1080,9 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
 
         {/* TAF section */}
         {(view === "TAF" || view === "BOTH") && (
-          <div className="px-3 py-3">
+          <div className="px-3 py-2.5">
             {rawTaf ? (
-              <div className="max-h-36 overflow-y-auto"><TafText raw={rawTaf} /></div>
+              <div className="sm:max-h-36 overflow-hidden sm:overflow-y-auto"><TafText raw={rawTaf} /></div>
             ) : (
               <p className="text-xs font-mono text-muted-foreground italic">Awaiting TAF data...</p>
             )}
@@ -674,8 +1091,8 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
 
         {/* METAR section */}
         {(view === "METAR" || view === "BOTH") && (
-          <div className={`px-3 py-3 ${view === "BOTH" ? "border-t border-border/60 bg-background/30" : ""}`}>
-            {rawMetar ? <ColoredRawText raw={rawMetar} /> : <p className="text-xs font-mono text-muted-foreground italic">Awaiting METAR...</p>}
+          <div className={`px-3 py-2.5 ${view === "BOTH" ? "border-t border-border/60 bg-background/30" : ""}`}>
+            {rawMetar ? <div><ColoredRawText raw={rawMetar} /></div> : <p className="text-xs font-mono text-muted-foreground italic">Awaiting METAR...</p>}
           </div>
         )}
       </div>

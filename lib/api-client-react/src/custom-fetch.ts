@@ -322,6 +322,16 @@ async function parseSuccessBody(
   }
 }
 
+function getDeviceId(): string {
+  if (typeof localStorage === "undefined") return "legacy";
+  let id = localStorage.getItem("aero-device-id");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem("aero-device-id", id);
+  }
+  return id;
+}
+
 export async function customFetch<T = unknown>(
   input: RequestInfo | URL,
   options: CustomFetchOptions = {},
@@ -356,6 +366,10 @@ export async function customFetch<T = unknown>(
     if (token) {
       headers.set("authorization", `Bearer ${token}`);
     }
+  }
+
+  if (!headers.has("x-device-id")) {
+    headers.set("x-device-id", getDeviceId());
   }
 
   const requestInfo = { method, url: resolveUrl(input) };

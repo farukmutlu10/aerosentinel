@@ -1,21 +1,72 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-24QTMD5Q4S"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-24QTMD5Q4S');
+</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2662411656601000"
+     crossorigin="anonymous"></script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <title>AERO-SENTINEL</title>
-    <meta name="description" content="AERO-SENTINEL — built on Replit. Update this description to reflect the app." />
-    <meta name="robots" content="index, follow" />
-    <meta property="og:title" content="AERO-SENTINEL" />
-    <meta property="og:description" content="AERO-SENTINEL — built on Replit. Update this description to reflect the app." />
+    <title>AERO-SENTINEL — Real-Time Aviation Weather Monitoring, TAF/METAR Alerts & Flight Analysis</title>
+    <meta name="description" content="AERO-SENTINEL is a professional-grade aviation weather monitoring platform providing real-time TAF, METAR, and SPECI alerts for pilots, dispatchers, and aviation professionals. Track weather conditions across global airports, set personalized watchlists, and receive instant notifications for critical wind shear, turbulence, and visibility changes. Free for all aviation enthusiasts." />
+    <meta name="keywords" content="aviation weather, TAF, METAR, SPECI, flight analysis, airport weather, aviation monitoring, pilot tools, ICAO weather, aviation alerts, wind shear alert, turbulence monitor, visibility tracker, weather dispatcher, flight planning, aviation safety, real-time weather, aviation dashboard" />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+    <meta name="author" content="AERO-SENTINEL" />
+    <meta property="og:title" content="AERO-SENTINEL — Real-Time Aviation Weather Monitoring & TAF/METAR Alerts" />
+    <meta property="og:description" content="Professional aviation weather monitoring platform with real-time TAF/METAR tracking, SPECI alerts, flight analysis, and personalized watchlists. Built for pilots and aviation professionals." />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://preview.aerosentinel.pages.dev" />
+    <meta property="og:image" content="/opengraph.jpg" />
+    <meta property="og:site_name" content="AERO-SENTINEL" />
+    <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="AERO-SENTINEL" />
-    <meta name="twitter:description" content="AERO-SENTINEL — built on Replit. Update this description to reflect the app." />
+    <meta name="twitter:title" content="AERO-SENTINEL — Real-Time Aviation Weather Monitoring & Alerts" />
+    <meta name="twitter:description" content="Professional aviation weather platform: real-time TAF/METAR tracking, SPECI alerts, flight analysis, and watchlist management for pilots and dispatchers." />
+    <link rel="canonical" href="https://preview.aerosentinel.pages.dev" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "AERO-SENTINEL",
+      "url": "https://preview.aerosentinel.pages.dev",
+      "description": "Professional aviation weather monitoring platform providing real-time TAF, METAR, and SPECI alerts for pilots, dispatchers, and aviation professionals.",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "Real-time TAF/METAR monitoring",
+        "SPECI and weather change alerts",
+        "Flight analysis tools",
+        "Personalized airport watchlists",
+        "Global airport weather data",
+        "PWA support for kiosk mode"
+      ]
+    }
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0a0a14" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Google AdSense script -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2662411656601000"
+      crossorigin="anonymous"></script>
+
     <script>
       (function() {
         var t = localStorage.getItem('aero-sentinel-theme') || 'dark';
@@ -26,5 +77,12 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js');
+        });
+      }
+    </script>
   </body>
 </html>

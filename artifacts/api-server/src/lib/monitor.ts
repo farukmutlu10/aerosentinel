@@ -41,12 +41,14 @@ async function fetchJson(url: string): Promise<unknown[]> {
 }
 
 async function refreshIcaoCache(): Promise<string[]> {
-  const rows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
-  if (rows.length === 0) {
-    await db.insert(watchlistTable).values({ icao: "LTFH" }).onConflictDoNothing();
+  // Tüm kullanıcılardaki benzersiz ICAO'lar
+  const allRows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
+  if (allRows.length === 0) {
+    await db.insert(watchlistTable).values({ icao: "LTFH", userId: "legacy" }).onConflictDoNothing();
     cachedIcaos = ["LTFH"];
   } else {
-    cachedIcaos = rows.map((r) => r.icao);
+    const uniqueIcaos = [...new Set(allRows.map(r => r.icao))];
+    cachedIcaos = uniqueIcaos;
   }
   return cachedIcaos;
 }
@@ -54,10 +56,11 @@ async function refreshIcaoCache(): Promise<string[]> {
 async function seedIfEmpty() {
   const rows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
   if (rows.length === 0) {
-    await db.insert(watchlistTable).values({ icao: "LTFH" }).onConflictDoNothing();
+    await db.insert(watchlistTable).values({ icao: "LTFH", userId: "legacy" }).onConflictDoNothing();
     cachedIcaos = ["LTFH"];
   } else {
-    cachedIcaos = rows.map((r) => r.icao);
+    const uniqueIcaos = [...new Set(rows.map(r => r.icao))];
+    cachedIcaos = uniqueIcaos;
   }
 }
 
@@ -69,12 +72,13 @@ async function scanTaf(ids: string) {
     const icao = entry.icaoId;
     const rawTaf = entry.rawTAF ?? "";
     if (!icao) continue;
-    sonGorulenTs[icao] = now; // mark as freshly scanned
+    sonGorulenTs[icao] = now;
     if (sonGorulenTaf[icao] !== rawTaf) {
+      const previousRawText = sonGorulenTaf[icao] ?? null;
       sonGorulenTaf[icao] = rawTaf;
       if (rawTaf.includes("AMD") || rawTaf.includes("COR")) {
         const alertType = rawTaf.includes("AMD") ? "TAF_AMD" : "TAF_COR";
-        await db.insert(alertsTable).values({ type: alertType, icao, rawText: rawTaf });
+        await db.insert(alertsTable).values({ type: alertType, icao, rawText: rawTaf, previousRawText });
       }
     }
   }
@@ -88,11 +92,12 @@ async function scanMetar(ids: string) {
     const icao = entry.icaoId;
     const rawMetar = entry.rawOb ?? "";
     if (!icao) continue;
-    sonGorulenTs[icao] = now; // mark as freshly scanned
+    sonGorulenTs[icao] = now;
     if (sonGorulenMetar[icao] !== rawMetar) {
+      const previousRawText = sonGorulenMetar[icao] ?? null;
       sonGorulenMetar[icao] = rawMetar;
       if (rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ")) {
-        await db.insert(alertsTable).values({ type: "SPECI", icao, rawText: rawMetar });
+        await db.insert(alertsTable).values({ type: "SPECI", icao, rawText: rawMetar, previousRawText });
       }
     }
   }

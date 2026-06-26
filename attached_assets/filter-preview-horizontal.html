@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>AeroSentinel — Filter Preview: Horizontal Pill Bar (iOS Settings)</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  :root {
+    --bg: #0a0a14;
+    --card: #12121e;
+    --card-border: #1e1e30;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --accent: #6366f1;
+    --vfr: #4ade80;
+    --mvfr: #3b82f6;
+    --ifr: #f97316;
+    --lifr: #ef4444;
+    --crit: #dc2626;
+    --font: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Inter', monospace;
+    --radius: 12px;
+    --transition: 0.2s ease;
+  }
+
+  body {
+    font-family: var(--font);
+    background: #000;
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 20px 0;
+  }
+
+  .phone-frame {
+    width: 100%;
+    max-width: 390px;
+    min-height: 844px;
+    background: var(--bg);
+    border-radius: 40px;
+    border: 3px solid #2a2a3a;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 0 60px rgba(99, 102, 241, 0.1), 0 0 120px rgba(0,0,0,0.5);
+  }
+
+  .dynamic-island {
+    width: 126px;
+    height: 36px;
+    background: #000;
+    border-radius: 20px;
+    margin: 10px auto 0;
+    position: relative;
+    z-index: 10;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 20px 12px;
+  }
+  .header-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header-logo .logo-icon {
+    width: 28px;
+    height: 28px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+  .header-logo .logo-text {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text);
+  }
+  .header-logo .logo-text span { color: var(--accent); }
+  .header-gear {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform var(--transition);
+    font-size: 16px;
+  }
+  .header-gear:hover { transform: rotate(45deg); }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 8px 20px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+  }
+  .status-bar .live {
+    color: var(--vfr);
+  }
+  .status-bar .live::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--vfr);
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 4px;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .status-bar .sep {
+    width: 3px;
+    height: 3px;
+    background: var(--card-border);
+    border-radius: 50%;
+  }
+
+  /* Search Bar */
+  .search-container {
+    padding: 0 20px 12px;
+    display: flex;
+    gap: 8px;
+  }
+  .search-bar {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 14px;
+    color: var(--text);
+    font-family: var(--font);
+    outline: none;
+    transition: border-color var(--transition);
+  }
+  .search-bar::placeholder { color: var(--text-dim); }
+  .search-bar:focus { border-color: var(--accent); }
+  .refresh-btn {
+    width: 40px;
+    height: 40px;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 18px;
+    transition: all var(--transition);
+  }
+  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .refresh-btn:active { transform: rotate(180deg); }
+
+  /* Horizontal Pill Scroll Container */
+  .pill-scroll-section {
+    padding: 0 0 4px 20px;
+    margin-bottom: 4px;
+  }
+  .pill-scroll-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    padding-right: 20px;
+  }
+  .pill-scroll {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-right: 20px;
+    padding-bottom: 6px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .pill-scroll::-webkit-scrollbar { display: none; }
+
+  /* iOS-style pill: outline = inactive, filled = active */
+  .h-pill {
+    flex-shrink: 0;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1.5px solid;
+    transition: all var(--transition);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    white-space: nowrap;
+  }
+
+  /* Category pills with color variants */
+  .h-pill[data-cat="VFR"]   { border-color: var(--vfr); color: var(--vfr); }
+  .h-pill[data-cat="MVFR"]  { border-color: var(--mvfr); color: var(--mvfr); }
+  .h-pill[data-cat="IFR"]   { border-color: var(--ifr); color: var(--ifr); }
+  .h-pill[data-cat="LIFR"]  { border-color: var(--lifr); color: var(--lifr); }
+  .h-pill[data-cat="CRIT"]  { border-color: var(--crit); color: var(--crit); }
+
+  .h-pill.active[data-cat="VFR"]   { background: var(--vfr); color: #0a0a14; border-color: var(--vfr); }
+  .h-pill.active[data-cat="MVFR"]  { background: var(--mvfr); color: #fff; border-color: var(--mvfr); }
+  .h-pill.active[data-cat="IFR"]   { background: var(--ifr); color: #0a0a14; border-color: var(--ifr); }
+  .h-pill.active[data-cat="LIFR"]  { background: var(--lifr); color: #fff; border-color: var(--lifr); }
+  .h-pill.active[data-cat="CRIT"]  { background: var(--crit); color: #fff; border-color: var(--crit); }
+
+  /* Neutral pills for sort/view */
+  .h-pill[data-neutral] {
+    border-color: var(--card-border);
+    color: var(--text-dim);
+    background: var(--card);
+  }
+  .h-pill[data-neutral].active {
+    border-color: var(--accent);
+    color: #fff;
+    background: var(--accent);
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--card-border);
+    margin: 6px 20px 12px;
+  }
+
+  /* iOS Settings-style Group */
+  .settings-group {
+    margin: 0 20px 12px;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .settings-group-title {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    padding: 10px 16px 6px;
+  }
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--card-border);
+    transition: background var(--transition);
+    cursor: pointer;
+  }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-row:hover { background: rgba(99, 102, 241, 0.05); }
+  .settings-row .label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .settings-row .value {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .settings-row .chevron {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-left: 4px;
+  }
+
+  /* Active category indicator */
+  .active-filters {
+    display: flex;
+    gap: 6px;
+    padding: 0 20px 10px;
+    flex-wrap: wrap;
+  }
+  .active-chip {
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    animation: fadeIn 0.2s ease;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .active-chip[data-c="VFR"]  { background: rgba(74,222,128,0.15); color: var(--vfr); }
+  .active-chip[data-c="MVFR"] { background: rgba(59,130,246,0.15); color: var(--mvfr); }
+  .active-chip[data-c="IFR"]  { background: rgba(249,115,22,0.15); color: var(--ifr); }
+  .active-chip[data-c="LIFR"] { background: rgba(239,68,68,0.15); color: var(--lifr); }
+  .active-chip[data-c="CRIT"] { background: rgba(220,38,38,0.15); color: var(--crit); }
+
+  /* Watchlist Header */
+  .watchlist-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 20px 10px;
+  }
+  .watchlist-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .watchlist-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    background: var(--card);
+    padding: 3px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--card-border);
+  }
+
+  /* Airport Cards */
+  .airport-card {
+    margin: 0 20px 10px;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    transition: all var(--transition);
+    cursor: pointer;
+  }
+  .airport-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .airport-card:active { transform: scale(0.98); }
+  .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .card-icao {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 1px;
+  }
+  .card-cat {
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .card-cat.VFR   { background: rgba(74,222,128,0.15); color: var(--vfr); }
+  .card-cat.MVFR  { background: rgba(59,130,246,0.15); color: var(--mvfr); }
+  .card-cat.IFR   { background: rgba(249,115,22,0.15); color: var(--ifr); }
+  .card-cat.LIFR  { background: rgba(239,68,68,0.15); color: var(--lifr); }
+  .card-details {
+    display: flex;
+    gap: 16px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .card-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .card-detail-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .card-detail-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--card-border);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  /* Bottom Nav */
+  .bottom-nav {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 12px 20px 30px;
+    background: linear-gradient(to top, var(--bg) 70%, transparent);
+    border-top: 1px solid var(--card-border);
+  }
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: color var(--transition);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .nav-item.active { color: var(--accent); }
+  .nav-item .nav-icon { font-size: 20px; }
+
+  .preview-label {
+    text-align: center;
+    padding: 16px;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+  .preview-label strong {
+    display: block;
+    font-size: 14px;
+    color: var(--text);
+    margin-bottom: 4px;
+    letter-spacing: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="preview-label" style="position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:100;background:rgba(10,10,20,0.9);border:1px solid #1e1e30;border-radius:12px;padding:10px 20px;">
+  <strong>HORIZONTAL PILL BAR</strong>
+  iOS Settings — Scrollable Pills
+</div>
+
+<div class="phone-frame" style="margin-top:60px;">
+  <div class="dynamic-island"></div>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-logo">
+      <div class="logo-icon">✈</div>
+      <div class="logo-text">AERO<span>SENTINEL</span></div>
+    </div>
+    <div class="header-gear">⚙</div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span>MONITOR</span>
+    <span class="sep"></span>
+    <span class="live">LIVE</span>
+    <span class="sep"></span>
+    <span>SCANS 123</span>
+    <span class="sep"></span>
+    <span>17:35 UTC</span>
+  </div>
+
+  <!-- Search + Refresh -->
+  <div class="search-container">
+    <input type="text" class="search-bar" placeholder="🔍 Search airport, ICAO, IATA...">
+    <div class="refresh-btn">⟳</div>
+  </div>
+
+  <!-- Category Horizontal Pills -->
+  <div class="pill-scroll-section">
+    <div class="pill-scroll-label">CATEGORY</div>
+    <div class="pill-scroll" id="hCatPills">
+      <div class="h-pill active" data-cat="VFR" onclick="toggleHPill(this)">VFR</div>
+      <div class="h-pill active" data-cat="MVFR" onclick="toggleHPill(this)">MVFR</div>
+      <div class="h-pill active" data-cat="IFR" onclick="toggleHPill(this)">IFR</div>
+      <div class="h-pill active" data-cat="LIFR" onclick="toggleHPill(this)">LIFR</div>
+      <div class="h-pill active" data-cat="CRIT" onclick="toggleHPill(this)">CRIT</div>
+    </div>
+  </div>
+
+  <!-- Sort Row -->
+  <div class="pill-scroll-section">
+    <div class="pill-scroll-label">SORT</div>
+    <div class="pill-scroll" id="hSortPills">
+      <div class="h-pill active" data-neutral onclick="selectHPill(this, 'hSortPills')">A-Z</div>
+      <div class="h-pill" data-neutral onclick="selectHPill(this, 'hSortPills')">Worst First</div>
+      <div class="h-pill" data-neutral onclick="selectHPill(this, 'hSortPills')">Best First</div>
+    </div>
+  </div>
+
+  <!-- View Row -->
+  <div class="pill-scroll-section">
+    <div class="pill-scroll-label">VIEW</div>
+    <div class="pill-scroll" id="hViewPills">
+      <div class="h-pill" data-neutral onclick="selectHPill(this, 'hViewPills')">TAF</div>
+      <div class="h-pill" data-neutral onclick="selectHPill(this, 'hViewPills')">METAR</div>
+      <div class="h-pill active" data-neutral onclick="selectHPill(this, 'hViewPills')">Both</div>
+    </div>
+  </div>
+
+  <!-- Active Filters Summary -->
+  <div class="active-filters" id="activeChips">
+    <div class="active-chip" data-c="VFR">● VFR</div>
+    <div class="active-chip" data-c="MVFR">● MVFR</div>
+    <div class="active-chip" data-c="IFR">● IFR</div>
+    <div class="active-chip" data-c="LIFR">● LIFR</div>
+    <div class="active-chip" data-c="CRIT">● CRIT</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Watchlist Header -->
+  <div class="watchlist-header">
+    <div class="watchlist-title">⭐ WATCHED AIRPORTS</div>
+    <div class="watchlist-count">3</div>
+  </div>
+
+  <!-- Airport Cards -->
+  <div id="cardList">
+    <div class="airport-card" data-cat="VFR" data-icao="LTFH">
+      <div class="card-top">
+        <div class="card-icao">LTFH</div>
+        <div class="card-cat VFR">VFR</div>
+      </div>
+      <div class="card-details">
+        <div class="card-detail">
+          <div class="card-detail-label">METAR</div>
+          <div class="card-detail-value">CLR 10SM</div>
+        </div>
+        <div class="card-detail">
+          <div class="card-detail-label">WIND</div>
+          <div class="card-detail-value">270/08KT</div>
+        </div>
+        <div class="card-detail">
+          <div class="card-detail-label">TEMP</div>
+          <div class="card-detail-value">24°C</div>
+        </div>
+      </div>
+      <div class="card-meta">
+        <div>🟢 Samsun</div>
+        <span>2 min ago</span>
+      </div>
+    </div>
+
+    <div class="airport-card" data-cat="MVFR" data-icao="LTFJ">
+      <div class="card-top">
+        <div class="card-icao">LTFJ</div>
+        <div class="card-cat MVFR">MVFR</div>
+      </div>
+      <div class="card-details">
+        <div class="card-detail">
+          <div class="card-detail-label">METAR</div>
+          <div class="card-detail-value">BKN025</div>
+        </div>
+        <div class="card-detail">
+          <div class="card-detail-label">WIND</div>
+          <div class="card-detail-value">180/12KT</div>
+        </div>
+        <div class="card-detail">
+          <div class="card-detail-label">TEMP</div>
+          <div class="card-detail-value">19°C</div>
+        </div>
+      </div>
+      <div class="card-meta">
+        <div>🔵 İstanbul SAW</div>
+        <span>5 min ago</span>
+      </div>
+    </div>
+
+    <div class="airport-card" data-cat="VFR" data-icao="LTBA">
+      <div class="card-top">
+        <div class="card-icao">LTBA</div>
+        <div class="card-cat VFR">VFR</div>
+      </div>
+      <div class="card-details">
+        <div class="card-detail">
+          <div class="card-detail-label">METAR</div>
+          <div class="card-detail-value">FEW040</div>
+        </div>
+        <div class="card-detail">
+          <div class="card-detail-label">WIND</div>
+          <div class="card-detail-value">240/06KT</div>
+        </div>
+        <div class="card-detail">
+          <div class="card-detail-label">TEMP</div>
+          <div class="card-detail-value">22°C</div>
+        </div>
+      </div>
+      <div class="card-meta">
+        <div>🟢 İstanbul IST</div>
+        <span>1 min ago</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="height:80px"></div>
+
+  <!-- Bottom Nav -->
+  <div class="bottom-nav">
+    <div class="nav-item active">
+      <div class="nav-icon">📡</div>
+      MONITOR
+    </div>
+    <div class="nav-item">
+      <div class="nav-icon">🔔</div>
+      ALERTS
+    </div>
+    <div class="nav-item">
+      <div class="nav-icon">📊</div>
+      ANALYZE
+    </div>
+  </div>
+</div>
+
+<script>
+  function toggleHPill(el) {
+    el.classList.toggle('active');
+    updateChips();
+  }
+
+  function selectHPill(el, groupId) {
+    const group = document.getElementById(groupId);
+    group.querySelectorAll('.h-pill').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  function updateChips() {
+    const container = document.getElementById('activeChips');
+    const activePills = document.querySelectorAll('#hCatPills .h-pill.active');
+    container.innerHTML = '';
+    activePills.forEach(p => {
+      const chip = document.createElement('div');
+      chip.className = 'active-chip';
+      chip.dataset.c = p.dataset.cat;
+      chip.textContent = '● ' + p.dataset.cat;
+      container.appendChild(chip);
+    });
+  }
+
+  // Bottom nav toggle
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', function() {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      this.classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

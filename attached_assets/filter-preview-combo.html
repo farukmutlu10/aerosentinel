@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>AeroSentinel — Filter Preview: Combo (Pill Tabs + Segmented)</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  :root {
+    --bg: #0a0a14;
+    --card: #12121e;
+    --card-border: #1e1e30;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --accent: #6366f1;
+    --vfr: #4ade80;
+    --mvfr: #3b82f6;
+    --ifr: #f97316;
+    --lifr: #ef4444;
+    --crit: #dc2626;
+    --font: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Inter', monospace;
+    --radius: 12px;
+    --transition: 0.2s ease;
+  }
+
+  body {
+    font-family: var(--font);
+    background: #000;
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 20px 0;
+  }
+
+  .phone-frame {
+    width: 100%;
+    max-width: 390px;
+    min-height: 844px;
+    background: var(--bg);
+    border-radius: 40px;
+    border: 3px solid #2a2a3a;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 0 60px rgba(99, 102, 241, 0.1), 0 0 120px rgba(0,0,0,0.5);
+  }
+
+  /* Dynamic Island */
+  .dynamic-island {
+    width: 126px;
+    height: 36px;
+    background: #000;
+    border-radius: 20px;
+    margin: 10px auto 0;
+    position: relative;
+    z-index: 10;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 20px 12px;
+  }
+  .header-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header-logo .logo-icon {
+    width: 28px;
+    height: 28px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+  .header-logo .logo-text {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text);
+  }
+  .header-logo .logo-text span {
+    color: var(--accent);
+  }
+  .header-gear {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform var(--transition);
+    font-size: 16px;
+  }
+  .header-gear:hover { transform: rotate(45deg); }
+
+  /* Status Bar */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 8px 20px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+  }
+  .status-bar .live {
+    color: var(--vfr);
+    position: relative;
+  }
+  .status-bar .live::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--vfr);
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 4px;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .status-bar .sep {
+    width: 3px;
+    height: 3px;
+    background: var(--card-border);
+    border-radius: 50%;
+  }
+
+  /* Search Bar */
+  .search-container {
+    padding: 0 20px 10px;
+    display: flex;
+    gap: 8px;
+  }
+  .search-bar {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 14px;
+    color: var(--text);
+    font-family: var(--font);
+    outline: none;
+    transition: border-color var(--transition);
+  }
+  .search-bar::placeholder { color: var(--text-dim); }
+  .search-bar:focus { border-color: var(--accent); }
+  .refresh-btn {
+    width: 40px;
+    height: 40px;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 18px;
+    transition: all var(--transition);
+  }
+  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .refresh-btn:active { transform: rotate(180deg); }
+
+  /* Filter Section */
+  .filter-section {
+    padding: 0 20px 8px;
+  }
+  .filter-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+
+  /* Pill Tabs */
+  .pill-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .pill-tabs::-webkit-scrollbar { display: none; }
+  .pill-tab {
+    flex-shrink: 0;
+    padding: 7px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    transition: all var(--transition);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .pill-tab[data-cat="VFR"]   { border-color: var(--vfr); color: var(--vfr); }
+  .pill-tab[data-cat="MVFR"]  { border-color: var(--mvfr); color: var(--mvfr); }
+  .pill-tab[data-cat="IFR"]   { border-color: var(--ifr); color: var(--ifr); }
+  .pill-tab[data-cat="LIFR"]  { border-color: var(--lifr); color: var(--lifr); }
+  .pill-tab[data-cat="CRIT"]  { border-color: var(--crit); color: var(--crit); }
+
+  .pill-tab.active[data-cat="VFR"]   { background: var(--vfr); color: #0a0a14; }
+  .pill-tab.active[data-cat="MVFR"]  { background: var(--mvfr); color: #fff; }
+  .pill-tab.active[data-cat="IFR"]   { background: var(--ifr); color: #0a0a14; }
+  .pill-tab.active[data-cat="LIFR"]  { background: var(--lifr); color: #fff; }
+  .pill-tab.active[data-cat="CRIT"]  { background: var(--crit); color: #fff; }
+
+  /* Segmented Control */
+  .segmented-row {
+    display: flex;
+    gap: 12px;
+    padding: 0 20px 8px;
+  }
+  .segmented-group {
+    flex: 1;
+  }
+  .segmented-control {
+    display: flex;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 3px;
+    position: relative;
+    overflow: hidden;
+  }
+  .segmented-control .seg-btn {
+    flex: 1;
+    padding: 7px 8px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all var(--transition);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    z-index: 1;
+    position: relative;
+  }
+  .segmented-control .seg-btn.active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  }
+
+  /* Section Divider */
+  .divider {
+    height: 1px;
+    background: var(--card-border);
+    margin: 4px 20px 10px;
+  }
+
+  /* Watchlist Header */
+  .watchlist-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 20px 10px;
+  }
+  .watchlist-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--text);
+  }
+  .watchlist-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    background: var(--card);
+    padding: 3px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--card-border);
+  }
+
+  /* Airport Cards */
+  .airport-card {
+    margin: 0 20px 10px;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    transition: all var(--transition);
+    cursor: pointer;
+  }
+  .airport-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .airport-card:active { transform: scale(0.98); }
+
+  .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .card-icao {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 1px;
+  }
+  .card-cat {
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .card-cat.VFR   { background: rgba(74,222,128,0.15); color: var(--vfr); }
+  .card-cat.MVFR  { background: rgba(59,130,246,0.15); color: var(--mvfr); }
+  .card-cat.IFR   { background: rgba(249,115,22,0.15); color: var(--ifr); }
+  .card-cat.LIFR  { background: rgba(239,68,68,0.15); color: var(--lifr); }
+
+  .card-details {
+    display: flex;
+    gap: 16px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .card-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .card-detail-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .card-detail-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--card-border);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .card-wind {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Bottom Nav */
+  .bottom-nav {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 12px 20px 30px;
+    background: linear-gradient(to top, var(--bg) 70%, transparent);
+    border-top: 1px solid var(--card-border);
+  }
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: color var(--transition);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .nav-item.active { color: var(--accent); }
+  .nav-item .nav-icon { font-size: 20px; }
+
+  /* Preview Label */
+  .preview-label {
+    text-align: center;
+    padding: 16px;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+  .preview-label strong {
+    display: block;
+    font-size: 14px;
+    color: var(--text);
+    margin-bottom: 4px;
+    letter-spacing: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="preview-label" style="position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:100;background:rgba(10,10,20,0.9);border:1px solid #1e1e30;border-radius:12px;padding:10px 20px;">
+  <strong>COMBO FILTER</strong>
+  Pill Tabs + Segmented Control
+</div>
+
+<div class="phone-frame" style="margin-top:60px;">
+  <!-- Dynamic Island -->
+  <div class="dynamic-island"></div>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-logo">
+      <div class="logo-icon">✈</div>
+      <div class="logo-text">AERO<span>SENTINEL</span></div>
+    </div>
+    <div class="header-gear" onclick="this.style.transform='rotate('+(parseInt(this.dataset.angle||0)+90)+'deg)';this.dataset.angle=parseInt(this.dataset.angle||0)+90;">⚙</div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span>MONITOR</span>
+    <span class="sep"></span>
+    <span class="live">LIVE</span>
+    <span class="sep"></span>
+    <span>SCANS 123</span>
+    <span class="sep"></span>
+    <span>17:35 UTC</span>
+  </div>
+
+  <!-- Search Bar + Refresh -->
+  <div class="search-container">
+    <input type="text" class="search-bar" placeholder="🔍 Search airport, ICAO, IATA..." id="searchInput" oninput="filterCards()">
+    <div class="refresh-btn" onclick="this.style.transform='rotate(360deg)';setTimeout(()=>this.style.transform='',400)">⟳</div>
+  </div>
+
+  <!-- Category Pill Tabs -->
+  <div class="filter-section">
+    <div class="filter-label">CATEGORY</div>
+    <div class="pill-tabs" id="categoryPills">
+      <div class="pill-tab active" data-cat="VFR" onclick="togglePill(this)">VFR</div>
+      <div class="pill-tab active" data-cat="MVFR" onclick="togglePill(this)">MVFR</div>
+      <div class="pill-tab active" data-cat="IFR" onclick="togglePill(this)">IFR</div>
+      <div class="pill-tab active" data-cat="LIFR" onclick="togglePill(this)">LIFR</div>
+      <div class="pill-tab active" data-cat="CRIT" onclick="togglePill(this)">CRIT</div>
+    </div>
+  </div>
+
+  <!-- Sort & View Segmented Controls -->
+  <div class="segmented-row">
+    <div class="segmented-group">
+      <div class="filter-label">SORT</div>
+      <div class="segmented-control" id="sortControl">
+        <div class="seg-btn" onclick="setSegment('sortControl', this)">A-Z</div>
+        <div class="seg-btn active" onclick="setSegment('sortControl', this)">Worst</div>
+        <div class="seg-btn" onclick="setSegment('sortControl', this)">Best</div>
+      </div>
+    </div>
+    <div class="segmented-group">
+      <div class="filter-label">VIEW</div>
+      <div class="segmented-control" id="viewControl">
+        <div class="seg-btn" onclick="setSegment('viewControl', this)">TAF</div>
+        <div class="seg-btn" onclick="setSegment('viewControl', this)">METAR</div>
+        <div class="seg-btn active" onclick="setSegment('viewControl', this)">Both</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Watchlist -->
+  <div class="watchlist-header">
+    <div class="watchlist-title">⭐ WATCHED AIRPORTS</div>
+    <div class="watchlist-count">3</div>
+  </div>
+
+  <!-- Airport Cards -->
+  <div id="cardList">
+    <div class="airport-card" data-cat="VFR" data-icao="LTFH">
+      <div class="card-top">
+        <div class="card-icao">LTFH</div>
+        <div class="card-cat VFR">VFR</div>
+      </div>
+      <div class="card-details">
+        <div class="card-detail">
+          <div class="card-detail-label">METAR</div>
+          <div class="card-detail-value">CLR 10SM</div>
+        </div>
+        <div class="card-detail">
+          <div class="card-detail-label">WIND</div>
+          <div class="card-detail-value">270/08KT</div>
+        </div>
+        <div class="card-detail">
+          <div class="card-detail-label">TEMP</div>
+          <div class="card-detail-value">24°C</div>
+        </div>
+      </div>
+      <div class="card-meta">
+        <div class="card-wind">🟢 Samsun</div>
+        <span>2 min ago</span>
+      </div>
+    </div>
+
+    <div class="airport-card" data-cat="MVFR" data-icao="LTFJ">
+      <div class="card-top">
+        <div class="card-icao">LTFJ</div>
+        <div class="card-cat MVFR">MVFR</div>
+      </div>
+      <div class="card-details">
+        <div class="card-detail">
+          <div class="card-detail-label">METAR</div>
+          <div class="card-detail-value">BKN025</div>
+        </div>
+        <div class="card-detail">
+          <div class="card-detail-label">WIND</div>
+          <div class="card-detail-value">180/12KT</div>
+        </div>
+        <div class="card-detail">
+          <div class="card-detail-label">TEMP</div>
+          <div class="card-detail-value">19°C</div>
+        </div>
+      </div>
+      <div class="card-meta">
+        <div class="card-wind">🔵 İstanbul SAW</div>
+        <span>5 min ago</span>
+      </div>
+    </div>
+
+    <div class="airport-card" data-cat="VFR" data-icao="LTBA">
+      <div class="card-top">
+        <div class="card-icao">LTBA</div>
+        <div class="card-cat VFR">VFR</div>
+      </div>
+      <div class="card-details">
+        <div class="card-detail">
+          <div class="card-detail-label">METAR</div>
+          <div class="card-detail-value">FEW040</div>
+        </div>
+        <div class="card-detail">
+          <div class="card-detail-label">WIND</div>
+          <div class="card-detail-value">240/06KT</div>
+        </div>
+        <div class="card-detail">
+          <div class="card-detail-label">TEMP</div>
+          <div class="card-detail-value">22°C</div>
+        </div>
+      </div>
+      <div class="card-meta">
+        <div class="card-wind">🟢 İstanbul IST</div>
+        <span>1 min ago</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="height:80px"></div>
+
+  <!-- Bottom Nav -->
+  <div class="bottom-nav">
+    <div class="nav-item active">
+      <div class="nav-icon">📡</div>
+      MONITOR
+    </div>
+    <div class="nav-item">
+      <div class="nav-icon">🔔</div>
+      ALERTS
+    </div>
+    <div class="nav-item">
+      <div class="nav-icon">📊</div>
+      ANALYZE
+    </div>
+  </div>
+</div>
+
+<script>
+  function togglePill(el) {
+    el.classList.toggle('active');
+    applyFilters();
+  }
+
+  function setSegment(groupId, el) {
+    const group = document.getElementById(groupId);
+    group.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  function applyFilters() {
+    const activeCats = Array.from(document.querySelectorAll('#categoryPills .pill-tab.active'))
+      .map(t => t.dataset.cat);
+    
+    document.querySelectorAll('#cardList .airport-card').forEach(card => {
+      const match = activeCats.includes(card.dataset.cat);
+      card.style.display = match ? '' : 'none';
+      card.style.opacity = match ? '1' : '0';
+    });
+  }
+
+  function filterCards() {
+    const q = document.getElementById('searchInput').value.toUpperCase();
+    document.querySelectorAll('#cardList .airport-card').forEach(card => {
+      const icao = card.dataset.icao;
+      const text = card.textContent.toUpperCase();
+      const match = !q || text.includes(q) || icao.includes(q);
+      card.style.display = match ? '' : 'none';
+    });
+  }
+
+  // Bottom nav toggle
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', function() {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      this.classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, alertsTable, watchlistTable } from "@workspace/db";
-import { eq, and, desc, sql, gte, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, gte, inArray, like } from "drizzle-orm";
 import {
   ListAlertsQueryParams,
   AcknowledgeAlertParams,
@@ -21,7 +21,7 @@ globalThis.__alertsCache ??= new Map<string, CacheEntry>();
 const cache = globalThis.__alertsCache;
 
 const SUMMARY_CACHE_TTL = 60_000;
-const RECENT_CACHE_TTL  = 60_000;
+const RECENT_CACHE_TTL  = 0; // Notification polling için cache kaldırıldı — her poll fresh veri dönsün
 
 function cacheAge(ts: number): string {
   return `${Math.round((Date.now() - ts) / 1000)}s`;
@@ -33,9 +33,14 @@ function startOfTodayUtc(): Date {
   return d;
 }
 
+function getDeviceId(req: Express.Request): string {
+  return (req.headers["x-device-id"] as string) ?? "legacy";
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/alerts", async (req, res) => {
+  const userId = getDeviceId(req);
   const raw = req.query;
   const coerced = {
     ...raw,
@@ -51,13 +56,27 @@ router.get("/alerts", async (req, res) => {
   }
 
   const { type, icao, acknowledged, limit = 50 } = parsed.data;
+  const sinceHours = raw.since_hours ? Number(raw.since_hours) : 6;
   const conditions = [];
   if (type)                       conditions.push(eq(alertsTable.type, type));
   if (icao)                       conditions.push(eq(alertsTable.icao, icao));
   if (acknowledged !== undefined) conditions.push(eq(alertsTable.acknowledged, acknowledged));
+  if (sinceHours > 0) {
+    const since = new Date(Date.now() - sinceHours * 3600_000);
+    conditions.push(gte(alertsTable.detectedAt, since));
+  }
 
   const alerts = await db
-    .select()
+    .select({
+      id: alertsTable.id,
+      type: alertsTable.type,
+      icao: alertsTable.icao,
+      rawText: alertsTable.rawText,
+      previousRawText: alertsTable.previousRawText,
+      detectedAt: alertsTable.detectedAt,
+      acknowledged: alertsTable.acknowledged,
+      acknowledgedAt: alertsTable.acknowledgedAt,
+    })
     .from(alertsTable)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(alertsTable.detectedAt))
@@ -69,9 +88,11 @@ router.get("/alerts", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/alerts/summary", async (req, res) => {
+  const userId = getDeviceId(req);
   const forceRefresh = req.query.refresh === "1";
   const now          = Date.now();
-  const entry        = cache.get("summary");
+  const cacheKey     = `summary_${userId}`;
+  const entry        = cache.get(cacheKey);
 
   if (!forceRefresh && entry && now - entry.ts < SUMMARY_CACHE_TTL) {
     logger.info(
@@ -92,12 +113,12 @@ router.get("/alerts/summary", async (req, res) => {
 
   const today = startOfTodayUtc();
 
-  const watchlistRows  = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
+  const watchlistRows  = await db.select({ icao: watchlistTable.icao }).from(watchlistTable).where(eq(watchlistTable.userId, userId));
   const watchlistIcaos = watchlistRows.map((r) => r.icao);
 
   if (watchlistIcaos.length === 0) {
     const empty = { totalAlerts: 0, unacknowledged: 0, tafRevisions: 0, speciAlerts: 0, airportsAffected: 0, lastScan: null };
-    cache.set("summary", { data: empty, ts: now });
+    cache.set(cacheKey, { data: empty, ts: now });
     return res.json(empty);
   }
 
@@ -126,13 +147,14 @@ router.get("/alerts/summary", async (req, res) => {
     lastScan:         lastScanRow?.detectedAt ?? null,
   };
 
-  cache.set("summary", { data: result, ts: now });
+  cache.set(cacheKey, { data: result, ts: now });
   return res.json(result);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/alerts/recent", async (req, res) => {
+  const userId = getDeviceId(req);
   const forceRefresh = req.query.refresh === "1";
   const page  = Math.max(1, parseInt(String(req.query.page  ?? "1"),  10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "10"), 10) || 10));
@@ -140,7 +162,7 @@ router.get("/alerts/recent", async (req, res) => {
 
   // Cache applies only for the default page=1&limit=10 request (notification hook)
   const canUseCache = !forceRefresh && page === 1 && limit === 10;
-  const cacheKey    = "recent_p1_l10";
+  const cacheKey    = `recent_p1_l10_${userId}`;
   const entry       = canUseCache ? cache.get(cacheKey) : undefined;
 
   if (entry && now - entry.ts < RECENT_CACHE_TTL) {
@@ -167,16 +189,36 @@ router.get("/alerts/recent", async (req, res) => {
   );
 
   const offset = (page - 1) * limit;
+
+  // Filter to user's watchlist ICAOs
+  const userWatchlist = await db
+    .select({ icao: watchlistTable.icao })
+    .from(watchlistTable)
+    .where(eq(watchlistTable.userId, userId));
+  const userIcaos = userWatchlist.map((r) => r.icao);
+
+  if (userIcaos.length === 0) {
+    return res.json([]);
+  }
+
   const alerts = await db
-    .select()
+    .select({
+      id: alertsTable.id,
+      type: alertsTable.type,
+      icao: alertsTable.icao,
+      rawText: alertsTable.rawText,
+      previousRawText: alertsTable.previousRawText,
+      detectedAt: alertsTable.detectedAt,
+      acknowledged: alertsTable.acknowledged,
+      acknowledgedAt: alertsTable.acknowledgedAt,
+    })
     .from(alertsTable)
+    .where(inArray(alertsTable.icao, userIcaos))
     .orderBy(desc(alertsTable.detectedAt))
     .limit(limit)
     .offset(offset);
 
-  if (canUseCache) {
-    cache.set(cacheKey, { data: alerts, ts: now });
-  }
+  // Cache devre dışı (RECENT_CACHE_TTL = 0) — write kaldırıldı
 
   return res.json(alerts);
 });
@@ -214,4 +256,69 @@ router.patch("/alerts/:id/acknowledge", async (req, res) => {
   return res.json(updated);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/alerts/:id/diff", async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+  const rows = await db.select().from(alertsTable).where(eq(alertsTable.id, id)).limit(1);
+  if (rows.length === 0) return res.status(404).json({ error: "Alert not found" });
+
+  const alert = rows[0];
+  return res.json({
+    id: alert.id,
+    type: alert.type,
+    icao: alert.icao,
+    current: alert.rawText,
+    previous: alert.previousRawText,
+    detectedAt: alert.detectedAt,
+  });
+});
+
+// ── Test Alert Endpoints ────────────────────────────────────────────────────
+
+router.post("/alerts/test", async (req, res) => {
+  const userId = getDeviceId(req);
+  // Kullanıcının watchlist'inden rastgele ICAO seç, yoksa UUWW kullan
+  const defaultIcaos = ["UUWW", "ULLI", "LTFJ", "EGSS"];
+  let icao = defaultIcaos[Math.floor(Math.random() * defaultIcaos.length)];
+
+  try {
+    const userWatchlist = await db
+      .select({ icao: watchlistTable.icao })
+      .from(watchlistTable)
+      .where(eq(watchlistTable.userId, userId));
+    if (userWatchlist.length > 0) {
+      icao = userWatchlist[Math.floor(Math.random() * userWatchlist.length)].icao;
+    }
+  } catch {}
+
+  const types = ["SPECI", "TAF_AMD", "TAF_COR"];
+  const type = types[Math.floor(Math.random() * types.length)];
+  const rawText = `TEST ${type} ${icao} ${new Date().toISOString().slice(0, 10).replace(/-/g, "")} Test alert for notification testing`;
+
+  await db.insert(alertsTable).values({ type, icao, rawText, previousRawText: null });
+
+  // Cache invalidation
+  globalThis.__alertsCache?.clear();
+
+  return res.json({ ok: true, type, icao });
+});
+
+router.delete("/alerts/test", async (req, res) => {
+  // POST /alerts/test creates alerts with real ICAOs (from watchlist) but
+  // rawText always starts with "TEST ". Match on rawText instead of ICAO.
+  const deleted = await db
+    .delete(alertsTable)
+    .where(like(alertsTable.rawText, "TEST %"))
+    .returning();
+
+  // Invalidate caches so the UI reflects the deletion immediately
+  globalThis.__alertsCache?.clear();
+
+  return res.json({ ok: true, deleted: deleted.length });
+});
+
 export default router;
+// force redeploy Thu Jun 25 08:06:19 +03 2026
