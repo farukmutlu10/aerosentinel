@@ -853,7 +853,7 @@ export default function Airports() {
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
       <main
-        className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5"
+        className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 pt-5 pb-24 sm:pb-5"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}

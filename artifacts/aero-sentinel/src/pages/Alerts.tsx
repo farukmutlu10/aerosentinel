@@ -256,7 +256,7 @@ export default function Alerts() {
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
       <main
-        className="flex-1 max-w-7xl mx-auto w-full px-0 py-1.5 sm:py-3 space-y-1.5 sm:space-y-3"
+        className="flex-1 max-w-7xl mx-auto w-full px-0 pt-1.5 sm:py-3 pb-24 sm:pb-3 space-y-1.5 sm:space-y-3"
         onTouchStart={(e) => { if (window.scrollY === 0) { setIsPulling(true); touchStartY.current = e.touches[0].clientX; } }}
         onTouchMove={(e) => { if (!isPulling) return; const delta = e.touches[0].clientY - touchStartY.current; if (delta > 0) setPullDistance(Math.min(delta, 100)); }}
         onTouchEnd={() => { if (pullDistance > 60) handleRefresh(); setPullDistance(0); setIsPulling(false); }}

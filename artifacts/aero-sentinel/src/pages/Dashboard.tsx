@@ -361,7 +361,7 @@ export default function Dashboard() {
       <NavHeader monitorStatus={monitor} theme={theme} onToggleTheme={toggleTheme} />
 
       <main
-        className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 py-3 sm:py-5 space-y-2 sm:space-y-3"
+        className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 pt-3 sm:py-5 pb-24 sm:pb-5 space-y-2 sm:space-y-3"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
