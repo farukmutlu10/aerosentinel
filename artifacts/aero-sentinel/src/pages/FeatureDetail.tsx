@@ -53,7 +53,7 @@ export default function FeatureDetail() {
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto">
-        <article className="max-w-3xl mx-auto px-4 py-8">
+        <article className="max-w-3xl mx-auto px-4 pt-8 pb-24 sm:pb-8">
           {/* Breadcrumb */}
           <div className="mb-6">
             <Link href="/features" className="text-xs font-mono font-bold text-primary hover:underline">

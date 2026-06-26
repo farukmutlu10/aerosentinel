@@ -57,7 +57,7 @@ export function NotificationBanner() {
   if (!show) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
+    <div className="fixed bottom-0 left-0 right-0 z-[90] p-4 pb-24 sm:pb-4 pointer-events-none">
       <div className="max-w-lg mx-auto bg-card border border-border rounded-xl shadow-2xl p-4 pointer-events-auto">
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
