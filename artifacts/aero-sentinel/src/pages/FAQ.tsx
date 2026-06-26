@@ -115,7 +115,7 @@ export default function FAQ() {
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 py-8">
+        <div className="max-w-3xl mx-auto px-4 pt-8 pb-24 sm:pb-8">
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
             Frequently Asked Questions
           </h1>

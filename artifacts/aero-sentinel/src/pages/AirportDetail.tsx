@@ -53,7 +53,7 @@ export default function AirportDetail({ icao }: Props) {
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8 space-y-6">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-6 pt-8 pb-24 sm:pb-8 space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>

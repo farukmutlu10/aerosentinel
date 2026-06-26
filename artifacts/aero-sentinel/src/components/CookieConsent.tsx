@@ -124,7 +124,7 @@ export function CookieConsent() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 p-3 sm:p-4">
+    <div className="fixed bottom-0 left-0 right-0 z-[100] p-3 sm:pb-4 pb-24 sm:p-4">
       <div
         className="max-w-4xl mx-auto bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
         style={{ boxShadow: "0 -4px 24px rgba(0,0,0,0.4)" }}
