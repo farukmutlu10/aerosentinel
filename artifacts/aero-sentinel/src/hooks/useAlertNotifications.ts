@@ -138,10 +138,9 @@ export function useAlertNotifications() {
       return;
     }
 
-    // Bildirim izni cookie consent'ten bağımsızdır — her durumda iste
+    // Notification.requestPermission() removed — NotificationBanner handles permission flow
     if (typeof Notification !== "undefined" && Notification.permission === "default") {
-      // 1 saniye gecikme — banner'ın kapanmasını bekle
-      setTimeout(() => Notification.requestPermission(), 1000);
+      log("⚠️ Notification izni henüz verilmedi — NotificationBanner üzerinden istenecek");
     }
 
     if (!allAlerts?.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }

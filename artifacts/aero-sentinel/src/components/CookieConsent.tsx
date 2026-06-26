@@ -94,12 +94,7 @@ export function CookieConsent() {
   const handleAcceptAll = () => {
     const allAccepted: CookiePreferences = { necessary: true, analytics: true, marketing: true };
     persistAndClose(allAccepted);
-
-    // Notification izni hemen iste
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      // 1 saniye gecikme — banner'ın kapanmasını bekle
-      setTimeout(() => Notification.requestPermission(), 1000);
-    }
+    // Notification.requestPermission() removed — NotificationBanner handles this now
   };
 
   const handleRejectAll = () => {
@@ -107,20 +102,12 @@ export function CookieConsent() {
     localStorage.setItem(COOKIE_KEY, JSON.stringify(allRejected));
     rejectAllConsent();
     setVisible(false);
-
-    // REDDETMESINE RAĞMEN bildirim izni iste — çünkü bu uygulama işlevselliği
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      setTimeout(() => Notification.requestPermission(), 1000);
-    }
+    // Notification.requestPermission() removed — NotificationBanner handles this now
   };
 
   const handleSavePreferences = () => {
     persistAndClose(preferences);
-
-    // Her durumda bildirim izni iste (uygulama işlevselliği)
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      setTimeout(() => Notification.requestPermission(), 1000);
-    }
+    // Notification.requestPermission() removed — NotificationBanner handles this now
   };
 
   const toggleAnalytics = () => {

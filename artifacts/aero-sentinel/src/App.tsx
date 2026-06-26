@@ -31,6 +31,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { CookieConsent, getCookiePreferences } from "@/components/CookieConsent";
 import { AdSenseConsent } from "@/components/AdSenseConsent";
 import { BackToTop } from "@/components/BackToTop";
+import { NotificationBanner } from "@/components/NotificationBanner";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 20_000, retry: 1 } },
@@ -73,7 +74,7 @@ const TestPanelContext = createContext<TestPanelCtx>({
 export const useTestPanel = () => useContext(TestPanelContext);
 
 function AppInner() {
-  const { permission, requestPermission, dismiss, showBanner, dismissed, forceCheck, pendingToasts, dismissToast } = useAlertNotifications();
+  const { forceCheck, pendingToasts, dismissToast } = useAlertNotifications();
   const { theme, toggleTheme, transitioning, pendingTheme, completeTransition } = useTheme();
   const [localAcked, setLocalAcked] = usePersistedState<number[]>("as-acked-ids-v2", []);
   const [location] = useLocation();
@@ -139,47 +140,6 @@ function AppInner() {
         </WouterRouter>
         </ErrorBoundary>
 
-        {showBanner && (
-          <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:bottom-4 z-50 max-w-xs">
-            <div className="bg-card/95 backdrop-blur-xl border border-border rounded-2xl px-4 py-3 shadow-2xl"
-              style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "rgba(56,189,248,0.12)" }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-mono font-bold text-white tracking-wider">ENABLE NOTIFICATIONS</p>
-                  <p className="text-[10px] text-muted-foreground font-mono mt-1 leading-relaxed">
-                    Get pop-up alerts when new weather events are detected at your watched airports.
-                  </p>
-                  <div className="flex items-center gap-2 mt-2.5">
-                    <button type="button" onClick={requestPermission}
-                      className="text-[10px] font-mono font-bold px-4 py-1.5 rounded-full bg-primary text-primary-foreground hover:opacity-90 transition-opacity">
-                      Allow
-                    </button>
-                    <button type="button" onClick={dismiss}
-                      className="text-[10px] font-mono px-3 py-1.5 text-muted-foreground hover:text-foreground transition-colors">
-                      Not Now
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {permission === "denied" && !dismissed && (
-          <div className="fixed bottom-4 right-4 z-50 bg-card border border-border rounded-lg px-3 py-2 shadow flex items-center gap-2 text-xs font-mono text-muted-foreground max-w-xs">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-            </svg>
-            Notifications blocked by browser
-            <button onClick={dismiss} className="ml-1 hover:text-foreground text-lg leading-none">×</button>
-          </div>
-        )}
-
         <AlertToastContainer
           items={pendingToasts}
           onDismiss={dismissToast}
@@ -200,6 +160,7 @@ function AppInner() {
         )}
         <Toaster />
         <CookieConsent />
+        <NotificationBanner />
         <AdSenseConsent />
         <BackToTop />
       </LocalAckContext.Provider>

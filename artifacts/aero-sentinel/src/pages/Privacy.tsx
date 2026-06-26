@@ -301,6 +301,23 @@ export default function Privacy() {
           </button>
         </div>
 
+        {/* Manage Notification Settings */}
+        <div className="mt-4 p-4 bg-card border border-border rounded-lg">
+          <h3 className="text-sm font-mono font-bold text-foreground mb-2">Notification Settings</h3>
+          <p className="text-xs text-muted-foreground font-mono mb-3">
+            You can enable or disable browser notifications at any time.
+          </p>
+          <button
+            onClick={() => {
+              localStorage.removeItem("aero-notification-dismissed");
+              window.location.reload();
+            }}
+            className="px-4 py-2 text-xs font-mono font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+          >
+            Reset Notification Preferences
+          </button>
+        </div>
+
         <div className="mt-6 flex flex-wrap gap-4 text-sm">
           <Link
             href="/about"
