@@ -104,7 +104,8 @@ export function CookieConsent() {
     localStorage.setItem(COOKIE_KEY, JSON.stringify(allRejected));
     rejectAllConsent();
     setVisible(false);
-    // Notification.requestPermission() removed — NotificationBanner handles this now
+    // NotificationBanner'a haber ver
+    window.dispatchEvent(new Event('aero-consent-given'));
   };
 
   const handleSavePreferences = () => {
