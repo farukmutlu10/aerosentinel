@@ -302,7 +302,7 @@ export default function Alerts() {
         {/* ═══════ Alert Filters ═══════ */}
 
         {/* Desktop filters — eski düzen */}
-        <div className="hidden sm:flex sm:flex-wrap sm:items-center sm:gap-2 mb-2">
+        <div className="hidden sm:flex sm:flex-wrap sm:items-center sm:gap-2 mb-2" role="group" aria-label="Filter alerts">
           <div className="filter-group">
             {ALL_ALERT_TYPES.map((t) => (
               <button key={t} onClick={() => toggleType(t)} className="filter-btn"
@@ -369,7 +369,7 @@ export default function Alerts() {
         </div>
 
         {/* Mobil filters — yeni tasarım */}
-        <div className="sm:hidden space-y-1.5 mb-3">
+        <div className="sm:hidden space-y-1.5 mb-3" role="group" aria-label="Filter alerts">
           <div className="flex items-center justify-between gap-1.5 w-full flex-wrap">
             <div className="filter-group">
               {ALL_ALERT_TYPES.map((t) => (
