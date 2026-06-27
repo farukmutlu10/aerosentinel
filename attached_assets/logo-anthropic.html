@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AERO-SENTINEL — Anthropic Style Logo</title>
+
+  <!-- AS Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg viewBox='0 0 48 48' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3ClinearGradient id='as-g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23f59e0b'/%3E%3Cstop offset='100%25' stop-color='%23d97706'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='48' height='48' rx='10' fill='url(%23as-g)'/%3E%3Ctext x='24' y='33' text-anchor='middle' font-family='Inter,sans-serif' font-weight='700' font-size='18' fill='white' letter-spacing='1'%3EAS%3C/text%3E%3C/svg%3E">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    /* ─── Reset & Base ─── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1.6;
+      color: #1a1a2e;
+      background: #fafbfc;
+    }
+
+    /* ─── Section Layout ─── */
+    .section {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 60px 40px;
+    }
+    .section + .section {
+      border-top: 1px solid #e5e7eb;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #9ca3af;
+      margin-bottom: 8px;
+    }
+    .section-heading {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #111827;
+      margin-bottom: 12px;
+    }
+    .section-desc {
+      font-size: 16px;
+      color: #6b7280;
+      max-width: 600px;
+      margin-bottom: 40px;
+    }
+
+    /* ─── Hero ─── */
+    .hero {
+      text-align: center;
+      padding: 80px 40px 60px;
+      background: linear-gradient(180deg, #fafbfc 0%, #f3f4f6 100%);
+    }
+    .hero h1 {
+      font-size: 48px;
+      font-weight: 900;
+      letter-spacing: -1.5px;
+      background: linear-gradient(135deg, #111827 0%, #374151 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 12px;
+    }
+    .hero p {
+      font-size: 18px;
+      color: #6b7280;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    /* ─── Preview Cards ─── */
+    .preview-card {
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 32px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.04);
+    }
+    .preview-card .label {
+      padding: 12px 20px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .preview-card.dark .label {
+      background: #111827;
+      color: #6b7280;
+      border-bottom: 1px solid #1f2937;
+    }
+    .preview-card.light .label {
+      background: #f9fafb;
+      color: #9ca3af;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .preview-card .logo-area {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 160px;
+      padding: 40px;
+    }
+    .preview-card.dark .logo-area {
+      background: #0a0a14;
+    }
+    .preview-card.light .logo-area {
+      background: #f2f4f7;
+    }
+
+    /* ─── Font Options Grid ─── */
+    .font-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    @media (max-width: 900px) {
+      .font-grid { grid-template-columns: 1fr; }
+    }
+    .font-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .font-card .card-label {
+      padding: 12px 16px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #9ca3af;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .font-card .card-logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 20px;
+      min-height: 140px;
+      background: #0a0a14;
+    }
+
+    /* ─── Favicon Sizes ─── */
+    .favicon-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .favicon-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .favicon-item .size-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #9ca3af;
+      letter-spacing: 1px;
+    }
+
+    /* ─── Mockup: Navbar ─── */
+    .navbar-mock {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 32px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+    .navbar-mock.dark-nav {
+      background: #0a0a14;
+      border: 1px solid #1f2937;
+    }
+    .navbar-mock.light-nav {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+    }
+    .navbar-mock .nav-links {
+      display: flex;
+      gap: 24px;
+    }
+    .navbar-mock .nav-links span {
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .navbar-mock.dark-nav .nav-links span { color: #9ca3af; }
+    .navbar-mock.light-nav .nav-links span { color: #6b7280; }
+    .navbar-mock .nav-cta {
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+    }
+    .navbar-mock.dark-nav .nav-cta {
+      background: #f59e0b;
+      color: #0a0a14;
+    }
+    .navbar-mock.light-nav .nav-cta {
+      background: #0a0a14;
+      color: #ffffff;
+    }
+
+    /* ─── Mockup: Footer ─── */
+    .footer-mock {
+      padding: 40px 32px 24px;
+      border-radius: 12px;
+    }
+    .footer-mock.dark-footer {
+      background: #0a0a14;
+      border: 1px solid #1f2937;
+    }
+    .footer-mock.light-footer {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+    }
+    .footer-mock .footer-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 32px;
+      margin-bottom: 32px;
+    }
+    .footer-mock .footer-cols {
+      display: flex;
+      gap: 48px;
+    }
+    .footer-mock .footer-col h4 {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .footer-mock.dark-footer .footer-col h4 { color: #6b7280; }
+    .footer-mock.light-footer .footer-col h4 { color: #9ca3af; }
+    .footer-mock .footer-col a {
+      display: block;
+      font-size: 13px;
+      text-decoration: none;
+      margin-bottom: 8px;
+    }
+    .footer-mock.dark-footer .footer-col a { color: #9ca3af; }
+    .footer-mock.light-footer .footer-col a { color: #6b7280; }
+    .footer-mock .footer-bottom {
+      padding-top: 20px;
+      font-size: 12px;
+    }
+    .footer-mock.dark-footer .footer-bottom {
+      border-top: 1px solid #1f2937;
+      color: #4b5563;
+    }
+    .footer-mock.light-footer .footer-bottom {
+      border-top: 1px solid #e5e7eb;
+      color: #9ca3af;
+    }
+
+    /* ─── OG Image Placeholder ─── */
+    .og-preview {
+      border: 2px dashed #d1d5db;
+      border-radius: 12px;
+      overflow: hidden;
+      aspect-ratio: 1200 / 630;
+      max-width: 600px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a14;
+      position: relative;
+    }
+    .og-preview .og-label {
+      position: absolute;
+      bottom: 12px;
+      right: 16px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #4b5563;
+      background: rgba(255,255,255,0.08);
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+    .og-dims {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 8px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════════════ HERO ═══════════════ -->
+  <div class="hero">
+    <h1>AERO-SENTINEL</h1>
+    <p>Anthropic Style Logo — Minimal, premium wordmark with tilted exclamation mark</p>
+  </div>
+
+  <!-- ═══════════════ DARK PREVIEW ═══════════════ -->
+  <div class="section">
+    <div class="section-title">01</div>
+    <div class="section-heading">Dark Theme Preview</div>
+    <div class="section-desc">Primary dark background (#0a0a14) — the default brand presentation.</div>
+
+    <div class="preview-card dark">
+      <div class="label">DARK THEME</div>
+      <div class="logo-area">
+        <!-- SVG Wordmark — Dark (Geist style) -->
+        <svg viewBox="0 0 580 70" xmlns="http://www.w3.org/2000/svg" style="width: 100%; max-width: 580px; height: auto;">
+          <defs>
+            <linearGradient id="anth-grad-dark" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#f59e0b"/>
+              <stop offset="70%" stop-color="#f5f5f7"/>
+              <stop offset="100%" stop-color="#f5f5f7"/>
+            </linearGradient>
+          </defs>
+
+          <!-- "AERO-" -->
+          <text x="0" y="50" font-family="'Inter', 'DM Sans', sans-serif" font-weight="800"
+                font-size="48" fill="#ffffff" fill-opacity="0.85" letter-spacing="3">AERO-</text>
+
+          <!-- "SENT" -->
+          <text x="195" y="50" font-family="'Inter', 'DM Sans', sans-serif" font-weight="800"
+                font-size="48" fill="url(#anth-grad-dark)" letter-spacing="3">SENT</text>
+
+          <!-- Eğik ünlem (!) — I harfi yerine -->
+          <g transform="translate(358, 8) rotate(-8, 4, 22)">
+            <rect x="0" y="0" width="9" height="34" rx="4.5" fill="url(#anth-grad-dark)"/>
+            <circle cx="4.5" cy="46" r="4.5" fill="url(#anth-grad-dark)"/>
+          </g>
+
+          <!-- "NEL" -->
+          <text x="378" y="50" font-family="'Inter', 'DM Sans', sans-serif" font-weight="800"
+                font-size="48" fill="url(#anth-grad-dark)" letter-spacing="3">NEL</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ LIGHT PREVIEW ═══════════════ -->
+  <div class="section">
+    <div class="section-title">02</div>
+    <div class="section-heading">Light Theme Preview</div>
+    <div class="section-desc">Clean light background (#f2f4f7) — for light-mode contexts.</div>
+
+    <div class="preview-card light">
+      <div class="label">LIGHT THEME</div>
+      <div class="logo-area">
+        <!-- SVG Wordmark — Light -->
+        <svg viewBox="0 0 580 70" xmlns="http://www.w3.org/2000/svg" style="width: 100%; max-width: 580px; height: auto;">
+          <defs>
+            <linearGradient id="anth-grad-light" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#f59e0b"/>
+              <stop offset="70%" stop-color="#111827"/>
+              <stop offset="100%" stop-color="#111827"/>
+            </linearGradient>
+          </defs>
+
+          <!-- "AERO-" -->
+          <text x="0" y="50" font-family="'Inter', 'DM Sans', sans-serif" font-weight="800"
+                font-size="48" fill="#111827" fill-opacity="0.80" letter-spacing="3">AERO-</text>
+
+          <!-- "SENT" -->
+          <text x="195" y="50" font-family="'Inter', 'DM Sans', sans-serif" font-weight="800"
+                font-size="48" fill="url(#anth-grad-light)" letter-spacing="3">SENT</text>
+
+          <!-- Eğik ünlem (!) -->
+          <g transform="translate(358, 8) rotate(-8, 4, 22)">
+            <rect x="0" y="0" width="9" height="34" rx="4.5" fill="url(#anth-grad-light)"/>
+            <circle cx="4.5" cy="46" r="4.5" fill="url(#anth-grad-light)"/>
+          </g>
+
+          <!-- "NEL" -->
+          <text x="378" y="50" font-family="'Inter', 'DM Sans', sans-serif" font-weight="800"
+                font-size="48" fill="url(#anth-grad-light)" letter-spacing="3">NEL</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ FONT OPTIONS ═══════════════ -->
+  <div class="section">
+    <div class="section-title">03</div>
+    <div class="section-heading">Font Variations</div>
+    <div class="section-desc">Three premium sans-serif options — each with the tilted exclamation mark.</div>
+
+    <div class="font-grid">
+
+      <!-- ─── Inter (closest to Geist) ─── -->
+      <div class="font-card">
+        <div class="card-label">Inter — ExtraBold (Geist alternative)</div>
+        <div class="card-logo">
+          <svg viewBox="0 0 580 70" xmlns="http://www.w3.org/2000/svg" style="width: 100%; max-width: 580px; height: auto;">
+            <defs>
+              <linearGradient id="fg1" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="70%" stop-color="#f5f5f7"/>
+                <stop offset="100%" stop-color="#f5f5f7"/>
+              </linearGradient>
+            </defs>
+            <text x="0" y="50" font-family="'Inter', sans-serif" font-weight="800"
+                  font-size="48" fill="#ffffff" fill-opacity="0.85" letter-spacing="3">AERO-</text>
+            <text x="195" y="50" font-family="'Inter', sans-serif" font-weight="800"
+                  font-size="48" fill="url(#fg1)" letter-spacing="3">SENT</text>
+            <g transform="translate(358, 8) rotate(-8, 4, 22)">
+              <rect x="0" y="0" width="9" height="34" rx="4.5" fill="url(#fg1)"/>
+              <circle cx="4.5" cy="46" r="4.5" fill="url(#fg1)"/>
+            </g>
+            <text x="378" y="50" font-family="'Inter', sans-serif" font-weight="800"
+                  font-size="48" fill="url(#fg1)" letter-spacing="3">NEL</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- ─── DM Sans ─── -->
+      <div class="font-card">
+        <div class="card-label">DM Sans — Bold</div>
+        <div class="card-logo">
+          <svg viewBox="0 0 580 70" xmlns="http://www.w3.org/2000/svg" style="width: 100%; max-width: 580px; height: auto;">
+            <defs>
+              <linearGradient id="fg2" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="70%" stop-color="#f5f5f7"/>
+                <stop offset="100%" stop-color="#f5f5f7"/>
+              </linearGradient>
+            </defs>
+            <text x="0" y="50" font-family="'DM Sans', sans-serif" font-weight="700"
+                  font-size="48" fill="#ffffff" fill-opacity="0.85" letter-spacing="3">AERO-</text>
+            <text x="195" y="50" font-family="'DM Sans', sans-serif" font-weight="700"
+                  font-size="48" fill="url(#fg2)" letter-spacing="3">SENT</text>
+            <g transform="translate(358, 8) rotate(-8, 4, 22)">
+              <rect x="0" y="0" width="9" height="34" rx="4.5" fill="url(#fg2)"/>
+              <circle cx="4.5" cy="46" r="4.5" fill="url(#fg2)"/>
+            </g>
+            <text x="378" y="50" font-family="'DM Sans', sans-serif" font-weight="700"
+                  font-size="48" fill="url(#fg2)" letter-spacing="3">NEL</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- ─── Plus Jakarta Sans ─── -->
+      <div class="font-card">
+        <div class="card-label">Plus Jakarta Sans — Bold</div>
+        <div class="card-logo">
+          <svg viewBox="0 0 580 70" xmlns="http://www.w3.org/2000/svg" style="width: 100%; max-width: 580px; height: auto;">
+            <defs>
+              <linearGradient id="fg3" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="70%" stop-color="#f5f5f7"/>
+                <stop offset="100%" stop-color="#f5f5f7"/>
+              </linearGradient>
+            </defs>
+            <text x="0" y="50" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700"
+                  font-size="48" fill="#ffffff" fill-opacity="0.85" letter-spacing="3">AERO-</text>
+            <text x="195" y="50" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700"
+                  font-size="48" fill="url(#fg3)" letter-spacing="3">SENT</text>
+            <g transform="translate(358, 8) rotate(-8, 4, 22)">
+              <rect x="0" y="0" width="9" height="34" rx="4.5" fill="url(#fg3)"/>
+              <circle cx="4.5" cy="46" r="4.5" fill="url(#fg3)"/>
+            </g>
+            <text x="378" y="50" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700"
+                  font-size="48" fill="url(#fg3)" letter-spacing="3">NEL</text>
+          </svg>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════ AS FAVICON ═══════════════ -->
+  <div class="section">
+    <div class="section-title">04</div>
+    <div class="section-heading">AS Favicon</div>
+    <div class="section-desc">Amber gradient monogram — 48px, 32px, and 16px sizes.</div>
+
+    <div class="favicon-row">
+      <!-- 48px -->
+      <div class="favicon-item">
+        <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="as-g-48" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#f59e0b"/>
+              <stop offset="100%" stop-color="#d97706"/>
+            </linearGradient>
+          </defs>
+          <rect width="48" height="48" rx="10" fill="url(#as-g-48)"/>
+          <text x="24" y="33" text-anchor="middle" font-family="'Inter', sans-serif"
+                font-weight="700" font-size="18" fill="white" letter-spacing="1">AS</text>
+        </svg>
+        <span class="size-label">48 × 48</span>
+      </div>
+
+      <!-- 32px -->
+      <div class="favicon-item">
+        <svg width="32" height="32" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="as-g-32" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#f59e0b"/>
+              <stop offset="100%" stop-color="#d97706"/>
+            </linearGradient>
+          </defs>
+          <rect width="48" height="48" rx="10" fill="url(#as-g-32)"/>
+          <text x="24" y="33" text-anchor="middle" font-family="'Inter', sans-serif"
+                font-weight="700" font-size="18" fill="white" letter-spacing="1">AS</text>
+        </svg>
+        <span class="size-label">32 × 32</span>
+      </div>
+
+      <!-- 16px -->
+      <div class="favicon-item">
+        <svg width="16" height="16" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="as-g-16" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#f59e0b"/>
+              <stop offset="100%" stop-color="#d97706"/>
+            </linearGradient>
+          </defs>
+          <rect width="48" height="48" rx="10" fill="url(#as-g-16)"/>
+          <text x="24" y="33" text-anchor="middle" font-family="'Inter', sans-serif"
+                font-weight="700" font-size="18" fill="white" letter-spacing="1">AS</text>
+        </svg>
+        <span class="size-label">16 × 16</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ NAVBAR MOCKUP ═══════════════ -->
+  <div class="section">
+    <div class="section-title">05</div>
+    <div class="section-heading">Navbar Mockup</div>
+    <div class="section-desc">Logo in navigation context — dark and light variants.</div>
+
+    <!-- Dark Navbar -->
+    <div class="navbar-mock dark-nav">
+      <svg viewBox="0 0 280 36" xmlns="http://www.w3.org/2000/svg" style="width: 180px; height: auto;">
+        <defs>
+          <linearGradient id="nav-g-dark" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#f59e0b"/>
+            <stop offset="70%" stop-color="#f5f5f7"/>
+            <stop offset="100%" stop-color="#f5f5f7"/>
+          </linearGradient>
+        </defs>
+        <text x="0" y="26" font-family="'Inter', sans-serif" font-weight="800"
+              font-size="24" fill="#ffffff" fill-opacity="0.85" letter-spacing="2">AERO-</text>
+        <text x="100" y="26" font-family="'Inter', sans-serif" font-weight="800"
+              font-size="24" fill="url(#nav-g-dark)" letter-spacing="2">SENT</text>
+        <g transform="translate(182, 3) rotate(-8, 3, 12)">
+          <rect x="0" y="0" width="5" height="18" rx="2.5" fill="url(#nav-g-dark)"/>
+          <circle cx="2.5" cy="24" r="2.5" fill="url(#nav-g-dark)"/>
+        </g>
+        <text x="192" y="26" font-family="'Inter', sans-serif" font-weight="800"
+              font-size="24" fill="url(#nav-g-dark)" letter-spacing="2">NEL</text>
+      </svg>
+      <div class="nav-links">
+        <span>Features</span>
+        <span>Pricing</span>
+        <span>Docs</span>
+      </div>
+      <button class="nav-cta">Get Started</button>
+    </div>
+
+    <!-- Light Navbar -->
+    <div class="navbar-mock light-nav">
+      <svg viewBox="0 0 280 36" xmlns="http://www.w3.org/2000/svg" style="width: 180px; height: auto;">
+        <defs>
+          <linearGradient id="nav-g-light" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#f59e0b"/>
+            <stop offset="70%" stop-color="#111827"/>
+            <stop offset="100%" stop-color="#111827"/>
+          </linearGradient>
+        </defs>
+        <text x="0" y="26" font-family="'Inter', sans-serif" font-weight="800"
+              font-size="24" fill="#111827" fill-opacity="0.80" letter-spacing="2">AERO-</text>
+        <text x="100" y="26" font-family="'Inter', sans-serif" font-weight="800"
+              font-size="24" fill="url(#nav-g-light)" letter-spacing="2">SENT</text>
+        <g transform="translate(182, 3) rotate(-8, 3, 12)">
+          <rect x="0" y="0" width="5" height="18" rx="2.5" fill="url(#nav-g-light)"/>
+          <circle cx="2.5" cy="24" r="2.5" fill="url(#nav-g-light)"/>
+        </g>
+        <text x="192" y="26" font-family="'Inter', sans-serif" font-weight="800"
+              font-size="24" fill="url(#nav-g-light)" letter-spacing="2">NEL</text>
+      </svg>
+      <div class="nav-links">
+        <span>Features</span>
+        <span>Pricing</span>
+        <span>Docs</span>
+      </div>
+      <button class="nav-cta">Get Started</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════ FOOTER MOCKUP ═══════════════ -->
+  <div class="section">
+    <div class="section-title">06</div>
+    <div class="section-heading">Footer Mockup</div>
+    <div class="section-desc">Logo in footer context — dark and light variants.</div>
+
+    <!-- Dark Footer -->
+    <div class="footer-mock dark-footer" style="margin-bottom: 24px;">
+      <div class="footer-top">
+        <div>
+          <svg viewBox="0 0 240 32" xmlns="http://www.w3.org/2000/svg" style="width: 160px; height: auto; margin-bottom: 12px;">
+            <defs>
+              <linearGradient id="ft-g-dark" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="70%" stop-color="#f5f5f7"/>
+                <stop offset="100%" stop-color="#f5f5f7"/>
+              </linearGradient>
+            </defs>
+            <text x="0" y="22" font-family="'Inter', sans-serif" font-weight="800"
+                  font-size="20" fill="#ffffff" fill-opacity="0.85" letter-spacing="2">AERO-</text>
+            <text x="85" y="22" font-family="'Inter', sans-serif" font-weight="800"
+                  font-size="20" fill="url(#ft-g-dark)" letter-spacing="2">SENT</text>
+            <g transform="translate(154, 2) rotate(-8, 2.5, 10)">
+              <rect x="0" y="0" width="4" height="16" rx="2" fill="url(#ft-g-dark)"/>
+              <circle cx="2" cy="20" r="2" fill="url(#ft-g-dark)"/>
+            </g>
+            <text x="162" y="22" font-family="'Inter', sans-serif" font-weight="800"
+                  font-size="20" fill="url(#ft-g-dark)" letter-spacing="2">NEL</text>
+          </svg>
+          <p style="font-size: 13px; color: #6b7280; max-width: 280px;">Real-time aviation weather monitoring. Never miss a METAR alert.</p>
+        </div>
+        <div class="footer-cols">
+          <div class="footer-col">
+            <h4>Product</h4>
+            <a href="#">Features</a>
+            <a href="#">Pricing</a>
+            <a href="#">Changelog</a>
+          </div>
+          <div class="footer-col">
+            <h4>Company</h4>
+            <a href="#">About</a>
+            <a href="#">Blog</a>
+            <a href="#">Contact</a>
+          </div>
+          <div class="footer-col">
+            <h4>Legal</h4>
+            <a href="#">Privacy</a>
+            <a href="#">Terms</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">© 2025 AeroSentinel. All rights reserved.</div>
+    </div>
+
+    <!-- Light Footer -->
+    <div class="footer-mock light-footer">
+      <div class="footer-top">
+        <div>
+          <svg viewBox="0 0 240 32" xmlns="http://www.w3.org/2000/svg" style="width: 160px; height: auto; margin-bottom: 12px;">
+            <defs>
+              <linearGradient id="ft-g-light" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="70%" stop-color="#111827"/>
+                <stop offset="100%" stop-color="#111827"/>
+              </linearGradient>
+            </defs>
+            <text x="0" y="22" font-family="'Inter', sans-serif" font-weight="800"
+                  font-size="20" fill="#111827" fill-opacity="0.80" letter-spacing="2">AERO-</text>
+            <text x="85" y="22" font-family="'Inter', sans-serif" font-weight="800"
+                  font-size="20" fill="url(#ft-g-light)" letter-spacing="2">SENT</text>
+            <g transform="translate(154, 2) rotate(-8, 2.5, 10)">
+              <rect x="0" y="0" width="4" height="16" rx="2" fill="url(#ft-g-light)"/>
+              <circle cx="2" cy="20" r="2" fill="url(#ft-g-light)"/>
+            </g>
+            <text x="162" y="22" font-family="'Inter', sans-serif" font-weight="800"
+                  font-size="20" fill="url(#ft-g-light)" letter-spacing="2">NEL</text>
+          </svg>
+          <p style="font-size: 13px; color: #9ca3af; max-width: 280px;">Real-time aviation weather monitoring. Never miss a METAR alert.</p>
+        </div>
+        <div class="footer-cols">
+          <div class="footer-col">
+            <h4>Product</h4>
+            <a href="#">Features</a>
+            <a href="#">Pricing</a>
+            <a href="#">Changelog</a>
+          </div>
+          <div class="footer-col">
+            <h4>Company</h4>
+            <a href="#">About</a>
+            <a href="#">Blog</a>
+            <a href="#">Contact</a>
+          </div>
+          <div class="footer-col">
+            <h4>Legal</h4>
+            <a href="#">Privacy</a>
+            <a href="#">Terms</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">© 2025 AeroSentinel. All rights reserved.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ OG:IMAGE PREVIEW ═══════════════ -->
+  <div class="section">
+    <div class="section-title">07</div>
+    <div class="section-heading">OG:Image Preview</div>
+    <div class="section-desc">Social sharing card — 1200×630px aspect ratio.</div>
+
+    <div class="og-preview">
+      <svg viewBox="0 0 700 80" xmlns="http://www.w3.org/2000/svg" style="width: 65%; max-width: 480px; height: auto;">
+        <defs>
+          <linearGradient id="og-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#f59e0b"/>
+            <stop offset="70%" stop-color="#f5f5f7"/>
+            <stop offset="100%" stop-color="#f5f5f7"/>
+          </linearGradient>
+        </defs>
+        <text x="0" y="52" font-family="'Inter', sans-serif" font-weight="800"
+              font-size="52" fill="#ffffff" fill-opacity="0.85" letter-spacing="3">AERO-</text>
+        <text x="210" y="52" font-family="'Inter', sans-serif" font-weight="800"
+              font-size="52" fill="url(#og-grad)" letter-spacing="3">SENT</text>
+        <g transform="translate(385, 10) rotate(-8, 4, 22)">
+          <rect x="0" y="0" width="9" height="34" rx="4.5" fill="url(#og-grad)"/>
+          <circle cx="4.5" cy="46" r="4.5" fill="url(#og-grad)"/>
+        </g>
+        <text x="405" y="52" font-family="'Inter', sans-serif" font-weight="800"
+              font-size="52" fill="url(#og-grad)" letter-spacing="3">NEL</text>
+      </svg>
+      <span class="og-label">1200 × 630</span>
+    </div>
+    <div class="og-dims">og:image — 1200×630px recommended</div>
+  </div>
+
+  <!-- ═══════════════ SVG SOURCE CODE ═══════════════ -->
+  <div class="section" style="padding-bottom: 80px;">
+    <div class="section-title">08</div>
+    <div class="section-heading">SVG Source Reference</div>
+    <div class="section-desc">The tilted exclamation mark uses <code style="background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:13px;">rotate(-8)</code> on the SVG <code style="background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:13px;"><g></code> group — similar to Anthropic's italic letter treatment.</div>
+
+    <div style="background:#111827; border-radius:12px; padding:24px; overflow-x:auto; max-width:100%;">
+      <pre style="margin:0; color:#e5e7eb; font-family:'SF Mono', 'Fira Code', monospace; font-size:13px; line-height:1.7;"><code><!-- Eğik ünlem (Anthropic tarzı) -->
+<g transform="translate(358, 8) rotate(-8, 4, 22)">
+  <!-- Bar (üst kısım) -->
+  <rect x="0" y="0" width="9" height="34" rx="4.5" fill="url(#grad)"/>
+  <!-- Nokta (alt kısım) -->
+  <circle cx="4.5" cy="46" r="4.5" fill="url(#grad)"/>
+</g>
+
+rotate(-8) → 8° saat yönünün tersine eğiklik
+Anthropic'in "n" harfindeki eğikliğe benzer</code></pre>
+    </div>
+  </div>
+
+</body>
+</html>
