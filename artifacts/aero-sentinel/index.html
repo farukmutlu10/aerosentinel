@@ -1,24 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-24QTMD5Q4S"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-
-  // 1. Consent defaults — EN ÖNCE (veri toplanmadan önce)
-  gtag('consent', 'default', {
-    analytics_storage: 'denied',
-    ad_storage: 'denied',
-    ad_user_data: 'denied',
-    ad_personalization: 'denied'
-  });
-
-  // 2. GA config — consent defaults'dan SONRA
-  gtag('js', new Date());
-  gtag('config', 'G-24QTMD5Q4S');
-</script>
+    <!-- GA loaded via src/lib/ga.ts initGA() with Consent Mode v2 — no inline script needed -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AERO-SENTINEL — Real-Time Aviation Weather Monitoring, TAF/METAR Alerts & Flight Analysis</title>
