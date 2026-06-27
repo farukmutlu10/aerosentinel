@@ -33,6 +33,8 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ["react", "react-dom", "wouter", "@tanstack/react-query"],
+          charts: ["recharts"],
+          spreadsheet: ["xlsx"],
         },
       },
     },

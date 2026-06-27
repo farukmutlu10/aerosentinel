@@ -618,7 +618,7 @@ export default function Dashboard() {
         {/* Airport Weather Section */}
         <section>
           {/* Mobile filters — compact layout */}
-          <div className="sm:hidden space-y-1.5 mb-2">
+          <div className="sm:hidden space-y-1.5 mb-2" role="group" aria-label="Filter airports">
             {/* Row 1: Category — VFR MVFR IFR LIFR CRIT */}
             <div className="flex items-center gap-1 w-full">
               {ALL_CATS.map((cat) => {
@@ -751,7 +751,7 @@ export default function Dashboard() {
           </div>
 
           {/* Desktop: mevcut flex layout */}
-          <div className="hidden sm:flex sm:flex-wrap sm:items-center sm:gap-2 mb-2">
+          <div className="hidden sm:flex sm:flex-wrap sm:items-center sm:gap-2 mb-2" role="group" aria-label="Filter airports">
             {/* Category filters — all same toggle logic */}
             <div className="flex items-center gap-1">
               {ALL_CATS.map((cat) => {

@@ -17,19 +17,19 @@ const NAV_ITEMS = [
     label: "MONITOR",
     href: "/",
     activeClass: "text-sky-400 bg-sky-400/10 border border-sky-400/30",
-    inactiveClass: "text-sky-400/50 hover:text-sky-400 hover:bg-sky-400/5",
+    inactiveClass: "text-sky-300 hover:text-sky-400 hover:bg-sky-400/5",
   },
   {
     label: "ALERTS",
     href: "/alerts",
     activeClass: "text-amber-400 bg-amber-400/10 border border-amber-400/30",
-    inactiveClass: "text-amber-400/50 hover:text-amber-400 hover:bg-amber-400/5",
+    inactiveClass: "text-amber-300 hover:text-amber-400 hover:bg-amber-400/5",
   },
   {
     label: "ANALYZE",
     href: "/airports",
     activeClass: "text-emerald-400 bg-emerald-400/10 border border-emerald-400/30",
-    inactiveClass: "text-emerald-400/50 hover:text-emerald-400 hover:bg-emerald-400/5",
+    inactiveClass: "text-emerald-300 hover:text-emerald-400 hover:bg-emerald-400/5",
   },
 ];
 
