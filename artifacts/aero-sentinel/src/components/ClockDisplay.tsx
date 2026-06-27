@@ -199,7 +199,7 @@ export function ClockBadge() {
       <div className="flex flex-col justify-center px-2 sm:px-4 py-1.5 sm:py-2.5 border-r border-border/60">
         <span className="text-[7px] sm:text-[9px] font-mono text-sky-400 uppercase tracking-widest leading-none mb-0.5 sm:mb-1">UTC</span>
         <span className="text-xs sm:text-base font-bold font-mono text-sky-300 leading-none tabular-nums">{utcTime}</span>
-        <span className="text-[8px] sm:text-[10px] font-mono text-sky-400/50 leading-none mt-0.5">{utcDate}</span>
+        <span className="text-[8px] sm:text-[10px] font-mono text-sky-300 leading-none mt-0.5">{utcDate}</span>
       </div>
       <button ref={btnRef} onClick={() => setShowPicker((v) => !v)}
         className="relative flex flex-col justify-center px-2 sm:px-4 py-1.5 sm:py-2.5 rounded-md hover:bg-amber-400/10 transition-colors group"
@@ -214,7 +214,7 @@ export function ClockBadge() {
         <span className="text-xs sm:text-base font-bold font-mono text-amber-300 leading-none tabular-nums">{tzTime}</span>
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-[8px] sm:text-[10px] font-mono text-amber-400/70 leading-none">{tzDate}</span>
-          <span className="text-[8px] sm:text-[10px] font-mono text-amber-400/50 leading-none">{tzOffset}</span>
+          <span className="text-[8px] sm:text-[10px] font-mono text-amber-300 leading-none">{tzOffset}</span>
         </div>
       </button>
       {showPicker && (

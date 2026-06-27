@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AeroSentinel Logo Concepts v2 — Minimal Premium</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0a0a0a;
+      color: #f5f5f7;
+      padding: 40px 20px 80px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 32px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #86868b;
+      font-size: 15px;
+      margin-bottom: 56px;
+      font-weight: 400;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
+      gap: 32px;
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 580px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: #1c1c1e;
+      border-radius: 20px;
+      padding: 40px;
+      border: 1px solid #2c2c2e;
+      transition: border-color 0.3s ease;
+    }
+
+    .card:hover {
+      border-color: #3c3c3e;
+    }
+
+    .card-number {
+      font-size: 11px;
+      font-weight: 700;
+      color: #48484a;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .card-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .card-desc {
+      font-size: 13px;
+      color: #86868b;
+      margin-bottom: 28px;
+      line-height: 1.5;
+    }
+
+    .section-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #636366;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      margin-top: 24px;
+    }
+
+    .section-label:first-of-type {
+      margin-top: 0;
+    }
+
+    /* ─── Logo Preview Containers ─── */
+    .logo-preview {
+      margin-bottom: 24px;
+    }
+
+    .logo-preview-dark {
+      background: #0a0a14;
+      border-radius: 16px;
+      padding: 36px 32px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100px;
+    }
+
+    .logo-preview-light {
+      background: #f2f4f7;
+      border-radius: 16px;
+      padding: 36px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100px;
+    }
+
+    .logo-preview svg {
+      width: 100%;
+      max-width: 380px;
+      height: auto;
+    }
+
+    /* ─── Favicon Sizes ─── */
+    .favicon-row {
+      display: flex;
+      gap: 20px;
+      align-items: flex-end;
+      margin-top: 12px;
+    }
+
+    .favicon-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .favicon-item svg {
+      border-radius: 6px;
+    }
+
+    .size-label {
+      font-size: 10px;
+      color: #636366;
+      text-align: center;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ─── Navbar Mockup ─── */
+    .navbar-mock {
+      background: rgba(28, 28, 30, 0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-radius: 14px;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      margin-top: 16px;
+      border: 1px solid #2c2c2e;
+    }
+
+    .navbar-mock svg {
+      width: 140px;
+      height: auto;
+      flex-shrink: 0;
+    }
+
+    .nav-spacer { flex: 1; }
+
+    .nav-link {
+      font-size: 13px;
+      font-weight: 500;
+      color: #86868b;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
+    .nav-link.active {
+      color: #f5f5f7;
+    }
+
+    .nav-icon {
+      width: 20px;
+      height: 20px;
+      color: #86868b;
+      flex-shrink: 0;
+    }
+
+    /* ─── Navbar Light ─── */
+    .navbar-mock-light {
+      background: rgba(242, 244, 247, 0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-radius: 14px;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      margin-top: 10px;
+      border: 1px solid #e5e5ea;
+    }
+
+    .navbar-mock-light svg {
+      width: 140px;
+      height: auto;
+      flex-shrink: 0;
+    }
+
+    .navbar-mock-light .nav-link {
+      color: #6e6e73;
+    }
+
+    .navbar-mock-light .nav-link.active {
+      color: #1d1d1f;
+    }
+
+    .navbar-mock-light .nav-icon {
+      color: #6e6e73;
+    }
+
+    /* ─── Divider ─── */
+    .divider {
+      max-width: 1120px;
+      margin: 48px auto;
+      border: none;
+      border-top: 1px solid #2c2c2e;
+    }
+
+    /* ─── Footer Note ─── */
+    .footer-note {
+      text-align: center;
+      color: #48484a;
+      font-size: 12px;
+      margin-top: 56px;
+      font-weight: 400;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>AeroSentinel Logo Concepts</h1>
+  <p class="subtitle">5 Apple-style minimal premium wordmark designs — v2</p>
+
+  <div class="grid">
+
+    <!-- ════════════════════════════════════════════════════════════════
+         CONCEPT 1 — Clean Sans-Serif Wordmark
+         ════════════════════════════════════════════════════════════════ -->
+    <div class="card">
+      <div class="card-number">Concept 01</div>
+      <div class="card-title">Clean Sans-Serif Wordmark</div>
+      <div class="card-desc">All-caps, wide letter-spacing, Inter 700. The purest Apple-inspired wordmark — nothing extra.</div>
+
+      <div class="section-label">Wordmark — Dark</div>
+      <div class="logo-preview">
+        <div class="logo-preview-dark">
+          <svg viewBox="0 0 500 60" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c1-amber" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#d97706"/>
+              </linearGradient>
+            </defs>
+            <text x="250" y="40" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="28" font-weight="700" letter-spacing="6px"
+                  fill="url(#c1-amber)">AEROSENTINEL</text>
+          </svg>
+        </div>
+        <div class="logo-preview-light">
+          <svg viewBox="0 0 500 60" xmlns="http://www.w3.org/2000/svg">
+            <text x="250" y="40" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="28" font-weight="700" letter-spacing="6px"
+                  fill="#1d1d1f">AEROSENTINEL</text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="section-label">Favicon — "AS" Monogram</div>
+      <div class="favicon-row">
+        <!-- 48px -->
+        <div class="favicon-item">
+          <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c1-fg-48" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#d97706"/>
+              </linearGradient>
+            </defs>
+            <rect width="48" height="48" rx="12" fill="url(#c1-fg-48)"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="20" font-weight="700" fill="#fff">AS</text>
+          </svg>
+          <span class="size-label">48px</span>
+        </div>
+        <!-- 32px -->
+        <div class="favicon-item">
+          <svg width="32" height="32" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c1-fg-32" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#d97706"/>
+              </linearGradient>
+            </defs>
+            <rect width="48" height="48" rx="12" fill="url(#c1-fg-32)"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="20" font-weight="700" fill="#fff">AS</text>
+          </svg>
+          <span class="size-label">32px</span>
+        </div>
+        <!-- 16px -->
+        <div class="favicon-item">
+          <svg width="16" height="16" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c1-fg-16" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#d97706"/>
+              </linearGradient>
+            </defs>
+            <rect width="48" height="48" rx="12" fill="url(#c1-fg-16)"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="20" font-weight="700" fill="#fff">AS</text>
+          </svg>
+          <span class="size-label">16px</span>
+        </div>
+      </div>
+
+      <div class="section-label">Navbar Mockup — Dark</div>
+      <div class="navbar-mock">
+        <svg viewBox="0 0 500 60" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="c1-nav-d" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#f59e0b"/>
+              <stop offset="100%" stop-color="#d97706"/>
+            </linearGradient>
+          </defs>
+          <text x="0" y="40" font-family="'Inter', -apple-system, sans-serif"
+                font-size="24" font-weight="700" letter-spacing="5px"
+                fill="url(#c1-nav-d)">AEROSENTINEL</text>
+        </svg>
+        <span class="nav-spacer"></span>
+        <span class="nav-link active">MONITOR</span>
+        <span class="nav-link">ALERTS</span>
+        <span class="nav-link">ANALYZE</span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+
+      <div class="section-label">Navbar Mockup — Light</div>
+      <div class="navbar-mock-light">
+        <svg viewBox="0 0 500 60" xmlns="http://www.w3.org/2000/svg">
+          <text x="0" y="40" font-family="'Inter', -apple-system, sans-serif"
+                font-size="24" font-weight="700" letter-spacing="5px"
+                fill="#1d1d1f">AEROSENTINEL</text>
+        </svg>
+        <span class="nav-spacer"></span>
+        <span class="nav-link active">MONITOR</span>
+        <span class="nav-link">ALERTS</span>
+        <span class="nav-link">ANALYZE</span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+    </div>
+
+
+    <!-- ════════════════════════════════════════════════════════════════
+         CONCEPT 2 — Split Wordmark (AERO bold + SENTINEL light)
+         ════════════════════════════════════════════════════════════════ -->
+    <div class="card">
+      <div class="card-number">Concept 02</div>
+      <div class="card-title">Split Wordmark</div>
+      <div class="card-desc">"AERO" in bold amber + "SENTINEL" in light white — weight and color contrast creates hierarchy.</div>
+
+      <div class="section-label">Wordmark — Dark</div>
+      <div class="logo-preview">
+        <div class="logo-preview-dark">
+          <svg viewBox="0 0 520 60" xmlns="http://www.w3.org/2000/svg">
+            <text x="0" y="42" font-family="'Inter', -apple-system, sans-serif"
+                  font-size="30" font-weight="700" letter-spacing="3px"
+                  fill="#f59e0b">AERO</text>
+            <text x="175" y="42" font-family="'Inter', -apple-system, sans-serif"
+                  font-size="30" font-weight="300" letter-spacing="3px"
+                  fill="#f5f5f7">SENTINEL</text>
+          </svg>
+        </div>
+        <div class="logo-preview-light">
+          <svg viewBox="0 0 520 60" xmlns="http://www.w3.org/2000/svg">
+            <text x="0" y="42" font-family="'Inter', -apple-system, sans-serif"
+                  font-size="30" font-weight="700" letter-spacing="3px"
+                  fill="#d97706">AERO</text>
+            <text x="175" y="42" font-family="'Inter', -apple-system, sans-serif"
+                  font-size="30" font-weight="300" letter-spacing="3px"
+                  fill="#1d1d1f">SENTINEL</text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="section-label">Favicon — "AS" Monogram</div>
+      <div class="favicon-row">
+        <div class="favicon-item">
+          <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c2-fg-48" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#d97706"/>
+              </linearGradient>
+            </defs>
+            <rect width="48" height="48" rx="12" fill="url(#c2-fg-48)"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="20" font-weight="700" fill="#fff">AS</text>
+          </svg>
+          <span class="size-label">48px</span>
+        </div>
+        <div class="favicon-item">
+          <svg width="32" height="32" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c2-fg-32" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#d97706"/>
+              </linearGradient>
+            </defs>
+            <rect width="48" height="48" rx="12" fill="url(#c2-fg-32)"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="20" font-weight="700" fill="#fff">AS</text>
+          </svg>
+          <span class="size-label">32px</span>
+        </div>
+        <div class="favicon-item">
+          <svg width="16" height="16" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c2-fg-16" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#d97706"/>
+              </linearGradient>
+            </defs>
+            <rect width="48" height="48" rx="12" fill="url(#c2-fg-16)"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="20" font-weight="700" fill="#fff">AS</text>
+          </svg>
+          <span class="size-label">16px</span>
+        </div>
+      </div>
+
+      <div class="section-label">Navbar Mockup — Dark</div>
+      <div class="navbar-mock">
+        <svg viewBox="0 0 520 60" xmlns="http://www.w3.org/2000/svg">
+          <text x="0" y="42" font-family="'Inter', -apple-system, sans-serif"
+                font-size="24" font-weight="700" letter-spacing="2px"
+                fill="#f59e0b">AERO</text>
+          <text x="130" y="42" font-family="'Inter', -apple-system, sans-serif"
+                font-size="24" font-weight="300" letter-spacing="2px"
+                fill="#f5f5f7">SENTINEL</text>
+        </svg>
+        <span class="nav-spacer"></span>
+        <span class="nav-link active">MONITOR</span>
+        <span class="nav-link">ALERTS</span>
+        <span class="nav-link">ANALYZE</span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+
+      <div class="section-label">Navbar Mockup — Light</div>
+      <div class="navbar-mock-light">
+        <svg viewBox="0 0 520 60" xmlns="http://www.w3.org/2000/svg">
+          <text x="0" y="42" font-family="'Inter', -apple-system, sans-serif"
+                font-size="24" font-weight="700" letter-spacing="2px"
+                fill="#d97706">AERO</text>
+          <text x="130" y="42" font-family="'Inter', -apple-system, sans-serif"
+                font-size="24" font-weight="300" letter-spacing="2px"
+                fill="#1d1d1f">SENTINEL</text>
+        </svg>
+        <span class="nav-spacer"></span>
+        <span class="nav-link active">MONITOR</span>
+        <span class="nav-link">ALERTS</span>
+        <span class="nav-link">ANALYZE</span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+    </div>
+
+
+    <!-- ════════════════════════════════════════════════════════════════
+         CONCEPT 3 — Stacked Wordmark
+         ════════════════════════════════════════════════════════════════ -->
+    <div class="card">
+      <div class="card-number">Concept 03</div>
+      <div class="card-title">Stacked Wordmark</div>
+      <div class="card-desc">"AERO" large on top, "SENTINEL" smaller beneath, left-aligned. Compact two-line lockup.</div>
+
+      <div class="section-label">Wordmark — Dark</div>
+      <div class="logo-preview">
+        <div class="logo-preview-dark" style="flex-direction: column; align-items: flex-start; padding-left: 40px;">
+          <svg viewBox="0 0 300 70" xmlns="http://www.w3.org/2000/svg">
+            <text x="0" y="30" font-family="'Inter', -apple-system, sans-serif"
+                  font-size="34" font-weight="700" letter-spacing="4px"
+                  fill="#f59e0b">AERO</text>
+            <text x="3" y="58" font-family="'Inter', -apple-system, sans-serif"
+                  font-size="16" font-weight="400" letter-spacing="8px"
+                  fill="#f5f5f7">SENTINEL</text>
+          </svg>
+        </div>
+        <div class="logo-preview-light" style="flex-direction: column; align-items: flex-start; padding-left: 40px;">
+          <svg viewBox="0 0 300 70" xmlns="http://www.w3.org/2000/svg">
+            <text x="0" y="30" font-family="'Inter', -apple-system, sans-serif"
+                  font-size="34" font-weight="700" letter-spacing="4px"
+                  fill="#d97706">AERO</text>
+            <text x="3" y="58" font-family="'Inter', -apple-system, sans-serif"
+                  font-size="16" font-weight="400" letter-spacing="8px"
+                  fill="#1d1d1f">SENTINEL</text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="section-label">Favicon — "AS" Monogram</div>
+      <div class="favicon-row">
+        <div class="favicon-item">
+          <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c3-fg-48" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#d97706"/>
+              </linearGradient>
+            </defs>
+            <rect width="48" height="48" rx="12" fill="url(#c3-fg-48)"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="20" font-weight="700" fill="#fff">AS</text>
+          </svg>
+          <span class="size-label">48px</span>
+        </div>
+        <div class="favicon-item">
+          <svg width="32" height="32" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c3-fg-32" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#d97706"/>
+              </linearGradient>
+            </defs>
+            <rect width="48" height="48" rx="12" fill="url(#c3-fg-32)"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="20" font-weight="700" fill="#fff">AS</text>
+          </svg>
+          <span class="size-label">32px</span>
+        </div>
+        <div class="favicon-item">
+          <svg width="16" height="16" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c3-fg-16" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#d97706"/>
+              </linearGradient>
+            </defs>
+            <rect width="48" height="48" rx="12" fill="url(#c3-fg-16)"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="20" font-weight="700" fill="#fff">AS</text>
+          </svg>
+          <span class="size-label">16px</span>
+        </div>
+      </div>
+
+      <div class="section-label">Navbar Mockup — Dark</div>
+      <div class="navbar-mock" style="padding: 10px 24px;">
+        <svg viewBox="0 0 240 48" xmlns="http://www.w3.org/2000/svg" style="width: 110px;">
+          <text x="0" y="22" font-family="'Inter', -apple-system, sans-serif"
+                font-size="20" font-weight="700" letter-spacing="3px"
+                fill="#f59e0b">AERO</text>
+          <text x="2" y="40" font-family="'Inter', -apple-system, sans-serif"
+                font-size="10" font-weight="400" letter-spacing="5px"
+                fill="#f5f5f7">SENTINEL</text>
+        </svg>
+        <span class="nav-spacer"></span>
+        <span class="nav-link active">MONITOR</span>
+        <span class="nav-link">ALERTS</span>
+        <span class="nav-link">ANALYZE</span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+
+      <div class="section-label">Navbar Mockup — Light</div>
+      <div class="navbar-mock-light" style="padding: 10px 24px;">
+        <svg viewBox="0 0 240 48" xmlns="http://www.w3.org/2000/svg" style="width: 110px;">
+          <text x="0" y="22" font-family="'Inter', -apple-system, sans-serif"
+                font-size="20" font-weight="700" letter-spacing="3px"
+                fill="#d97706">AERO</text>
+          <text x="2" y="40" font-family="'Inter', -apple-system, sans-serif"
+                font-size="10" font-weight="400" letter-spacing="5px"
+                fill="#1d1d1f">SENTINEL</text>
+        </svg>
+        <span class="nav-spacer"></span>
+        <span class="nav-link active">MONITOR</span>
+        <span class="nav-link">ALERTS</span>
+        <span class="nav-link">ANALYZE</span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+    </div>
+
+
+    <!-- ════════════════════════════════════════════════════════════════
+         CONCEPT 4 — Monospace Tech
+         ════════════════════════════════════════════════════════════════ -->
+    <div class="card">
+      <div class="card-number">Concept 04</div>
+      <div class="card-title">Monospace Tech</div>
+      <div class="card-desc">JetBrains Mono — terminal/developer aesthetic. Amber underline accent for a technical edge.</div>
+
+      <div class="section-label">Wordmark — Dark</div>
+      <div class="logo-preview">
+        <div class="logo-preview-dark">
+          <svg viewBox="0 0 520 70" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c4-amber" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#d97706"/>
+              </linearGradient>
+            </defs>
+            <text x="260" y="36" text-anchor="middle"
+                  font-family="'JetBrains Mono', 'SF Mono', 'Fira Code', monospace"
+                  font-size="24" font-weight="700" letter-spacing="4px"
+                  fill="#f5f5f7">AEROSENTINEL</text>
+            <!-- Amber underline -->
+            <rect x="52" y="48" width="416" height="2" rx="1" fill="url(#c4-amber)"/>
+          </svg>
+        </div>
+        <div class="logo-preview-light">
+          <svg viewBox="0 0 520 70" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c4-amber-l" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#d97706"/>
+              </linearGradient>
+            </defs>
+            <text x="260" y="36" text-anchor="middle"
+                  font-family="'JetBrains Mono', 'SF Mono', 'Fira Code', monospace"
+                  font-size="24" font-weight="700" letter-spacing="4px"
+                  fill="#1d1d1f">AEROSENTINEL</text>
+            <rect x="52" y="48" width="416" height="2" rx="1" fill="url(#c4-amber-l)"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="section-label">Favicon — "AS" Monogram</div>
+      <div class="favicon-row">
+        <div class="favicon-item">
+          <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <rect width="48" height="48" rx="10" fill="#0a0a14"/>
+            <rect x="0" y="44" width="48" height="4" rx="2" fill="#f59e0b"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'JetBrains Mono', monospace"
+                  font-size="18" font-weight="700" fill="#f5f5f7">AS</text>
+          </svg>
+          <span class="size-label">48px</span>
+        </div>
+        <div class="favicon-item">
+          <svg width="32" height="32" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <rect width="48" height="48" rx="10" fill="#0a0a14"/>
+            <rect x="0" y="44" width="48" height="4" rx="2" fill="#f59e0b"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'JetBrains Mono', monospace"
+                  font-size="18" font-weight="700" fill="#f5f5f7">AS</text>
+          </svg>
+          <span class="size-label">32px</span>
+        </div>
+        <div class="favicon-item">
+          <svg width="16" height="16" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <rect width="48" height="48" rx="10" fill="#0a0a14"/>
+            <rect x="0" y="44" width="48" height="4" rx="2" fill="#f59e0b"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'JetBrains Mono', monospace"
+                  font-size="18" font-weight="700" fill="#f5f5f7">AS</text>
+          </svg>
+          <span class="size-label">16px</span>
+        </div>
+      </div>
+
+      <div class="section-label">Navbar Mockup — Dark</div>
+      <div class="navbar-mock">
+        <svg viewBox="0 0 520 70" xmlns="http://www.w3.org/2000/svg" style="width: 140px;">
+          <defs>
+            <linearGradient id="c4-nav-d" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#f59e0b"/>
+              <stop offset="100%" stop-color="#d97706"/>
+            </linearGradient>
+          </defs>
+          <text x="0" y="32" font-family="'JetBrains Mono', monospace"
+                font-size="18" font-weight="700" letter-spacing="3px"
+                fill="#f5f5f7">AEROSENTINEL</text>
+          <rect x="0" y="40" width="280" height="2" rx="1" fill="url(#c4-nav-d)"/>
+        </svg>
+        <span class="nav-spacer"></span>
+        <span class="nav-link active" style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1px;">MONITOR</span>
+        <span class="nav-link" style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1px;">ALERTS</span>
+        <span class="nav-link" style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1px;">ANALYZE</span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+
+      <div class="section-label">Navbar Mockup — Light</div>
+      <div class="navbar-mock-light">
+        <svg viewBox="0 0 520 70" xmlns="http://www.w3.org/2000/svg" style="width: 140px;">
+          <defs>
+            <linearGradient id="c4-nav-l" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#f59e0b"/>
+              <stop offset="100%" stop-color="#d97706"/>
+            </linearGradient>
+          </defs>
+          <text x="0" y="32" font-family="'JetBrains Mono', monospace"
+                font-size="18" font-weight="700" letter-spacing="3px"
+                fill="#1d1d1f">AEROSENTINEL</text>
+          <rect x="0" y="40" width="280" height="2" rx="1" fill="url(#c4-nav-l)"/>
+        </svg>
+        <span class="nav-spacer"></span>
+        <span class="nav-link active" style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1px;">MONITOR</span>
+        <span class="nav-link" style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1px;">ALERTS</span>
+        <span class="nav-link" style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1px;">ANALYZE</span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+    </div>
+
+
+    <!-- ════════════════════════════════════════════════════════════════
+         CONCEPT 5 — Gradient Wordmark
+         ════════════════════════════════════════════════════════════════ -->
+    <div class="card">
+      <div class="card-number">Concept 05</div>
+      <div class="card-title">Gradient Wordmark</div>
+      <div class="card-desc">Amber-to-white gradient text. The most premium and luxurious variant — smooth color transition.</div>
+
+      <div class="section-label">Wordmark — Dark</div>
+      <div class="logo-preview">
+        <div class="logo-preview-dark">
+          <svg viewBox="0 0 500 60" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c5-text" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="50%" stop-color="#fbbf24"/>
+                <stop offset="100%" stop-color="#f5f5f7"/>
+              </linearGradient>
+            </defs>
+            <text x="250" y="42" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="28" font-weight="700" letter-spacing="5px"
+                  fill="url(#c5-text)">AEROSENTINEL</text>
+          </svg>
+        </div>
+        <div class="logo-preview-light">
+          <svg viewBox="0 0 500 60" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c5-text-l" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#d97706"/>
+                <stop offset="50%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#92400e"/>
+              </linearGradient>
+            </defs>
+            <text x="250" y="42" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="28" font-weight="700" letter-spacing="5px"
+                  fill="url(#c5-text-l)">AEROSENTINEL</text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="section-label">Favicon — "AS" Monogram</div>
+      <div class="favicon-row">
+        <div class="favicon-item">
+          <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c5-fg-48" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="50%" stop-color="#fbbf24"/>
+                <stop offset="100%" stop-color="#f5f5f7"/>
+              </linearGradient>
+            </defs>
+            <rect width="48" height="48" rx="12" fill="url(#c5-fg-48)"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="20" font-weight="700" fill="#fff">AS</text>
+          </svg>
+          <span class="size-label">48px</span>
+        </div>
+        <div class="favicon-item">
+          <svg width="32" height="32" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c5-fg-32" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="50%" stop-color="#fbbf24"/>
+                <stop offset="100%" stop-color="#f5f5f7"/>
+              </linearGradient>
+            </defs>
+            <rect width="48" height="48" rx="12" fill="url(#c5-fg-32)"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="20" font-weight="700" fill="#fff">AS</text>
+          </svg>
+          <span class="size-label">32px</span>
+        </div>
+        <div class="favicon-item">
+          <svg width="16" height="16" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="c5-fg-16" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b"/>
+                <stop offset="50%" stop-color="#fbbf24"/>
+                <stop offset="100%" stop-color="#f5f5f7"/>
+              </linearGradient>
+            </defs>
+            <rect width="48" height="48" rx="12" fill="url(#c5-fg-16)"/>
+            <text x="24" y="32" text-anchor="middle"
+                  font-family="'Inter', -apple-system, sans-serif"
+                  font-size="20" font-weight="700" fill="#fff">AS</text>
+          </svg>
+          <span class="size-label">16px</span>
+        </div>
+      </div>
+
+      <div class="section-label">Navbar Mockup — Dark</div>
+      <div class="navbar-mock">
+        <svg viewBox="0 0 500 60" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="c5-nav-d" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#f59e0b"/>
+              <stop offset="50%" stop-color="#fbbf24"/>
+              <stop offset="100%" stop-color="#f5f5f7"/>
+            </linearGradient>
+          </defs>
+          <text x="0" y="42" font-family="'Inter', -apple-system, sans-serif"
+                font-size="24" font-weight="700" letter-spacing="4px"
+                fill="url(#c5-nav-d)">AEROSENTINEL</text>
+        </svg>
+        <span class="nav-spacer"></span>
+        <span class="nav-link active">MONITOR</span>
+        <span class="nav-link">ALERTS</span>
+        <span class="nav-link">ANALYZE</span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+
+      <div class="section-label">Navbar Mockup — Light</div>
+      <div class="navbar-mock-light">
+        <svg viewBox="0 0 500 60" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="c5-nav-l" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#d97706"/>
+              <stop offset="50%" stop-color="#f59e0b"/>
+              <stop offset="100%" stop-color="#92400e"/>
+            </linearGradient>
+          </defs>
+          <text x="0" y="42" font-family="'Inter', -apple-system, sans-serif"
+                font-size="24" font-weight="700" letter-spacing="4px"
+                fill="url(#c5-nav-l)">AEROSENTINEL</text>
+        </svg>
+        <span class="nav-spacer"></span>
+        <span class="nav-link active">MONITOR</span>
+        <span class="nav-link">ALERTS</span>
+        <span class="nav-link">ANALYZE</span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+    </div>
+
+  </div><!-- /grid -->
+
+  <p class="footer-note">AeroSentinel Logo Concepts v2 — Apple-Style Minimal Premium</p>
+
+</body>
+</html>

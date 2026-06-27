@@ -80,22 +80,43 @@ export function Footer() {
 
   return (
     <>
-      {/* Desktop footer */}
-      <footer className="hidden sm:block mt-16 border-t border-border/40 py-6 px-6">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4 text-xs font-mono text-muted-foreground/50">
-            <Link href="/features" className="hover:text-muted-foreground transition-colors">Features</Link>
-            <Link href="/faq" className="hover:text-muted-foreground transition-colors">FAQ</Link>
-            <Link href="/use-cases" className="hover:text-muted-foreground transition-colors">Use Cases</Link>
-            <Link href="/about" className="hover:text-muted-foreground transition-colors">About</Link>
-            <Link href="/blog" className="hover:text-muted-foreground transition-colors">Blog</Link>
-            <Link href="/privacy" className="hover:text-muted-foreground transition-colors">Privacy</Link>
-            <Link href="/terms" className="hover:text-muted-foreground transition-colors">Terms</Link>
-            <a href="mailto:contact@aerosentinel.app" className="hover:text-muted-foreground transition-colors">Contact Us</a>
+      {/* Footer — mobile 2-column grid, desktop flex row */}
+      <footer className="mt-16 border-t border-border/40 py-6 px-6">
+        <div className="max-w-7xl mx-auto">
+          {/* Mobile: 2-row grid layout */}
+          <div className="sm:hidden flex flex-col gap-y-2 text-center">
+            <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs font-mono text-muted-foreground/50">
+              <Link href="/about" className="hover:text-muted-foreground transition-colors">About</Link>
+              <Link href="/privacy" className="hover:text-muted-foreground transition-colors">Privacy</Link>
+              <Link href="/terms" className="hover:text-muted-foreground transition-colors">Terms</Link>
+              <a href="mailto:contact@aerosentinel.app" className="hover:text-muted-foreground transition-colors">Contact</a>
+            </div>
+            <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs font-mono text-muted-foreground/50">
+              <Link href="/blog" className="hover:text-muted-foreground transition-colors">Blog</Link>
+              <Link href="/features" className="hover:text-muted-foreground transition-colors">Features</Link>
+              <Link href="/faq" className="hover:text-muted-foreground transition-colors">FAQ</Link>
+              <Link href="/use-cases" className="hover:text-muted-foreground transition-colors">Use Cases</Link>
+            </div>
+            <span className="text-[10px] text-muted-foreground/50 font-mono tracking-widest select-none mt-1">
+              DESIGNED BY <span className="text-muted-foreground/80 font-semibold">FM</span>
+            </span>
           </div>
-          <span className="text-xs text-muted-foreground/50 font-mono tracking-widest select-none">
-            DESIGNED BY <span className="text-muted-foreground/80 font-semibold">FM</span>
-          </span>
+          {/* Desktop: single flex row */}
+          <div className="hidden sm:flex items-center justify-between">
+            <div className="flex items-center gap-4 text-xs font-mono text-muted-foreground/50">
+              <Link href="/features" className="hover:text-muted-foreground transition-colors">Features</Link>
+              <Link href="/faq" className="hover:text-muted-foreground transition-colors">FAQ</Link>
+              <Link href="/use-cases" className="hover:text-muted-foreground transition-colors">Use Cases</Link>
+              <Link href="/about" className="hover:text-muted-foreground transition-colors">About</Link>
+              <Link href="/blog" className="hover:text-muted-foreground transition-colors">Blog</Link>
+              <Link href="/privacy" className="hover:text-muted-foreground transition-colors">Privacy</Link>
+              <Link href="/terms" className="hover:text-muted-foreground transition-colors">Terms</Link>
+              <a href="mailto:contact@aerosentinel.app" className="hover:text-muted-foreground transition-colors">Contact Us</a>
+            </div>
+            <span className="text-xs text-muted-foreground/50 font-mono tracking-widest select-none">
+              DESIGNED BY <span className="text-muted-foreground/80 font-semibold">FM</span>
+            </span>
+          </div>
         </div>
       </footer>
 

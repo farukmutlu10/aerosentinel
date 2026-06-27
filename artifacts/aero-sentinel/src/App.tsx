@@ -2,29 +2,31 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
-import Dashboard from "@/pages/Dashboard";
-import Alerts from "@/pages/Alerts";
-import Airports from "@/pages/Airports";
-import AirportDetail from "@/pages/AirportDetail";
-import About from "@/pages/About";
-import Privacy from "@/pages/Privacy";
-import Terms from "@/pages/Terms";
-import Contact from "@/pages/Contact";
-import Blog from "@/pages/Blog";
-import BlogPost from "@/pages/BlogPost";
-import Features from "@/pages/Features";
-import FeatureDetail from "@/pages/FeatureDetail";
-import FAQ from "@/pages/FAQ";
-import UseCases from "@/pages/UseCases";
-import UseCaseDetail from "@/pages/UseCaseDetail";
+
+// ── Route-based code splitting (React.lazy) ──────────────────────────────────
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const Alerts = lazy(() => import("@/pages/Alerts"));
+const Airports = lazy(() => import("@/pages/Airports"));
+const AirportDetail = lazy(() => import("@/pages/AirportDetail"));
+const About = lazy(() => import("@/pages/About"));
+const Privacy = lazy(() => import("@/pages/Privacy"));
+const Terms = lazy(() => import("@/pages/Terms"));
+const Contact = lazy(() => import("@/pages/Contact"));
+const Blog = lazy(() => import("@/pages/Blog"));
+const BlogPost = lazy(() => import("@/pages/BlogPost"));
+const Features = lazy(() => import("@/pages/Features"));
+const FeatureDetail = lazy(() => import("@/pages/FeatureDetail"));
+const FAQ = lazy(() => import("@/pages/FAQ"));
+const UseCases = lazy(() => import("@/pages/UseCases"));
+const UseCaseDetail = lazy(() => import("@/pages/UseCaseDetail"));
+const NotFound = lazy(() => import("@/pages/not-found"));
 import { WatchlistProvider } from "@/context/WatchlistContext";
 import { TimezoneProvider } from "@/components/ClockDisplay";
 import { useAlertNotifications } from "@/hooks/useAlertNotifications";
 import { AlertToastContainer } from "@/components/AlertToast";
 import { ThemeTransition } from "@/components/ThemeTransition";
 import { useTheme } from "@/hooks/useTheme";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, lazy, Suspense, useContext, useEffect, useState } from "react";
 import { initGA, trackPageView } from "@/lib/ga";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -116,6 +118,7 @@ function AppInner() {
     <ThemeContext.Provider value={{ theme, toggleTheme, transitioning, pendingTheme, completeTransition }}>
       <LocalAckContext.Provider value={{ localAcked, setLocalAcked }}>
         <ErrorBoundary>
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" /></div>}>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Switch>
             <Route path="/" component={Dashboard} />
@@ -138,6 +141,7 @@ function AppInner() {
             <Route component={NotFound} />
           </Switch>
         </WouterRouter>
+        </Suspense>
         </ErrorBoundary>
 
         <AlertToastContainer
