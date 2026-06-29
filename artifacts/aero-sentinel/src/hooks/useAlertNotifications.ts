@@ -99,7 +99,7 @@ export function useAlertNotifications() {
   // ─── Polling — useListAlerts ile (Alerts sayfasıyla aynı API) ──────────────
   const { data: allAlerts, error: recentError, isLoading } = useListAlerts(
     { limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 15_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, refetchOnReconnect: true, refetchOnMount: true, retry: 3 } }
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, refetchOnReconnect: true, refetchOnMount: true, retry: 3 } }
   );
 
   useEffect(() => { if (recentError) log("⚠️ API HATASI:", recentError.message || recentError); }, [recentError]);

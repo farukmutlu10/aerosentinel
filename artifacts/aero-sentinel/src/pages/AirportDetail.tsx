@@ -11,6 +11,8 @@ import {
   useAcknowledgeAlert, getGetAlertsSummaryQueryKey, getGetRecentAlertsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useWatchlistWeather } from "@/pages/Dashboard";
+import { useWatchlist } from "@/context/WatchlistContext";
 import { AlertBadge } from "@/components/AlertBadge";
 import { IataBadge } from "@/components/IataBadge";
 import { parseMetar, CATEGORY_COLOR, FlightCategory } from "@/lib/metarParser";
@@ -22,17 +24,36 @@ interface Props { icao: string }
 export default function AirportDetail({ icao }: Props) {
   const queryClient = useQueryClient();
   const { theme, toggleTheme } = useThemeContext();
+  const { effectiveIcaos } = useWatchlist();
 
-  const { data: taf, isLoading: tafLoading } = useGetAirportTaf(icao, {
-    query: { enabled: !!icao, queryKey: getGetAirportTafQueryKey(icao), refetchInterval: 60_000 },
+  // Dashboard'un cache'inden beslen (watchlist'teki havalimanlar için)
+  // Watchlist dışı havalimanlar için ayrı API çağrısı
+  const isInWatchlist = effectiveIcaos.some(i => i.toUpperCase() === icao.toUpperCase());
+  const { data: watchlistWeather, isLoading: watchlistLoading } = useWatchlistWeather(effectiveIcaos);
+
+  // Watchlist'teyse Dashboard cache'inden, değilse ayrı API'den
+  const { data: tafFallback, isLoading: tafLoadingFallback } = useGetAirportTaf(icao, {
+    query: { enabled: !!icao && !isInWatchlist, queryKey: getGetAirportTafQueryKey(icao), refetchInterval: 60_000 },
   });
-  const { data: metar, isLoading: metarLoading } = useGetAirportMetar(icao, {
-    query: { enabled: !!icao, queryKey: getGetAirportMetarQueryKey(icao), refetchInterval: 60_000 },
+  const { data: metarFallback, isLoading: metarLoadingFallback } = useGetAirportMetar(icao, {
+    query: { enabled: !!icao && !isInWatchlist, queryKey: getGetAirportMetarQueryKey(icao), refetchInterval: 60_000 },
   });
-  const { data: alerts, isLoading: alertsLoading } = useListAlerts(
-    { icao, limit: 50 },
-    { query: { queryKey: getListAlertsQueryKey({ icao, limit: 50 }), refetchInterval: 30_000 } }
+
+  // Watchlist verisinden kendi havalimanını filtrele
+  const watchlistItem = watchlistWeather?.find(w => w.icao.toUpperCase() === icao.toUpperCase());
+
+  // TAF/METAR: watchlist'ten al (varsa), yoksa fallback API'den
+  const taf = watchlistItem ? { rawTaf: watchlistItem.rawTaf } : tafFallback;
+  const metar = watchlistItem ? { rawMetar: watchlistItem.rawMetar } : metarFallback;
+  const tafLoading = isInWatchlist ? watchlistLoading : tafLoadingFallback;
+  const metarLoading = isInWatchlist ? watchlistLoading : metarLoadingFallback;
+
+  // Alert history: useAlertNotifications cache'inden filtrele (ek API isteği yok)
+  const { data: allAlerts, isLoading: alertsLoading } = useListAlerts(
+    { limit: 100 },
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: Infinity } }
   );
+  const alerts = allAlerts?.filter(a => a.icao.toUpperCase() === icao.toUpperCase()) ?? [];
 
   const { mutate: acknowledge, isPending } = useAcknowledgeAlert({
     mutation: {

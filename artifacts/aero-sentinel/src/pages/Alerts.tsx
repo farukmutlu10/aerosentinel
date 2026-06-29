@@ -202,7 +202,7 @@ export default function Alerts() {
 
   const { data: allAlerts, isLoading } = useListAlerts(
     { limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 60_000, refetchIntervalInBackground: true } }
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: Infinity, refetchIntervalInBackground: true } }
   );
 
   const handleRefresh = async () => {

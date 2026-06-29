@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AEROSENTINEL — Navbar Preview</title>
+<style>
+  @font-face { font-family: 'Psilograph'; src: url('psilograph_font/Psilograph-Thin.ttf') format('truetype'); font-weight: 100; }
+  @font-face { font-family: 'Psilograph'; src: url('psilograph_font/Psilograph-SemiBold.ttf') format('truetype'); font-weight: 600; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 20px; transition: background 0.3s; }
+  body.dark { background: #080810; }
+  body.light { background: #f5f5f0; }
+
+  .theme-btn {
+    position: fixed; top: 12px; right: 12px; z-index: 100;
+    padding: 6px 14px; border: 1px solid #333; border-radius: 16px;
+    background: transparent; color: #888; font-size: 10px;
+    letter-spacing: 2px; text-transform: uppercase; cursor: pointer;
+  }
+  .theme-btn:hover { border-color: #d4a843; color: #d4a843; }
+
+  .variant { margin-bottom: 20px; }
+  .variant-label {
+    font-size: 8px; letter-spacing: 3px; text-transform: uppercase;
+    text-align: center; padding: 8px 0; opacity: 0.35;
+  }
+  body.dark .variant-label { color: #888; }
+  body.light .variant-label { color: #666; }
+
+  .navbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; height: 64px; overflow: hidden;
+    border-bottom: 1px solid; transition: all 0.3s;
+  }
+  .nav-left { display: flex; align-items: center; gap: 12px; }
+  .logo-wrap {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%; position: relative;
+  }
+  .logo-text {
+    font-family: 'Psilograph', Impact, sans-serif;
+    text-transform: uppercase; line-height: 1;
+    /* Psilograph extra condensed — ascender offset */
+    position: relative; top: 5.5px;
+  }
+  .nav-items { display: flex; gap: 20px; }
+  .nav-items span { font-size: 11px; letter-spacing: 3px; font-weight: 700; }
+
+  @media (max-width: 768px) {
+    .logo-text { font-size: 48px !important; }
+    .navbar { padding: 0 12px; height: 48px; }
+    .nav-items { gap: 12px; }
+    .nav-items span { font-size: 9px; letter-spacing: 2px; }
+  }
+</style>
+</head>
+<body class="dark">
+
+<button class="theme-btn" onclick="toggleTheme()">Dark / Light</button>
+
+<script>
+function toggleTheme() {
+  document.body.classList.toggle('dark');
+  document.body.classList.toggle('light');
+  document.querySelectorAll('.navbar').forEach(nav => {
+    if (document.body.classList.contains('light')) {
+      nav.style.background = '#f0efe8';
+      nav.style.borderColor = '#e0dcd4';
+    } else {
+      nav.style.background = '#0f0f1a';
+      nav.style.borderColor = '#1a1a2e';
+    }
+  });
+}
+</script>
+
+<!-- ═══ 1: Monokrom Gold ═══ -->
+<div class="variant">
+  <div class="variant-label">1 — Monokrom Gold</div>
+  <div class="navbar" style="background:#0f0f1a; border-color:#1a1a2e;">
+    <div class="nav-left">
+      <div class="logo-wrap">
+        <div class="logo-text" style="font-size:75px;">
+          <span style="font-weight:100;color:#d4a843;">AERO</span><span style="font-weight:600;color:#d4a843;">SENTINEL</span>
+        </div>
+      </div>
+    </div>
+    <div class="nav-items">
+      <span style="color:#38BDF8;">MONITOR</span><span style="color:#555;">ALERTS</span><span style="color:#555;">ANALYZE</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 2: Monokrom Dark ═══ -->
+<div class="variant">
+  <div class="variant-label">2 — Monokrom Dark</div>
+  <div class="navbar" style="background:#0f0f1a; border-color:#1a1a2e;">
+    <div class="nav-left">
+      <div class="logo-wrap">
+        <div class="logo-text" style="font-size:75px;">
+          <span style="font-weight:100;color:#1a1a2e;">AERO</span><span style="font-weight:600;color:#1a1a2e;">SENTINEL</span>
+        </div>
+      </div>
+    </div>
+    <div class="nav-items">
+      <span style="color:#38BDF8;">MONITOR</span><span style="color:#555;">ALERTS</span><span style="color:#555;">ANALYZE</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 3: Monokrom White ═══ -->
+<div class="variant">
+  <div class="variant-label">3 — Monokrom White</div>
+  <div class="navbar" style="background:#0f0f1a; border-color:#1a1a2e;">
+    <div class="nav-left">
+      <div class="logo-wrap">
+        <div class="logo-text" style="font-size:75px;">
+          <span style="font-weight:100;color:#f0f0f0;">AERO</span><span style="font-weight:600;color:#f0f0f0;">SENTINEL</span>
+        </div>
+      </div>
+    </div>
+    <div class="nav-items">
+      <span style="color:#38BDF8;">MONITOR</span><span style="color:#555;">ALERTS</span><span style="color:#555;">ANALYZE</span>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -2,6 +2,10 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
+/* ── Psilograph Font (Logo) ── */
+@font-face { font-family: 'Psilograph'; src: url('/fonts/psilograph/Psilograph-Thin.ttf') format('truetype'); font-weight: 100; font-style: normal; }
+@font-face { font-family: 'Psilograph'; src: url('/fonts/psilograph/Psilograph-SemiBold.ttf') format('truetype'); font-weight: 600; font-style: normal; }
+
 /* Smooth theme transition — minimal, only structural elements */
 html {
   transition: background-color 0.2s ease, color 0.2s ease;
@@ -307,4 +311,10 @@ html {
 @keyframes fadeInUp {
   0% { opacity: 0; transform: translateY(16px); }
   100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Logo responsive margin-top: 7.5px mobile, 10.5px desktop (≥640px) */
+.logo-margin { margin-top: 7.5px; }
+@media (min-width: 640px) {
+  .logo-margin { margin-top: 10.5px; }
 }

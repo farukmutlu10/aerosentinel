@@ -53,7 +53,7 @@ export function Footer() {
 
   const { data: allAlerts } = useListAlerts(
     { limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 180_000, refetchIntervalInBackground: true } }
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: Infinity, refetchIntervalInBackground: true } }
   );
 
   // Deduplicate by ICAO (keep latest), same as Alerts.tsx / NavHeader.tsx
@@ -81,7 +81,7 @@ export function Footer() {
   return (
     <>
       {/* Footer — mobile 2-column grid, desktop flex row */}
-      <footer className="mt-16 border-t border-border/40 py-6 px-6">
+      <footer className="mt-16 border-t border-border/40 py-6 px-6 pb-20 sm:pb-6">
         <div className="max-w-7xl mx-auto">
           {/* Mobile: 2-row grid layout */}
           <div className="sm:hidden flex flex-col gap-y-2 text-center">

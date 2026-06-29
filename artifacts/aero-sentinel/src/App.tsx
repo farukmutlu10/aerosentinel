@@ -25,6 +25,7 @@ import { TimezoneProvider } from "@/components/ClockDisplay";
 import { useAlertNotifications } from "@/hooks/useAlertNotifications";
 import { AlertToastContainer } from "@/components/AlertToast";
 import { ThemeTransition } from "@/components/ThemeTransition";
+import { SplashScreen } from "@/components/SplashScreen";
 import { useTheme } from "@/hooks/useTheme";
 import { createContext, lazy, Suspense, useContext, useEffect, useState } from "react";
 import { initGA, trackPageView } from "@/lib/ga";
@@ -162,6 +163,7 @@ function AppInner() {
         {transitioning && pendingTheme && (
           <ThemeTransition targetTheme={pendingTheme} onComplete={completeTransition} />
         )}
+        <SplashScreen />
         <Toaster />
         <CookieConsent />
         <NotificationBanner />

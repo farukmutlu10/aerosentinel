@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useListAlerts, getListAlertsQueryKey } from "@workspace/api-client-react";
 import { useWatchlist } from "@/context/WatchlistContext";
@@ -10,6 +10,28 @@ interface Props {
   monitorStatus?: { running: boolean };
   theme?: "dark" | "light";
   onToggleTheme?: () => void;
+}
+
+// ── Logo color variants ──────────────────────────────────────────────────────
+const LOGO_COLORS = {
+  gold: "#d4a843",
+  white: "#f0f0f0",
+  dark: "#1a1a2e",
+} as const;
+
+type LogoVariant = keyof typeof LOGO_COLORS;
+
+/**
+ * Randomly pick a logo variant.
+ * Dark theme → gold or white (never dark)
+ * Light theme → gold or dark (never white)
+ */
+function pickLogoVariant(theme: "dark" | "light"): LogoVariant {
+  return Math.random() > 0.5
+    ? "gold"
+    : theme === "dark"
+      ? "white"
+      : "dark";
 }
 
 const NAV_ITEMS = [
@@ -52,6 +74,31 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isPWA, setIsPWA] = useState(false);
 
+  // ── Logo variant state ──────────────────────────────────────────────────────
+  const [logoVariant, setLogoVariant] = useState<LogoVariant>(() =>
+    pickLogoVariant(theme ?? "dark")
+  );
+
+  // Re-randomize logo on theme change
+  useEffect(() => {
+    if (theme) {
+      setLogoVariant(pickLogoVariant(theme));
+    }
+  }, [theme]);
+
+  // Re-randomize logo on tab visibility change
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && theme) {
+        setLogoVariant(pickLogoVariant(theme));
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [theme]);
+
+  const logoColor = LOGO_COLORS[logoVariant];
+
   useEffect(() => {
     setIsPWA(window.matchMedia('(display-mode: standalone)').matches);
     const handler = (e: Event) => {
@@ -62,25 +109,34 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  const handleKiosk = async () => {
-    if (isPWA) return;
-
-    if (installPrompt) {
-      installPrompt.prompt();
-      const { outcome } = await installPrompt.userChoice;
-      if (outcome === 'accepted') setInstallPrompt(null);
-      return;
-    }
-
+  const openKioskWindow = () => {
     const width = 500;
     const height = 1200;
     const left = (screen.width / 2) - (width / 2);
     const top = (screen.height / 2) - (height / 2);
+    // Add timestamp to force fresh sessionStorage in the popup
     window.open(
-      '/alerts',
+      `/alerts?kiosk=${Date.now()}`,
       'AeroSentinel Kiosk',
       `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=no,location=no,status=no,resizable=yes`
     );
+  };
+
+  const handleKiosk = () => {
+    if (isPWA) return;
+
+    // If PWA install prompt is available, trigger it and also open kiosk after
+    if (installPrompt) {
+      openKioskWindow();
+      installPrompt.prompt();
+      installPrompt.userChoice.then(({ outcome }: { outcome: string }) => {
+        if (outcome === 'accepted') setInstallPrompt(null);
+      }).catch(() => {});
+      return;
+    }
+
+    // No PWA prompt — just open the kiosk window directly (synchronous, no popup blocker)
+    openKioskWindow();
   };
 
   const toggleSound = () => {
@@ -93,7 +149,7 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
 
   const { data: allAlerts } = useListAlerts(
     { limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 180_000, refetchIntervalInBackground: true } }
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: Infinity, refetchIntervalInBackground: true } }
   );
 
   // Deduplicate by ICAO (keep latest), same as Alerts.tsx
@@ -125,12 +181,25 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
 
           {/* Logo — centered on mobile, left on desktop */}
           <div className="flex items-center flex-shrink-0 absolute left-1/2 -translate-x-1/2 sm:relative sm:left-0 sm:translate-x-0">
-            <Link href="/">
-              <img
-                src={`${import.meta.env.BASE_URL}aero-logo.png`}
-                alt="AERO-SENTINEL"
-                className="h-6 sm:h-9 object-contain select-none"
-              />
+            <Link href="/" className="flex items-center" style={{ gap: 0 }}>
+              {/* HTML logo — Psilograph font via @font-face */}
+              <span
+                className="select-none logo-margin"
+                style={{
+                  fontFamily: "'Psilograph', Impact, 'Arial Narrow', sans-serif",
+                  textTransform: "uppercase",
+                  fontSize: "clamp(60px, 5vw, 75px)",
+                  lineHeight: 1,
+                  letterSpacing: 0,
+                  display: "flex",
+                  alignItems: "baseline",
+                  color: logoColor,
+                  transition: "color 0.5s ease",
+                }}
+              >
+                <span style={{ fontWeight: 100 }}>AERO</span>
+                <span style={{ fontWeight: 600 }}>SENTINEL</span>
+              </span>
             </Link>
           </div>
 
@@ -265,6 +334,7 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
         </div>,
         document.body
       )}
+
     </>
   );
 }

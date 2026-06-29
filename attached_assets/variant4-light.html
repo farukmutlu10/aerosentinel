@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AEROSENTINEL — Variant 4 Light Theme</title>
+<style>
+  @font-face { font-family: 'Psilograph'; src: url('psilograph_font/Psilograph-Thin.ttf') format('truetype'); font-weight: 100; }
+  @font-face { font-family: 'Psilograph'; src: url('psilograph_font/Psilograph-SemiBold.ttf') format('truetype'); font-weight: 600; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #f5f5f0; font-family: 'Helvetica Neue', Arial, sans-serif; }
+
+  .navbar {
+    background: #f0efe8; border-bottom: 1px solid #e0dcd4;
+    padding: 12px 28px; display: flex; align-items: center; justify-content: space-between;
+    max-width: 1200px; margin: 0 auto;
+  }
+  .nav-left { display: flex; align-items: center; gap: 20px; }
+  .logo-text {
+    font-family: 'Psilograph', Impact, sans-serif;
+    text-transform: uppercase; font-size: 28px; line-height: 0.85;
+    letter-spacing: 0; display: flex; align-items: baseline;
+  }
+  .nav-items { display: flex; gap: 24px; }
+  .nav-items span { color: #888; font-size: 10px; letter-spacing: 3px; font-weight: 500; }
+  .nav-items span.active { color: #3b82f6; }
+</style>
+</head>
+<body>
+
+<div class="navbar">
+  <div class="nav-left">
+    <div class="logo-text">
+      <span style="font-weight:100;color:rgba(26,26,46,0.15);">AERO</span><span style="font-weight:600;color:#d4a843;">SENTINEL</span>
+    </div>
+  </div>
+  <div class="nav-items">
+    <span class="active">MONITOR</span>
+    <span>ALERTS</span>
+    <span>ANALYZE</span>
+  </div>
+</div>
+
+</body>
+</html>

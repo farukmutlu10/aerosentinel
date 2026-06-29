@@ -42,7 +42,7 @@ interface WeatherItem { icao: string; rawTaf: string | null; rawMetar: string | 
 
 const WEATHER_KEY = (key: string) => ["watchlist", "weather", key];
 
-function useWatchlistWeather(icaos: string[]) {
+export function useWatchlistWeather(icaos: string[]) {
   const key = icaos.join(",");
   const queryClient = useQueryClient();
   const query = useQuery<WeatherItem[]>({

@@ -332,6 +332,8 @@ function wxColor(code: string): string {
   if (/^(BR|HZ)$/.test(code)) return "#d1a054";
   if (/^CB$/.test(code)) return "#d1a054";
   const base = code.replace(/^[-+]/, "");
+  // GR (hail) anywhere → always red
+  if (/GR/.test(base)) return "#ef4444";
   if (RED_WX.has(base)) return "#ef4444";
   if (ORANGE_WX.has(base)) return "#f97316";
   if (/^(BL|DR)(SN|RA)/.test(base)) return "#ef4444";
@@ -656,6 +658,8 @@ export function analyzeTafWindow(rawTaf: string, etaHour: number, etaDay: number
     if (/\b(BL|DR)(SN)\b/.test(group)) allCrit.add("BLSN");
     if (/\bFZ(FG|DZ)\b/.test(group)) { const r = group.match(/\b(FZFG|FZDZ)\b/)?.[1]; if (r) allCrit.add(r); }
     if (/\bTS(SN|GR|PL)\b/.test(group)) { const r = group.match(/\b(TSSN|TSGR|TSPL)\b/)?.[1]; if (r) allCrit.add(r); }
+    // GR (hail) in any context → always critical
+    if (/\bGR\b/.test(group)) allCrit.add("GR");
 
     // CRIT wind detection (red): sustained ≥25 KT or gusts ≥29 KT
     if (!critWindRaw) {

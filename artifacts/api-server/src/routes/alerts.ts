@@ -21,7 +21,7 @@ globalThis.__alertsCache ??= new Map<string, CacheEntry>();
 const cache = globalThis.__alertsCache;
 
 const SUMMARY_CACHE_TTL = 60_000;
-const RECENT_CACHE_TTL  = 0; // Notification polling için cache kaldırıldı — her poll fresh veri dönsün
+const RECENT_CACHE_TTL  = 5_000; // 5s cache — monitor 60sn'de taradığı için 5sn gecikme kabul edilebilir
 
 function cacheAge(ts: number): string {
   return `${Math.round((Date.now() - ts) / 1000)}s`;
@@ -55,6 +55,14 @@ router.get("/alerts", async (req, res) => {
     return res.status(400).json({ error: "Invalid query params" });
   }
 
+  // ── Cache check ──────────────────────────────────────────────────
+  const cacheKey = `alerts_${userId}_${JSON.stringify(parsed.data)}`;
+  const entry = cache.get(cacheKey);
+  const now = Date.now();
+  if (entry && now - entry.ts < RECENT_CACHE_TTL) {
+    return res.json(entry.data);
+  }
+
   const { type, icao, acknowledged, limit = 50 } = parsed.data;
   const sinceHours = raw.since_hours ? Number(raw.since_hours) : 6;
   const conditions = [];
@@ -81,6 +89,9 @@ router.get("/alerts", async (req, res) => {
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(alertsTable.detectedAt))
     .limit(limit);
+
+  // ── Cache store ──────────────────────────────────────────────────
+  cache.set(cacheKey, { data: alerts, ts: now });
 
   return res.json(alerts);
 });
@@ -218,7 +229,10 @@ router.get("/alerts/recent", async (req, res) => {
     .limit(limit)
     .offset(offset);
 
-  // Cache devre dışı (RECENT_CACHE_TTL = 0) — write kaldırıldı
+  // Cache store for /alerts/recent
+  if (canUseCache) {
+    cache.set(cacheKey, { data: alerts, ts: now });
+  }
 
   return res.json(alerts);
 });
@@ -228,7 +242,7 @@ router.get("/alerts/recent", async (req, res) => {
 function invalidateAckCaches() {
   cache.delete("summary");
   for (const key of [...cache.keys()]) {
-    if (key.startsWith("recent:")) cache.delete(key);
+    if (key.startsWith("recent:") || key.startsWith("alerts_")) cache.delete(key);
   }
 }
 
