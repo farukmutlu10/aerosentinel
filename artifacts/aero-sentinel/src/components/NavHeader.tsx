@@ -110,16 +110,24 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
   }, []);
 
   const openKioskWindow = () => {
-    const width = 500;
-    const height = 1200;
-    const left = (screen.width / 2) - (width / 2);
-    const top = (screen.height / 2) - (height / 2);
-    // Add timestamp to force fresh sessionStorage in the popup
-    window.open(
-      `/alerts?kiosk=${Date.now()}`,
-      'AeroSentinel Kiosk',
-      `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=no,location=no,status=no,resizable=yes`
-    );
+    const width = Math.min(500, screen.width - 20);
+    const height = Math.min(1200, screen.height - 40);
+    const left = Math.max(0, Math.round((screen.width / 2) - (width / 2)));
+    const top = Math.max(0, Math.round((screen.height / 2) - (height / 2)));
+    const features = [
+      `width=${width}`,
+      `height=${height}`,
+      `left=${left}`,
+      `top=${top}`,
+      'popup=1',
+      'toolbar=0',
+      'menubar=0',
+      'scrollbars=0',
+      'location=0',
+      'status=0',
+      'resizable=0',
+    ].join(',');
+    window.open('/alerts', 'AeroSentinelKiosk', features);
   };
 
   const handleKiosk = () => {
