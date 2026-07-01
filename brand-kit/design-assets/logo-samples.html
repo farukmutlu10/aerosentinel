@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AEROSENTINEL — All Weight Combinations</title>
+<style>
+  @font-face { font-family: 'Psilograph'; src: url('psilograph_font/Psilograph-Thin.ttf') format('truetype'); font-weight: 100; }
+  @font-face { font-family: 'Psilograph'; src: url('psilograph_font/Psilograph-ExtraLight.ttf') format('truetype'); font-weight: 200; }
+  @font-face { font-family: 'Psilograph'; src: url('psilograph_font/Psilograph-Light.ttf') format('truetype'); font-weight: 300; }
+  @font-face { font-family: 'Psilograph'; src: url('psilograph_font/Psilograph-Regular.ttf') format('truetype'); font-weight: 400; }
+  @font-face { font-family: 'Psilograph'; src: url('psilograph_font/Psilograph-Medium.ttf') format('truetype'); font-weight: 500; }
+  @font-face { font-family: 'Psilograph'; src: url('psilograph_font/Psilograph-SemiBold.ttf') format('truetype'); font-weight: 600; }
+  @font-face { font-family: 'Psilograph'; src: url('psilograph_font/Psilograph-Bold.ttf') format('truetype'); font-weight: 700; }
+  @font-face { font-family: 'Psilograph'; src: url('psilograph_font/Psilograph-ExtraBold.ttf') format('truetype'); font-weight: 800; }
+  @font-face { font-family: 'Psilograph'; src: url('psilograph_font/Psilograph-Black.ttf') format('truetype'); font-weight: 900; }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #080810; padding: 30px; }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;
+    max-width: 1400px; margin: 0 auto;
+  }
+  .card {
+    background: #0f0f1a; border: 1px solid #1a1a2e; border-radius: 10px;
+    padding: 28px 24px; text-align: center; min-height: 100px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .card .logo-text {
+    font-family: 'Psilograph', Impact, 'Arial Narrow', sans-serif;
+    text-transform: uppercase; font-size: 42px; letter-spacing: 3px; line-height: 0.9;
+    display: flex; align-items: baseline;
+  }
+  .card .aero { color: #d4a843; }
+  .card .sentinel { color: #d4a843; }
+  .card .sep {
+    width: 100%; height: 1px; background: #d4a843; margin-top: 8px; opacity: 0.4;
+  }
+  .card .tag {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 7px; color: #d4a843; opacity: 0.5; letter-spacing: 0.3em;
+    text-transform: uppercase; margin-top: 6px;
+  }
+  .card .meta {
+    font-family: monospace; font-size: 8px; color: #333; letter-spacing: 1px;
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="grid" id="grid"></div>
+
+<script>
+const weights = [
+  [100, 'Thin'], [200, 'ExtraLight'], [300, 'Light'], [400, 'Regular'],
+  [500, 'Medium'], [600, 'SemiBold'], [700, 'Bold'], [800, 'ExtraBold'], [900, 'Black']
+];
+
+const grid = document.getElementById('grid');
+
+for (let aeroIdx = 0; aeroIdx < weights.length; aeroIdx++) {
+  for (let sentIdx = aeroIdx; sentIdx < weights.length; sentIdx++) {
+    const [aeroW, aeroName] = weights[aeroIdx];
+    const [sentW, sentName] = weights[sentIdx];
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="logo-text">
+        <span class="aero" style="font-weight:${aeroW};">AERO</span><span class="sentinel" style="font-weight:${sentW};">SENTINEL</span>
+      </div>
+      <div class="sep"></div>
+      <div class="tag">MONITOR · ALERT · ANALYZE</div>
+      <div class="meta">AERO ${aeroName} (${aeroW}) + SENTINEL ${sentName} (${sentW})</div>
+    `;
+    grid.appendChild(card);
+  }
+}
+</script>
+
+</body>
+</html>

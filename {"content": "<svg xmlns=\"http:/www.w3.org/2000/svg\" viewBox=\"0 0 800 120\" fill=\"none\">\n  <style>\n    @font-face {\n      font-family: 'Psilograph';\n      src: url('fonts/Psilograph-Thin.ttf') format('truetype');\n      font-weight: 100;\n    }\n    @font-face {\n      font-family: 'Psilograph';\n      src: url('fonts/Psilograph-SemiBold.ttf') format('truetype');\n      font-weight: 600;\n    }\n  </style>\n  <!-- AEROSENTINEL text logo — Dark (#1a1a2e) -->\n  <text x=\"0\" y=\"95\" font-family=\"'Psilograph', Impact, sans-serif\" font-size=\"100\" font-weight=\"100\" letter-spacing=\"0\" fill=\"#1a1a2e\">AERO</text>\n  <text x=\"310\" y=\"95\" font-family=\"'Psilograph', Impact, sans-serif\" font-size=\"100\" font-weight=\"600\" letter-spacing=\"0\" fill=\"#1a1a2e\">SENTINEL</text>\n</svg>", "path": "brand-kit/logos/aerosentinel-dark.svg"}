@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 120" fill="none">
+  <style>
+    @font-face {
+      font-family: 'Psilograph';
+      src: url('fonts/Psilograph-Thin.ttf') format('truetype');
+      font-weight: 100;
+    }
+    @font-face {
+      font-family: 'Psilograph';
+      src: url('fonts/Psilograph-SemiBold.ttf') format('truetype');
+      font-weight: 600;
+    }
+  </style>
+  <!-- AEROSENTINEL text logo — Gold (#d4a843) -->
+  <text x="0" y="95" font-family="'Psilograph', Impact, sans-serif" font-size="100" font-weight="100" letter-spacing="0" fill="#d4a843">AERO</text>
+  <text x="310" y="95" font-family="'Psilograph', Impact, sans-serif" font-size="100" font-weight="600" letter-spacing="0" fill="#d4a843">SENTINEL</text>
+</svg>
