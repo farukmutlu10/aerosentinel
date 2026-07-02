@@ -922,6 +922,9 @@ export default function Airports() {
                 <p className="text-[10px] font-mono text-muted-foreground/60 mt-1">
                   Required columns: Date · Flight · Reg · From (S) ICAO · To (S) ICAO · ETD · ETA
                 </p>
+                <p className="text-[10px] font-mono text-muted-foreground/40 mt-1">
+                  Your flight data is processed entirely in your browser and is never sent to any server.
+                </p>
               </div>
             </div>
           )}

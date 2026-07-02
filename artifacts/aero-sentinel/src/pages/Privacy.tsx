@@ -181,6 +181,11 @@ export default function Privacy() {
             browser settings. Google Analytics data is retained in accordance
             with Google's default retention policies.
           </p>
+          <p className="mt-2">
+            Flight data uploaded through the Flight Analysis feature is processed
+            entirely in your browser and is never sent to our servers. Once you
+            leave the page or close the tab, the uploaded data is discarded.
+          </p>
 
           <h2 className="text-xl font-semibold text-foreground pt-4">
             6. Your Rights (CCPA / GDPR)
