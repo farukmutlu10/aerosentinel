@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aerosentinel-v13';
+const CACHE_NAME = 'aerosentinel-v14';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
@@ -14,36 +14,12 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-
-  // API isteklerini her zaman network'ten çek (cache'leme)
   if (e.request.url.includes('/api/')) {
     e.respondWith(fetch(e.request));
     return;
   }
-
-  // Navigasyon istekleri (sayfa açılışları) → her zaman network'ten çek
-  // Bu, index.html'in her zaman güncel JS hash'lerini içermesini sağlar
-  // Eski cache'den bozuk index.html sunulmasını önler (Safari PWA beyaz ekran fix)
-  if (e.request.mode === 'navigate') {
-    e.respondWith(
-      fetch(e.request).catch(() => caches.match(e.request))
-    );
-    return;
-  }
-
-  // Statik dosyalar (JS, CSS, font, img) için stale-while-revalidate
-  // Bu dosyalar content-hashed olduğu için eski versiyonları güvenle serve edilebilir
-  e.respondWith(
-    caches.open(CACHE_NAME).then(cache =>
-      cache.match(e.request).then(cached => {
-        const fetched = fetch(e.request).then(response => {
-          if (response.ok) cache.put(e.request, response.clone());
-          return response;
-        }).catch(() => cached);
-        return cached || fetched;
-      })
-    )
-  );
+  // Network-first for ALL requests — no caching at all
+  e.respondWith(fetch(e.request));
 });
 
 // ─── Notification tıklama handler'ı ──────────────────────────────────────────
