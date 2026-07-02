@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aerosentinel-v12';
+const CACHE_NAME = 'aerosentinel-v13';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
@@ -7,7 +7,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+      Promise.all(keys.map(k => caches.delete(k)))
     ).then(() => clients.claim())
   );
 });
