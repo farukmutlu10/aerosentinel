@@ -95,13 +95,14 @@ app.use("/api", router);
 
 // Migration'ları çalıştır, BİTTİKTEN SONRA monitor'u başlat.
 // Aksi halde tablolar oluşmadan monitor sorgu atıp "relation does not exist" (42P01) hatası verir.
+logger.info("[startup] Running migrations...");
 runMigrations()
   .then(() => {
-    logger.info("Migrations complete — starting monitor");
+    logger.info("[startup] Migrations complete — starting monitor");
     startMonitor();
   })
   .catch((err) => {
-    logger.error({ err }, "Migration failed — starting monitor anyway (in-memory fallback)");
+    logger.error({ err }, "[startup] Migration failed — starting monitor anyway (in-memory fallback)");
     startMonitor();
   });
 

@@ -243,7 +243,11 @@ let db: ReturnType<typeof drizzle> | ReturnType<typeof memDb>;
 let pool: pg.Pool | null = null;
 
 if (process.env["DATABASE_URL"]) {
-  pool = new Pool({ connectionString: process.env["DATABASE_URL"] });
+  pool = new Pool({
+    connectionString: process.env["DATABASE_URL"],
+    connectionTimeoutMillis: 15_000, // 15s timeout — prevent infinite hangs when DB is unreachable
+    idleTimeoutMillis: 30_000,
+  });
   db = drizzle(pool, { schema });
   console.log(
     "[db] Connected to PostgreSQL:",

@@ -98,7 +98,22 @@ export async function runMigrations(): Promise<void> {
     return;
   }
 
-  const client = await pool.connect();
+  console.log("[migrate] Connecting to PostgreSQL...");
+  // Add a connection timeout to prevent hanging if DB is unreachable
+  const connectTimeout = setTimeout(() => {
+    console.error("[migrate] ❌ PostgreSQL connection is taking >10s — DB may be unreachable");
+  }, 10_000);
+
+  let client;
+  try {
+    client = await pool.connect();
+    clearTimeout(connectTimeout);
+    console.log("[migrate] ✅ PostgreSQL connected successfully");
+  } catch (err) {
+    clearTimeout(connectTimeout);
+    console.error("[migrate] ❌ PostgreSQL connection FAILED:", err);
+    throw err;
+  }
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS _migrations (

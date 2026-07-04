@@ -460,13 +460,35 @@ async function sentinelRadar() {
 export function startMonitor() {
   if (running) return;
   running = true;
+  console.log("[monitor] startMonitor() called — running=true");
   void (async () => {
-    await seedIfEmpty();
-    await loadMonitorCache();
-    console.log(`AERO-SENTINEL monitor started — watching ${cachedIcaos.length} airports`);
-    await sentinelRadar();
+    try {
+      console.log("[monitor] IIFE: starting seedIfEmpty()");
+      await seedIfEmpty();
+      console.log(`[monitor] IIFE: seedIfEmpty() done — ${cachedIcaos.length} ICAOs`);
+    } catch (err) {
+      console.error("[monitor] ❌ IIFE: seedIfEmpty() FAILED:", err);
+      // Don't return — try to continue with whatever cachedIcaos we have
+    }
+    try {
+      console.log("[monitor] IIFE: starting loadMonitorCache()");
+      await loadMonitorCache();
+      console.log("[monitor] IIFE: loadMonitorCache() done");
+    } catch (err) {
+      console.error("[monitor] ❌ IIFE: loadMonitorCache() FAILED:", err);
+    }
+    try {
+      console.log(`AERO-SENTINEL monitor started — watching ${cachedIcaos.length} airports`);
+      await sentinelRadar();
+    } catch (err) {
+      console.error("[monitor] ❌ IIFE: first sentinelRadar() FAILED:", err);
+    }
     intervalHandle = setInterval(sentinelRadar, 60_000);
-  })();
+    console.log("[monitor] ✅ setInterval armed — monitor is fully operational");
+  })().catch((err) => {
+    console.error("[monitor] ❌ IIFE: UNHANDLED top-level rejection:", err);
+    // Don't crash — keep running=true so status endpoint doesn't show "stopped"
+  });
 }
 
 export function stopMonitor() {
