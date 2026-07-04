@@ -1,5 +1,5 @@
 import { db, alertsTable, watchlistTable, monitorCacheTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 let cachedIcaos: string[] = [];
 
@@ -143,11 +143,23 @@ async function scanTaf(ids: string) {
         }
       }
       if (hasTafWxExtreme) {
-        try {
-          await db.insert(alertsTable).values({ type: "WX_EXTREME", icao, rawText: rawTaf, previousRawText });
-          console.log(`[monitor] ✅ TAF WX_EXTREME alert for ${icao}`);
-        } catch (err) {
-          console.error(`[monitor] Failed to insert TAF WX_EXTREME alert for ${icao}:`, err);
+        // Deduplicate: skip if recent alert with same ICAO+type+rawText exists
+        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
+          .where(and(
+            eq(alertsTable.icao, icao),
+            eq(alertsTable.type, "WX_EXTREME"),
+            eq(alertsTable.rawText, rawTaf),
+            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
+          )).limit(1);
+        if (recentDup.length === 0) {
+          try {
+            await db.insert(alertsTable).values({ type: "WX_EXTREME", icao, rawText: rawTaf, previousRawText });
+            console.log(`[monitor] ✅ TAF WX_EXTREME alert for ${icao}`);
+          } catch (err) {
+            console.error(`[monitor] Failed to insert TAF WX_EXTREME alert for ${icao}:`, err);
+          }
+        } else {
+          console.log(`[monitor] ⏭️ Skipping duplicate TAF WX_EXTREME for ${icao} (recent alert exists)`);
         }
       }
 
@@ -173,11 +185,23 @@ async function scanTaf(ids: string) {
         }
       }
       if (hasTafWindExtreme) {
-        try {
-          await db.insert(alertsTable).values({ type: "WIND_EXTREME", icao, rawText: rawTaf, previousRawText });
-          console.log(`[monitor] ✅ TAF WIND_EXTREME alert for ${icao}`);
-        } catch (err) {
-          console.error(`[monitor] Failed to insert TAF WIND_EXTREME alert for ${icao}:`, err);
+        // Deduplicate: skip if recent alert with same ICAO+type+rawText exists
+        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
+          .where(and(
+            eq(alertsTable.icao, icao),
+            eq(alertsTable.type, "WIND_EXTREME"),
+            eq(alertsTable.rawText, rawTaf),
+            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
+          )).limit(1);
+        if (recentDup.length === 0) {
+          try {
+            await db.insert(alertsTable).values({ type: "WIND_EXTREME", icao, rawText: rawTaf, previousRawText });
+            console.log(`[monitor] ✅ TAF WIND_EXTREME alert for ${icao}`);
+          } catch (err) {
+            console.error(`[monitor] Failed to insert TAF WIND_EXTREME alert for ${icao}:`, err);
+          }
+        } else {
+          console.log(`[monitor] ⏭️ Skipping duplicate TAF WIND_EXTREME for ${icao} (recent alert exists)`);
         }
       }
     }
@@ -237,11 +261,23 @@ async function scanMetar(ids: string) {
         }
       }
       if (hasWxExtreme) {
-        try {
-          await db.insert(alertsTable).values({ type: "WX_EXTREME", icao, rawText: rawMetar, previousRawText });
-          console.log(`[monitor] ✅ WX_EXTREME alert for ${icao}`);
-        } catch (err) {
-          console.error(`[monitor] Failed to insert WX_EXTREME alert for ${icao}:`, err);
+        // Deduplicate: skip if recent alert with same ICAO+type+rawText exists
+        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
+          .where(and(
+            eq(alertsTable.icao, icao),
+            eq(alertsTable.type, "WX_EXTREME"),
+            eq(alertsTable.rawText, rawMetar),
+            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
+          )).limit(1);
+        if (recentDup.length === 0) {
+          try {
+            await db.insert(alertsTable).values({ type: "WX_EXTREME", icao, rawText: rawMetar, previousRawText });
+            console.log(`[monitor] ✅ WX_EXTREME alert for ${icao}`);
+          } catch (err) {
+            console.error(`[monitor] Failed to insert WX_EXTREME alert for ${icao}:`, err);
+          }
+        } else {
+          console.log(`[monitor] ⏭️ Skipping duplicate WX_EXTREME for ${icao} (recent alert exists)`);
         }
       }
 
@@ -267,21 +303,45 @@ async function scanMetar(ids: string) {
         }
       }
       if (hasWindExtreme) {
-        try {
-          await db.insert(alertsTable).values({ type: "WIND_EXTREME", icao, rawText: rawMetar, previousRawText });
-          console.log(`[monitor] ✅ WIND_EXTREME alert for ${icao}`);
-        } catch (err) {
-          console.error(`[monitor] Failed to insert WIND_EXTREME alert for ${icao}:`, err);
+        // Deduplicate: skip if recent alert with same ICAO+type+rawText exists
+        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
+          .where(and(
+            eq(alertsTable.icao, icao),
+            eq(alertsTable.type, "WIND_EXTREME"),
+            eq(alertsTable.rawText, rawMetar),
+            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
+          )).limit(1);
+        if (recentDup.length === 0) {
+          try {
+            await db.insert(alertsTable).values({ type: "WIND_EXTREME", icao, rawText: rawMetar, previousRawText });
+            console.log(`[monitor] ✅ WIND_EXTREME alert for ${icao}`);
+          } catch (err) {
+            console.error(`[monitor] Failed to insert WIND_EXTREME alert for ${icao}:`, err);
+          }
+        } else {
+          console.log(`[monitor] ⏭️ Skipping duplicate WIND_EXTREME for ${icao} (recent alert exists)`);
         }
       }
 
       // ── LIFR detection ─────────────────────────────────────────────────
       if (hasLifrConditions(rawMetar)) {
-        try {
-          await db.insert(alertsTable).values({ type: "LIFR", icao, rawText: rawMetar, previousRawText });
-          console.log(`[monitor] ✅ LIFR alert for ${icao}`);
-        } catch (err) {
-          console.error(`[monitor] Failed to insert LIFR alert for ${icao}:`, err);
+        // Deduplicate: skip if recent alert with same ICAO+type+rawText exists
+        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
+          .where(and(
+            eq(alertsTable.icao, icao),
+            eq(alertsTable.type, "LIFR"),
+            eq(alertsTable.rawText, rawMetar),
+            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
+          )).limit(1);
+        if (recentDup.length === 0) {
+          try {
+            await db.insert(alertsTable).values({ type: "LIFR", icao, rawText: rawMetar, previousRawText });
+            console.log(`[monitor] ✅ LIFR alert for ${icao}`);
+          } catch (err) {
+            console.error(`[monitor] Failed to insert LIFR alert for ${icao}:`, err);
+          }
+        } else {
+          console.log(`[monitor] ⏭️ Skipping duplicate LIFR for ${icao} (recent alert exists)`);
         }
       }
     }

@@ -32,7 +32,13 @@ export function TafDiffModal({ open, onClose, alertId, alertType, icao }: TafDif
         return res.json();
       })
       .then((data) => {
-        setDiff({ previous: data.previous ?? "", current: data.current ?? "" });
+        // Only set previous if it's meaningfully different from current
+        const prev = data.previous || "";
+        const curr = data.current || "";
+        setDiff({
+          previous: prev && prev !== curr ? prev : "",
+          current: curr,
+        });
       })
       .catch((err) => {
         setError(err?.message || "Failed to load diff");
@@ -166,7 +172,11 @@ function DiffBlock({ lines, variant }: { lines: string; variant: "previous" | "c
         {hasData ? (
           <TafText raw={lines} className="text-[11px] sm:text-xs" />
         ) : (
-          <p className="text-xs font-mono text-muted-foreground/50 italic">No data</p>
+          <p className="text-xs font-mono text-muted-foreground/50 italic">
+            {variant === "previous"
+              ? "No previous TAF data available (first alert for this airport)"
+              : "No data"}
+          </p>
         )}
       </div>
     </div>

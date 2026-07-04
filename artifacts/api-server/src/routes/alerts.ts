@@ -308,6 +308,12 @@ router.get("/alerts/:id/diff", async (req, res) => {
     }
   }
 
+  // If the previous text is identical to current, treat as no previous data
+  // (avoids showing identical TAFs in both panels of the CHANGES modal)
+  if (previousText && previousText === alert.rawText) {
+    previousText = null;
+  }
+
   return res.json({
     id: alert.id,
     type: alert.type,
