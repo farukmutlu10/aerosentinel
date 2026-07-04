@@ -1,5 +1,7 @@
 {
   "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile",
     "watchPatterns": [
       "artifacts/api-server/src/**",
       "artifacts/aero-sentinel/src/**",
