@@ -287,7 +287,8 @@ router.get("/alerts/:id/diff", async (req, res) => {
 
   const alert = rows[0];
 
-  // If previousRawText is null, try to find the most recent prior alert of same ICAO/type
+  // If previousRawText is null, try to find the most recent prior alert of same ICAO
+  // (regardless of type) so that e.g. a TAF_AMD correctly diffs against the previous normal TAF
   let previousText = alert.previousRawText;
   if (!previousText) {
     const [prevRow] = await db
@@ -296,7 +297,6 @@ router.get("/alerts/:id/diff", async (req, res) => {
       .where(
         and(
           eq(alertsTable.icao, alert.icao),
-          eq(alertsTable.type, alert.type),
           sql`${alertsTable.detectedAt} < ${alert.detectedAt}`
         )
       )
