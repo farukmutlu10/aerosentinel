@@ -20,6 +20,7 @@ interface MemAlertEntry {
   type: string;
   icao: string;
   rawText: string;
+  previousRawText: string | null;
   detectedAt: Date;
   acknowledged: boolean;
   acknowledgedAt: Date | null;
@@ -124,6 +125,7 @@ function memDb() {
                 type: item.type ?? "TAF_AMD",
                 icao: item.icao ?? "",
                 rawText: item.rawText ?? "",
+                previousRawText: item.previousRawText ?? null,
                 detectedAt: new Date(),
                 acknowledged: false,
                 acknowledgedAt: null,
@@ -223,15 +225,32 @@ function memDb() {
         },
       }),
     }),
-    delete: (_table: any) => {
+    delete: (table: any) => {
+      const t = tableName(table);
       const fn: any = () => {
-        memStore.watchlist = [];
-        memStore.alerts = [];
-        memStore.monitorCache = [];
+        if (t === "alerts") { memStore.alerts = []; }
+        else if (t === "watchlist") { memStore.watchlist = []; }
+        else { memStore.watchlist = []; memStore.alerts = []; memStore.monitorCache = []; }
         return Promise.resolve();
       };
-      fn.where = () => {
-        memStore.watchlist = [];
+      fn.where = (condition: any) => {
+        if (t === "alerts" && condition) {
+          // Try to extract a "like" or "includes" pattern from the condition
+          const condStr = String(condition);
+          const likeMatch = condStr.match(/%(\w+)%/);
+          if (likeMatch) {
+            const pattern = likeMatch[1];
+            memStore.alerts = memStore.alerts.filter((a) => !a.rawText.includes(pattern));
+          } else {
+            // Try to extract eq value for type/icao based filtering
+            const condVal = extractEqValue(condition);
+            if (condVal !== undefined) {
+              memStore.alerts = memStore.alerts.filter((a) => a.type !== condVal && a.icao !== condVal);
+            }
+          }
+        } else if (t === "watchlist") {
+          memStore.watchlist = [];
+        }
         return Promise.resolve();
       };
       return fn;

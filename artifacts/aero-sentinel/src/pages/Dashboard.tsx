@@ -200,9 +200,32 @@ export default function Dashboard() {
     };
   }, [timeOpen]);
 
-  const { data: monitor } = useGetMonitorStatus({
-    query: { queryKey: getGetMonitorStatusQueryKey(), refetchInterval: 180_000 },
+  const { data: monitor, error: monitorError } = useGetMonitorStatus({
+    query: {
+      queryKey: getGetMonitorStatusQueryKey(),
+      refetchInterval: 180_000,
+      retry: 3,
+      meta: { diagnosticLog: true },
+    },
   });
+
+  // ── DIAG: Log monitor status fetch errors (CORS / CSP / network) ──
+  useEffect(() => {
+    if (monitorError) {
+      console.error(
+        `[AERO-SENTINEL DIAG] Monitor status fetch FAILED. ` +
+        `This is likely a CSP connect-src or CORS issue. ` +
+        `Error:`, monitorError,
+        `\nCurrent hostname: ${window.location.hostname}`,
+        `\nExpected API base (from main.tsx): ${window.location.hostname === 'aerosentinel.app' || window.location.hostname === 'www.aerosentinel.app' ? 'PRODUCTION' : 'PREVIEW → https://api-server-preview-preview.up.railway.app'}`,
+        `\nCheck browser DevTools → Console for [CSP] violation reports.`,
+      );
+    } else if (monitor) {
+      console.log(
+        `[AERO-SENTINEL DIAG] Monitor status OK: running=${(monitor as any).running}, scanCountToday=${(monitor as any).scanCountToday}`,
+      );
+    }
+  }, [monitor, monitorError]);
   const { data: weatherData, isLoading: weatherLoading, refresh: refreshWeather, forceRefresh: forceRefreshWeather } = useWatchlistWeather(effectiveIcaos);
 
   const handleRefresh = async () => {

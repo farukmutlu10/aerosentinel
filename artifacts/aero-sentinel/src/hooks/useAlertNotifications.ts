@@ -121,7 +121,19 @@ export function useAlertNotifications() {
     const raw = localStorage.getItem('aero-cookie-consent');
     const consent = raw ? JSON.parse(raw) : null;
     if (!consent) {
-      log("⏳ Cookie consent henüz verilmedi — bildirim beklemeye alındı");
+      // Mark alerts as seen even without consent to prevent notification flood
+      // when consent is later granted — but don't send any notifications
+      if (allAlerts?.length) {
+        let marked = 0;
+        for (const alert of allAlerts) {
+          if (!seenIds.current.has(alert.id)) {
+            seenIds.current.add(alert.id);
+            marked++;
+          }
+        }
+        if (marked > 0) saveSeenIds(seenIds.current);
+        log(`⏳ Cookie consent yok — ${marked} alert seenIds'e eklendi (bildirim gönderilmedi)`);
+      }
       return;
     }
 
@@ -146,11 +158,12 @@ export function useAlertNotifications() {
     let skippedCount = 0;
     const hasPermission = typeof Notification !== "undefined" && Notification.permission === "granted";
 
+    const watchlistSet = new Set(effectiveIcaos.map(s => s.toUpperCase()));
+
     for (const alert of allAlerts) {
       if (seenIds.current.has(alert.id)) continue;
 
       // Watchlist filtresi
-      const watchlistSet = new Set(effectiveIcaos.map(s => s.toUpperCase()));
       if (watchlistSet.size > 0 && !watchlistSet.has(alert.icao.toUpperCase())) {
         skippedCount++;
         seenIds.current.add(alert.id);
@@ -200,7 +213,7 @@ export function useAlertNotifications() {
     }
 
     // seenIds'i localStorage'a kaydet
-    if (newAlertCount > 0) saveSeenIds(seenIds.current);
+    if (newAlertCount > 0 || skippedCount > 0) saveSeenIds(seenIds.current);
 
     if (skippedCount > 0) log(`⏭️ ${skippedCount} alert atlandı (watchlist dışı veya duplicate)`);
     if (newAlertCount === 0) log("Yeni alert yok (tümü seenIds'de veya duplicate)");

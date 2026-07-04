@@ -73,9 +73,10 @@ router.get("/alerts", async (req, res) => {
     .from(watchlistTable)
     .where(eq(watchlistTable.userId, userId));
   const userIcaos = userWatchlist.map((r) => r.icao);
-  if (userIcaos.length > 0) {
-    conditions.push(inArray(alertsTable.icao, userIcaos));
+  if (userIcaos.length === 0) {
+    return res.json([]);
   }
+  conditions.push(inArray(alertsTable.icao, userIcaos));
 
   if (type)                       conditions.push(eq(alertsTable.type, type));
   if (icao)                       conditions.push(eq(alertsTable.icao, icao));
@@ -257,9 +258,8 @@ router.get("/alerts/recent", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function invalidateAckCaches() {
-  cache.delete("summary");
   for (const key of [...cache.keys()]) {
-    if (key.startsWith("recent:") || key.startsWith("alerts_")) cache.delete(key);
+    if (key.startsWith("summary_") || key.startsWith("recent_") || key.startsWith("alerts_")) cache.delete(key);
   }
 }
 

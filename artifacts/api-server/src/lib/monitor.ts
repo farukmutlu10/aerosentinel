@@ -129,8 +129,8 @@ async function scanTaf(ids: string) {
       } catch (err) {
         console.error(`[monitor] Failed to persist TAF cache for ${icao}:`, err);
       }
-      if (rawTaf.includes("AMD") || rawTaf.includes("COR")) {
-        const alertType = rawTaf.includes("AMD") ? "TAF_AMD" : "TAF_COR";
+      if (rawTaf.includes("COR") || rawTaf.includes("AMD")) {
+        const alertType = rawTaf.includes("COR") ? "TAF_COR" : "TAF_AMD";
         try {
           await db.insert(alertsTable).values({ type: alertType, icao, rawText: rawTaf, previousRawText });
           console.log(`[monitor] ✅ TAF alert: ${alertType} for ${icao}`);

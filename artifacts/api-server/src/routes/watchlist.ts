@@ -28,8 +28,8 @@ async function generateInitialAlerts(icao: string) {
     const { rawTaf, rawMetar } = await fetchWeatherForIcao(icao, { force: true });
 
     if (rawTaf) {
-      if (rawTaf.includes("AMD") || rawTaf.includes("COR")) {
-        const alertType = rawTaf.includes("AMD") ? "TAF_AMD" : "TAF_COR";
+      if (rawTaf.includes("COR") || rawTaf.includes("AMD")) {
+        const alertType = rawTaf.includes("COR") ? "TAF_COR" : "TAF_AMD";
         await db.insert(alertsTable).values({ type: alertType as any, icao, rawText: rawTaf, previousRawText: null });
         console.log(`[watchlist] ✅ Initial TAF alert: ${alertType} for ${icao}`);
       }
@@ -65,6 +65,12 @@ async function generateInitialAlerts(icao: string) {
         for (const m of rawTaf.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?MPS\b/g)) {
           const spd = parseInt(m[1]); const gst = m[2] ? parseInt(m[2]) : 0;
           if (spd >= 13 || gst >= 15) { hasTafWindExtreme = true; break; }
+        }
+      }
+      if (!hasTafWindExtreme) {
+        for (const m of rawTaf.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KMH\b/g)) {
+          const spd = Math.round(parseInt(m[1]) * 0.5399568); const gst = m[2] ? Math.round(parseInt(m[2]) * 0.5399568) : 0;
+          if (spd >= 25 || gst >= 29) { hasTafWindExtreme = true; break; }
         }
       }
       if (hasTafWindExtreme) {
@@ -111,6 +117,12 @@ async function generateInitialAlerts(icao: string) {
         for (const m of rawMetar.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?MPS\b/g)) {
           const spd = parseInt(m[1]); const gst = m[2] ? parseInt(m[2]) : 0;
           if (spd >= 13 || gst >= 15) { hasWindExtreme = true; break; }
+        }
+      }
+      if (!hasWindExtreme) {
+        for (const m of rawMetar.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KMH\b/g)) {
+          const spd = Math.round(parseInt(m[1]) * 0.5399568); const gst = m[2] ? Math.round(parseInt(m[2]) * 0.5399568) : 0;
+          if (spd >= 25 || gst >= 29) { hasWindExtreme = true; break; }
         }
       }
       if (hasWindExtreme) {

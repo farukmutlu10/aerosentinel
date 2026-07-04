@@ -20,7 +20,12 @@ function getOrCreateDeviceId(): string {
 
 // Production'da API isteklerini Railway'e yönlendir
 if (import.meta.env.PROD) {
-  const API_BASE = "https://workspaceapi-server-production-b312.up.railway.app";
+  // Determine API base URL based on hostname
+  const isProduction = window.location.hostname === 'aerosentinel.app' ||
+                       window.location.hostname === 'www.aerosentinel.app';
+  const API_BASE = isProduction
+    ? "https://workspaceapi-server-production-b312.up.railway.app"
+    : "https://api-server-preview-preview.up.railway.app";
   setBaseUrl(API_BASE);
 
   const deviceId = getOrCreateDeviceId();
