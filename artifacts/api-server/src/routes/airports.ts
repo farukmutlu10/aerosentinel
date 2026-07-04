@@ -75,4 +75,26 @@ router.get("/monitor/status", (_req, res) => {
   return res.json(state);
 });
 
+router.get("/monitor/diag", async (req, res) => {
+  const icaos = ((req.query.icaos as string) ?? "UAUU,ULLI").split(",").map(s => s.trim().toUpperCase());
+  const allAirports = getAirports();
+  const results: Record<string, unknown> = {};
+  for (const icao of icaos) {
+    const inWatchlist = allAirports.includes(icao);
+    const rawMetar = await getCurrentMetar(icao);
+    const rawTaf = await getCurrentTaf(icao);
+    results[icao] = {
+      inWatchlist,
+      rawMetar: rawMetar ?? null,
+      rawTaf: rawTaf ?? null,
+      metarStartsWithSpeci: rawMetar?.startsWith("SPECI") ?? false,
+    };
+  }
+  return res.json({
+    totalAirports: allAirports.length,
+    sampleIcaos: allAirports.slice(0, 10),
+    diagFor: results,
+  });
+});
+
 export default router;

@@ -92,12 +92,16 @@ async function loadMonitorCache() {
 
 async function scanTaf(ids: string) {
   if (!ids) return;
+  const requestedCount = ids.split(",").length;
   const data = await fetchJson(`${BASE_URL}/taf?ids=${ids}&format=json`);
   const now = Date.now();
+  const returnedIcaos: string[] = [];
+  const watchlistSet = new Set(ids.split(","));
   for (const entry of data as Array<{ icaoId?: string; rawTAF?: string }>) {
     const icao = entry.icaoId;
     const rawTaf = entry.rawTAF ?? "";
     if (!icao) continue;
+    returnedIcaos.push(icao);
     sonGorulenTs[icao] = now;
     if (sonGorulenTaf[icao] !== rawTaf) {
       const previousRawText = sonGorulenTaf[icao] ?? null;
@@ -206,18 +210,34 @@ async function scanTaf(ids: string) {
       }
     }
   }
-  console.log(`[monitor] TAF scan: ${data.length} entries for ${ids.split(',').length} airports`);
+  // ── DIAG: Coverage analysis ────────────────────────────────────────────
+  const returnedSet = new Set(returnedIcaos);
+  const missingAirports = [...watchlistSet].filter(icao => !returnedSet.has(icao));
+  if (missingAirports.length > 0) {
+    console.log(`[monitor] ⚠️ DIAG: ${missingAirports.length} airports MISSING from TAF API response! Examples: ${missingAirports.slice(0, 10).join(", ")}`);
+  }
+  console.log(`[monitor] TAF scan: ${data.length} entries for ${requestedCount} airports (missing: ${missingAirports.length})`);
 }
 
 async function scanMetar(ids: string) {
   if (!ids) return;
+  const requestedCount = ids.split(",").length;
   const data = await fetchJson(`${BASE_URL}/metar?ids=${ids}&format=json`);
   const now = Date.now();
-  for (const entry of data as Array<{ icaoId?: string; rawOb?: string }>) {
+  const returnedIcaos: string[] = [];
+  const watchlistSet = new Set(ids.split(","));
+  for (const entry of data as Array<{ icaoId?: string; rawOb?: string; metarType?: string }>) {
     const icao = entry.icaoId;
     const rawMetar = entry.rawOb ?? "";
     if (!icao) continue;
+    returnedIcaos.push(icao);
     sonGorulenTs[icao] = now;
+
+    // ── DIAG: Log SPECI-related entries for key airports ─────────────────
+    if (icao === "UAUU" || icao === "ULLI") {
+      console.log(`[monitor] 🔍 DIAG METAR ${icao}: metarType=${entry.metarType} rawOb_start="${rawMetar.slice(0, 60)}" isSpeci=${rawMetar.startsWith("SPECI")} changed=${sonGorulenMetar[icao] !== rawMetar} cached="${(sonGorulenMetar[icao] ?? "(none)").slice(0, 60)}"`);
+    }
+
     if (sonGorulenMetar[icao] !== rawMetar) {
       const previousRawText = sonGorulenMetar[icao] ?? null;
       sonGorulenMetar[icao] = rawMetar;
@@ -233,8 +253,12 @@ async function scanMetar(ids: string) {
         console.error(`[monitor] Failed to persist METAR cache for ${icao}:`, err);
       }
       if (rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ")) {
-        await db.insert(alertsTable).values({ type: "SPECI", icao, rawText: rawMetar, previousRawText });
-        console.log(`[monitor] ✅ SPECI alert for ${icao}`);
+        try {
+          await db.insert(alertsTable).values({ type: "SPECI", icao, rawText: rawMetar, previousRawText });
+          console.log(`[monitor] ✅ SPECI alert for ${icao}`);
+        } catch (err) {
+          console.error(`[monitor] ❌ SPECI insert FAILED for ${icao}:`, err);
+        }
       }
 
       // ── WX_EXTREME detection ──────────────────────────────────────────
@@ -346,7 +370,16 @@ async function scanMetar(ids: string) {
       }
     }
   }
-  console.log(`[monitor] METAR scan: ${data.length} entries for ${ids.split(',').length} airports`);
+  // ── DIAG: Coverage analysis ────────────────────────────────────────────
+  const returnedSet = new Set(returnedIcaos);
+  const missingAirports = [...watchlistSet].filter(icao => !returnedSet.has(icao));
+  if (missingAirports.length > 0) {
+    console.log(`[monitor] ⚠️ DIAG: ${missingAirports.length} airports MISSING from METAR API response! Examples: ${missingAirports.slice(0, 10).join(", ")}`);
+    if (missingAirports.includes("UAUU")) {
+      console.log(`[monitor] 🚨 DIAG: UAUU is MISSING from METAR API response!`);
+    }
+  }
+  console.log(`[monitor] METAR scan: ${data.length} entries for ${requestedCount} airports (missing: ${missingAirports.length})`);
 }
 
 function hasLifrConditions(rawMetar: string): boolean {
@@ -377,6 +410,15 @@ async function sentinelRadar() {
     checkDailyReset();
     const icaos = await refreshIcaoCache();
     const ids = icaos.join(",");
+    const urlLen = ids.length;
+    console.log(`[monitor] 🔍 DIAG: Scanning ${icaos.length} airports, ids string length: ${urlLen} chars`);
+    // Log a few sample ICAOs to verify watchlist content
+    const sampleIcaos = icaos.slice(0, 5).join(", ") + (icaos.length > 5 ? ` ... (total ${icaos.length})` : "");
+    console.log(`[monitor] 🔍 DIAG: Sample ICAOs: ${sampleIcaos}`);
+    // Check if key airports are in the list
+    const hasUAUU = icaos.includes("UAUU");
+    const hasULLI = icaos.includes("ULLI");
+    console.log(`[monitor] 🔍 DIAG: UAUU in watchlist: ${hasUAUU}, ULLI in watchlist: ${hasULLI}`);
     await Promise.all([scanTaf(ids), scanMetar(ids)]);
   } catch (err) {
     console.error("Scan error:", err);
