@@ -54,6 +54,41 @@ const MIGRATIONS: Array<{ name: string; sql: string }> = [
       ALTER TABLE alerts ADD COLUMN IF NOT EXISTS previous_raw_text text;
     `,
   },
+  {
+    name: "004_create_monitor_cache",
+    sql: `
+      CREATE TABLE IF NOT EXISTS monitor_cache (
+        icao VARCHAR(10) NOT NULL,
+        data_type VARCHAR(10) NOT NULL,
+        raw_text TEXT NOT NULL DEFAULT '',
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        PRIMARY KEY (icao, data_type)
+      );
+    `,
+  },
+  {
+    name: "005_add_wx_wind_extreme",
+    sql: `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'alert_type' AND e.enumlabel = 'WX_EXTREME') THEN
+          ALTER TYPE alert_type ADD VALUE 'WX_EXTREME';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'alert_type' AND e.enumlabel = 'WIND_EXTREME') THEN
+          ALTER TYPE alert_type ADD VALUE 'WIND_EXTREME';
+        END IF;
+      END$$;
+    `,
+  },
+  {
+    name: "006_add_lifr",
+    sql: `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'alert_type' AND e.enumlabel = 'LIFR') THEN
+          ALTER TYPE alert_type ADD VALUE 'LIFR';
+        END IF;
+      END$$;
+    `,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {
