@@ -92,12 +92,24 @@ async function loadMonitorCache() {
 
 async function scanTaf(ids: string) {
   if (!ids) return;
-  const requestedCount = ids.split(",").length;
-  const data = await fetchJson(`${BASE_URL}/taf?ids=${ids}&format=json`);
+  const allIcaos = ids.split(",");
+  const requestedCount = allIcaos.length;
+  const BATCH_SIZE = 50;
+  const batches: string[] = [];
+  for (let i = 0; i < allIcaos.length; i += BATCH_SIZE) {
+    batches.push(allIcaos.slice(i, i + BATCH_SIZE).join(","));
+  }
+
+  const allData: unknown[] = [];
+  for (const batchIds of batches) {
+    const data = await fetchJson(`${BASE_URL}/taf?ids=${batchIds}&format=json`);
+    allData.push(...data);
+  }
+
   const now = Date.now();
   const returnedIcaos: string[] = [];
-  const watchlistSet = new Set(ids.split(","));
-  for (const entry of data as Array<{ icaoId?: string; rawTAF?: string }>) {
+  const watchlistSet = new Set(allIcaos);
+  for (const entry of allData as Array<{ icaoId?: string; rawTAF?: string }>) {
     const icao = entry.icaoId;
     const rawTaf = entry.rawTAF ?? "";
     if (!icao) continue;
@@ -119,8 +131,12 @@ async function scanTaf(ids: string) {
       }
       if (rawTaf.includes("AMD") || rawTaf.includes("COR")) {
         const alertType = rawTaf.includes("AMD") ? "TAF_AMD" : "TAF_COR";
-        await db.insert(alertsTable).values({ type: alertType, icao, rawText: rawTaf, previousRawText });
-        console.log(`[monitor] ✅ TAF alert: ${alertType} for ${icao}`);
+        try {
+          await db.insert(alertsTable).values({ type: alertType, icao, rawText: rawTaf, previousRawText });
+          console.log(`[monitor] ✅ TAF alert: ${alertType} for ${icao}`);
+        } catch (err) {
+          console.error(`[monitor] ❌ TAF insert FAILED for ${icao}:`, err);
+        }
       }
 
       // ── WX_EXTREME detection from TAF ──────────────────────────────────
@@ -216,17 +232,29 @@ async function scanTaf(ids: string) {
   if (missingAirports.length > 0) {
     console.log(`[monitor] ⚠️ DIAG: ${missingAirports.length} airports MISSING from TAF API response! Examples: ${missingAirports.slice(0, 10).join(", ")}`);
   }
-  console.log(`[monitor] TAF scan: ${data.length} entries for ${requestedCount} airports (missing: ${missingAirports.length})`);
+  console.log(`[monitor] TAF scan: ${allData.length} entries for ${requestedCount} airports (missing: ${missingAirports.length})`);
 }
 
 async function scanMetar(ids: string) {
   if (!ids) return;
-  const requestedCount = ids.split(",").length;
-  const data = await fetchJson(`${BASE_URL}/metar?ids=${ids}&format=json`);
+  const allIcaos = ids.split(",");
+  const requestedCount = allIcaos.length;
+  const BATCH_SIZE = 50;
+  const batches: string[] = [];
+  for (let i = 0; i < allIcaos.length; i += BATCH_SIZE) {
+    batches.push(allIcaos.slice(i, i + BATCH_SIZE).join(","));
+  }
+
+  const allData: unknown[] = [];
+  for (const batchIds of batches) {
+    const data = await fetchJson(`${BASE_URL}/metar?ids=${batchIds}&format=json`);
+    allData.push(...data);
+  }
+
   const now = Date.now();
   const returnedIcaos: string[] = [];
-  const watchlistSet = new Set(ids.split(","));
-  for (const entry of data as Array<{ icaoId?: string; rawOb?: string; metarType?: string }>) {
+  const watchlistSet = new Set(allIcaos);
+  for (const entry of allData as Array<{ icaoId?: string; rawOb?: string; metarType?: string }>) {
     const icao = entry.icaoId;
     const rawMetar = entry.rawOb ?? "";
     if (!icao) continue;
@@ -379,7 +407,7 @@ async function scanMetar(ids: string) {
       console.log(`[monitor] 🚨 DIAG: UAUU is MISSING from METAR API response!`);
     }
   }
-  console.log(`[monitor] METAR scan: ${data.length} entries for ${requestedCount} airports (missing: ${missingAirports.length})`);
+  console.log(`[monitor] METAR scan: ${allData.length} entries for ${requestedCount} airports (missing: ${missingAirports.length})`);
 }
 
 function hasLifrConditions(rawMetar: string): boolean {

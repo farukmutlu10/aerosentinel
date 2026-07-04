@@ -265,12 +265,13 @@ export default function Alerts() {
 
   const alerts = useMemo(() => {
     let list = allAlerts ?? [];
-    // Deduplicate: keep only the latest alert per ICAO
+    // Deduplicate: keep only the latest alert per ICAO + type combination
     const seen = new Map<string, number>();
     list = list.filter((a) => {
-      const prev = seen.get(a.icao);
+      const key = `${a.icao}-${a.type}`;
+      const prev = seen.get(key);
       if (prev === undefined || new Date(a.detectedAt).getTime() > prev) {
-        seen.set(a.icao, new Date(a.detectedAt).getTime());
+        seen.set(key, new Date(a.detectedAt).getTime());
         return true;
       }
       return false;

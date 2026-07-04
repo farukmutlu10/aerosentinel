@@ -142,7 +142,6 @@ export function useAlertNotifications() {
     }
 
     // ─── AFTER 90 SECONDS: Normal notification logic ──────────────────────
-    const notifiedIcaos = new Set<string>();
     let newAlertCount = 0;
     let skippedCount = 0;
     const hasPermission = typeof Notification !== "undefined" && Notification.permission === "granted";
@@ -165,15 +164,7 @@ export function useAlertNotifications() {
         continue;
       }
 
-      // ICAO deduplikasyon
-      if (notifiedIcaos.has(alert.icao.toUpperCase())) {
-        seenIds.current.add(alert.id);
-        skippedCount++;
-        continue;
-      }
-
       seenIds.current.add(alert.id);
-      notifiedIcaos.add(alert.icao.toUpperCase());
       newAlertCount++;
 
       const label = TYPE_LABELS[alert.type] ?? alert.type;

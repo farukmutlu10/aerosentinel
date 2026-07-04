@@ -66,6 +66,17 @@ router.get("/alerts", async (req, res) => {
   const { type, icao, acknowledged, limit = 50 } = parsed.data;
   const sinceHours = raw.since_hours ? Number(raw.since_hours) : 48;
   const conditions = [];
+
+  // Watchlist filter: only return alerts for user's watched airports
+  const userWatchlist = await db
+    .select({ icao: watchlistTable.icao })
+    .from(watchlistTable)
+    .where(eq(watchlistTable.userId, userId));
+  const userIcaos = userWatchlist.map((r) => r.icao);
+  if (userIcaos.length > 0) {
+    conditions.push(inArray(alertsTable.icao, userIcaos));
+  }
+
   if (type)                       conditions.push(eq(alertsTable.type, type));
   if (icao)                       conditions.push(eq(alertsTable.icao, icao));
   if (acknowledged !== undefined) conditions.push(eq(alertsTable.acknowledged, acknowledged));
