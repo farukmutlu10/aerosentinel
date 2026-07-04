@@ -2,6 +2,21 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { WatchlistProvider } from "@/context/WatchlistContext";
+import { TimezoneProvider } from "@/components/ClockDisplay";
+import { useAlertNotifications } from "@/hooks/useAlertNotifications";
+import { AlertToastContainer } from "@/components/AlertToast";
+import { ThemeTransition } from "@/components/ThemeTransition";
+import { SplashScreen } from "@/components/SplashScreen";
+import { useTheme } from "@/hooks/useTheme";
+import { createContext, lazy, Suspense, useContext, useEffect, useState } from "react";
+import { initGA, trackPageView } from "@/lib/ga";
+import { usePersistedState } from "@/hooks/usePersistedState";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { CookieConsent, getCookiePreferences } from "@/components/CookieConsent";
+import { AdSenseConsent } from "@/components/AdSenseConsent";
+import { BackToTop } from "@/components/BackToTop";
+import { NotificationBanner } from "@/components/NotificationBanner";
 
 // ── Route-based code splitting (React.lazy) ──────────────────────────────────
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
@@ -20,21 +35,6 @@ const FAQ = lazy(() => import("@/pages/FAQ"));
 const UseCases = lazy(() => import("@/pages/UseCases"));
 const UseCaseDetail = lazy(() => import("@/pages/UseCaseDetail"));
 const NotFound = lazy(() => import("@/pages/not-found"));
-import { WatchlistProvider } from "@/context/WatchlistContext";
-import { TimezoneProvider } from "@/components/ClockDisplay";
-import { useAlertNotifications } from "@/hooks/useAlertNotifications";
-import { AlertToastContainer } from "@/components/AlertToast";
-import { ThemeTransition } from "@/components/ThemeTransition";
-import { SplashScreen } from "@/components/SplashScreen";
-import { useTheme } from "@/hooks/useTheme";
-import { createContext, lazy, Suspense, useContext, useEffect, useState } from "react";
-import { initGA, trackPageView } from "@/lib/ga";
-import { usePersistedState } from "@/hooks/usePersistedState";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { CookieConsent, getCookiePreferences } from "@/components/CookieConsent";
-import { AdSenseConsent } from "@/components/AdSenseConsent";
-import { BackToTop } from "@/components/BackToTop";
-import { NotificationBanner } from "@/components/NotificationBanner";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 20_000, retry: 1 } },

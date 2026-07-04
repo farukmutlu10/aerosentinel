@@ -1,3 +1,8 @@
+// Record app start time IMMEDIATELY — before React mounts
+// This is used by useAlertNotifications to suppress notifications
+// during the initial load period (first 90 seconds)
+(window as any).__APP_START_TIME = Date.now();
+
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";

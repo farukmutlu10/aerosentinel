@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useCallback, useRef, Fragment } from "react";
+import { BellOff, Bell } from "lucide-react";
 import { Link } from "wouter";
 import {
   useListAlerts, getListAlertsQueryKey,
@@ -20,23 +21,50 @@ import { AdSlot } from "@/components/ads/AdSlot";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TafDiffModal } from "@/components/TafDiffModal";
 import { useAlertSound, playAlertSound } from "@/hooks/useAlertSound";
+import { useAlertSnooze, SNOOZE_OPTIONS, type SnoozeDuration } from "@/hooks/useAlertSnooze";
 import { formatDistanceToNow, format } from "date-fns";
 
-type AlertType = "TAF_AMD" | "TAF_COR" | "SPECI";
+type AlertType = "TAF_AMD" | "TAF_COR" | "SPECI" | "WX_EXTREME" | "WIND_EXTREME" | "LIFR";
 type SortMode = "newest" | "oldest" | "icao-az";
 
-const ALL_ALERT_TYPES: AlertType[] = ["TAF_AMD", "TAF_COR", "SPECI"];
+const ALL_ALERT_TYPES: AlertType[] = ["TAF_AMD", "TAF_COR", "SPECI", "WX_EXTREME", "WIND_EXTREME", "LIFR"];
 
-const TYPE_LABELS: Record<AlertType, string> = {
+// ── Display types: 3 crit wx types merged into single "CRIT_WX" ─────────────
+const DISPLAY_TYPES = ["TAF_AMD", "TAF_COR", "SPECI", "CRIT_WX"] as const;
+type DisplayType = typeof DISPLAY_TYPES[number];
+const CRIT_WX_TYPES: AlertType[] = ["WX_EXTREME", "WIND_EXTREME", "LIFR"];
+
+/** Expand display types back into raw alert-type strings for filtering */
+function resolveAlertTypes(displayTypes: string[]): Set<string> {
+  const result = new Set<string>();
+  for (const dt of displayTypes) {
+    if (dt === "CRIT_WX") {
+      CRIT_WX_TYPES.forEach((t) => result.add(t));
+    } else {
+      result.add(dt);
+    }
+  }
+  return result;
+}
+
+const TYPE_LABELS: Record<AlertType | "CRIT_WX", string> = {
   TAF_AMD: "TAF AMD",
   TAF_COR: "TAF COR",
   SPECI: "SPECI",
+  WX_EXTREME: "WX EXTREME",
+  WIND_EXTREME: "WIND EXTREME",
+  LIFR: "LIFR",
+  CRIT_WX: "CRIT WX",
 };
 
-const TYPE_COLORS: Record<AlertType, string> = {
+const TYPE_COLORS: Record<AlertType | "CRIT_WX", string> = {
   TAF_AMD: "#facc15",  // yellow-400 — matches AlertBadge
   TAF_COR: "#fb923c",  // orange-400 — matches AlertBadge
   SPECI:   "#f87171",  // red-400   — matches AlertBadge
+  WX_EXTREME:  "#a855f7",  // purple-500
+  WIND_EXTREME: "#fb7185",  // rose-400
+  LIFR:    "#6366f1",  // indigo-500
+  CRIT_WX: "#a855f7",  // purple-500 — unified critical wx color
 };
 
 const SORT_OPTIONS: { value: SortMode; label: string }[] = [
@@ -45,7 +73,7 @@ const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "icao-az", label: "ICAO A–Z" },
 ];
 
-const DEFAULT_TYPES = ALL_ALERT_TYPES as string[];
+const DEFAULT_TYPES: string[] = [...DISPLAY_TYPES];
 const DEFAULT_SORT: SortMode = "newest";
 const DEFAULT_HIDE_ACK = false;
 
@@ -85,6 +113,21 @@ function StatCard({
 }
 
 // ── SVG icons ─────────────────────────────────────────────────────────────────
+const IconLifr = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 8v4l3 3"/>
+  </svg>
+);
+const IconWx = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+  </svg>
+);
+const IconWind = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/>
+  </svg>
+);
 const IconList = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
@@ -111,7 +154,7 @@ const IconSpeci = () => (
 
 export default function Alerts() {
   // v2 key for type filter — now an array of active types (all active by default)
-  const [activeTypesArr, setActiveTypesArr] = usePersistedState<string[]>("as-alerts-types-v2", DEFAULT_TYPES);
+  const [activeTypesArr, setActiveTypesArr] = usePersistedState<string[]>("as-alerts-types-v3", DEFAULT_TYPES);
   const [sortMode, setSortMode] = usePersistedState<SortMode>("as-alerts-sort", DEFAULT_SORT);
   const [hideAcknowledged, setHideAcknowledged] = usePersistedState<boolean>("as-alerts-hide-ack", DEFAULT_HIDE_ACK);
   // Per-user ACK: shared via LocalAckContext (persisted in localStorage)
@@ -121,6 +164,10 @@ export default function Alerts() {
   const [displayLimit, setDisplayLimit] = useState(20);
   const [swipeHintDismissed, setSwipeHintDismissed] = useState(() => !!sessionStorage.getItem("swipe-ack-seen"));
   const { testPanelVisible } = useTestPanel();
+
+  // Alert Snooze
+  const { snooze, snoozeAll, unsnooze, unsnoozeAll, isSnoozed, isGloballySnoozed, getSnoozeExpiry } = useAlertSnooze();
+  const [snoozeMenuIcao, setSnoozeMenuIcao] = useState<string | null>(null);
 
   // Pull-to-refresh (mobile)
   const [pullDistance, setPullDistance] = useState(0);
@@ -175,7 +222,7 @@ export default function Alerts() {
     }
   }, []);
 
-  const activeTypesSet = new Set<string>(activeTypesArr);
+  const activeTypesSet = resolveAlertTypes(activeTypesArr);
   const localAckedSet = useMemo(() => new Set(localAcked), [localAcked]);
   const isAcked = useCallback((a: { id: number }) => localAckedSet.has(a.id), [localAckedSet]);
 
@@ -183,7 +230,7 @@ export default function Alerts() {
     setLocalAcked((prev) => (prev.includes(id) ? prev : [...prev, id]));
   };
 
-  const toggleType = (t: AlertType) =>
+  const toggleType = (t: string) =>
     setActiveTypesArr((p) => p.includes(t) ? p.filter((x) => x !== t) : [...p, t]);
 
   const isFiltered =
@@ -201,8 +248,8 @@ export default function Alerts() {
   const { theme, toggleTheme } = useThemeContext();
 
   const { data: allAlerts, isLoading } = useListAlerts(
-    { limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: Infinity, refetchIntervalInBackground: true } }
+    { limit: 100, since_hours: 6 } as any,
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), refetchInterval: Infinity, refetchIntervalInBackground: true } }
   );
 
   const handleRefresh = async () => {
@@ -250,6 +297,7 @@ export default function Alerts() {
   const totalAlerts    = alerts.length;
   const tafRevisions   = alerts.filter((a) => a.type === "TAF_AMD" || a.type === "TAF_COR").length;
   const speciAlerts    = alerts.filter((a) => a.type === "SPECI").length;
+  const critWxAlerts   = alerts.filter((a) => CRIT_WX_TYPES.includes(a.type as AlertType)).length;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -279,11 +327,12 @@ export default function Alerts() {
         )}
 
         {/* Stats — Mobile: 2×2 grid + full-width clock | Desktop: flex row */}
-        <div className="grid grid-cols-2 gap-1.5 sm:hidden">
+        <div className="grid grid-cols-3 gap-1.5 sm:hidden">
           <StatCard label="Total" value={dash ?? String(totalAlerts)} icon={<IconList />} bg="rgba(100,116,139,0.06)" border="0.5px solid rgba(100,116,139,0.15)" numberColor="rgba(100,116,139,0.9)" labelColor="rgba(100,116,139,0.5)" barFill="rgba(255,255,255,0.2)" barWidth={100} />
           <StatCard label="Unacked" value={dash ?? String(unackedCount)} icon={<IconAlert />} bg="rgba(226,75,74,0.08)" border="0.5px solid rgba(226,75,74,0.25)" numberColor="#e24b4a" labelColor="rgba(226,75,74,0.6)" barFill="#e24b4a" barWidth={totalAlerts > 0 ? (unackedCount / totalAlerts) * 100 : 0} pulse={unackedCount > 0} />
           <StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} icon={<IconTaf />} bg="rgba(239,159,39,0.07)" border="0.5px solid rgba(239,159,39,0.2)" numberColor="#ef9f27" labelColor="rgba(239,159,39,0.6)" barFill="#ef9f27" barWidth={totalAlerts > 0 ? (tafRevisions / totalAlerts) * 100 : 0} />
           <StatCard label="SPECI" value={dash ?? String(speciAlerts)} icon={<IconSpeci />} bg="rgba(255,140,50,0.07)" border="0.5px solid rgba(255,140,50,0.2)" numberColor="#ff8c32" labelColor="rgba(255,140,50,0.6)" barFill="#ff8c32" barWidth={totalAlerts > 0 ? (speciAlerts / totalAlerts) * 100 : 0} />
+          <StatCard label="CRIT WX" value={dash ?? String(critWxAlerts)} icon={<IconWx />} bg="rgba(168,85,247,0.07)" border="0.5px solid rgba(168,85,247,0.2)" numberColor="#a855f7" labelColor="rgba(168,85,247,0.6)" barFill="#a855f7" barWidth={totalAlerts > 0 ? (critWxAlerts / totalAlerts) * 100 : 0} pulse={critWxAlerts > 0} />
         </div>
         <div className="sm:hidden">
           <ClockCard />
@@ -294,6 +343,7 @@ export default function Alerts() {
           <div className="w-full sm:flex-1"><StatCard label="Unacked" value={dash ?? String(unackedCount)} icon={<IconAlert />} bg="rgba(226,75,74,0.08)" border="0.5px solid rgba(226,75,74,0.25)" numberColor="#e24b4a" labelColor="rgba(226,75,74,0.6)" barFill="#e24b4a" barWidth={totalAlerts > 0 ? (unackedCount / totalAlerts) * 100 : 0} pulse={unackedCount > 0} /></div>
           <div className="w-full sm:flex-1"><StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} icon={<IconTaf />} bg="rgba(239,159,39,0.07)" border="0.5px solid rgba(239,159,39,0.2)" numberColor="#ef9f27" labelColor="rgba(239,159,39,0.6)" barFill="#ef9f27" barWidth={totalAlerts > 0 ? (tafRevisions / totalAlerts) * 100 : 0} /></div>
           <div className="w-full sm:flex-1"><StatCard label="SPECI" value={dash ?? String(speciAlerts)} icon={<IconSpeci />} bg="rgba(255,140,50,0.07)" border="0.5px solid rgba(255,140,50,0.2)" numberColor="#ff8c32" labelColor="rgba(255,140,50,0.6)" barFill="#ff8c32" barWidth={totalAlerts > 0 ? (speciAlerts / totalAlerts) * 100 : 0} /></div>
+          <div className="w-full sm:flex-1"><StatCard label="CRIT WX" value={dash ?? String(critWxAlerts)} icon={<IconWx />} bg="rgba(168,85,247,0.07)" border="0.5px solid rgba(168,85,247,0.2)" numberColor="#a855f7" labelColor="rgba(168,85,247,0.6)" barFill="#a855f7" barWidth={totalAlerts > 0 ? (critWxAlerts / totalAlerts) * 100 : 0} pulse={critWxAlerts > 0} /></div>
           <div className="w-full sm:flex-1">
             <ClockCard />
           </div>
@@ -304,9 +354,9 @@ export default function Alerts() {
         {/* Desktop filters — eski düzen */}
         <div className="hidden sm:flex sm:flex-wrap sm:items-center sm:gap-2 mb-2" role="group" aria-label="Filter alerts">
           <div className="filter-group">
-            {ALL_ALERT_TYPES.map((t) => (
+            {DISPLAY_TYPES.map((t) => (
               <button key={t} onClick={() => toggleType(t)} className="filter-btn"
-                style={activeTypesSet.has(t) ? {
+                style={activeTypesArr.includes(t) ? {
                   backgroundColor: TYPE_COLORS[t] + "26",
                   color: TYPE_COLORS[t],
                   borderColor: TYPE_COLORS[t],
@@ -372,9 +422,9 @@ export default function Alerts() {
         <div className="sm:hidden space-y-1.5 mb-3" role="group" aria-label="Filter alerts">
           <div className="flex items-center justify-between gap-1.5 w-full flex-wrap">
             <div className="filter-group">
-              {ALL_ALERT_TYPES.map((t) => (
+              {DISPLAY_TYPES.map((t) => (
                 <button key={t} onClick={() => toggleType(t)} className="filter-btn"
-                  style={activeTypesSet.has(t) ? {
+                  style={activeTypesArr.includes(t) ? {
                     backgroundColor: TYPE_COLORS[t] + "26",
                     color: TYPE_COLORS[t],
                     borderColor: TYPE_COLORS[t],
@@ -514,7 +564,7 @@ export default function Alerts() {
                   }}
                   style={{ transform: `translateX(${swipedId === alert.id ? swipeX : 0}px)`, transition: "transform 0.2s ease" }}
                   className={`relative border rounded-lg px-3 sm:px-4 py-2.5 sm:py-4 transition-opacity ${isAcked(alert) ? "opacity-65 dark:opacity-40" : ""} ${
-                    alert.type === "SPECI" ? "alert-speci" : alert.type === "TAF_AMD" ? "alert-taf-amd" : "alert-taf-cor"
+                    alert.type === "SPECI" ? "alert-speci" : alert.type === "TAF_AMD" ? "alert-taf-amd" : alert.type === "TAF_COR" ? "alert-taf-cor" : alert.type === "WX_EXTREME" ? "alert-wx-extreme" : alert.type === "WIND_EXTREME" ? "alert-wind-extreme" : alert.type === "LIFR" ? "alert-lifr" : ""
                   }`}>
 
                 {/* ACK indicator — visible on swipe */}
@@ -536,25 +586,47 @@ export default function Alerts() {
                         <span className="text-[10px] sm:text-xs text-muted-foreground font-mono">{new Date(alert.detectedAt).toLocaleString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }) + " UTC"}</span>
                         <span className="text-[10px] sm:text-xs text-muted-foreground font-mono hidden sm:inline">({formatDistanceToNow(new Date(alert.detectedAt), { addSuffix: true })})</span>
                         {isAcked(alert) && <span className="text-[10px] sm:text-xs bg-muted text-muted-foreground font-mono px-1.5 sm:px-2 py-0.5 rounded">ACK</span>}
+                        {isSnoozed(alert.icao) && <span className="text-[10px] sm:text-xs bg-purple-500/15 text-purple-400 font-mono px-1.5 sm:px-2 py-0.5 rounded border border-purple-500/30">SNOOZED</span>}
                       </div>
                       <TafText raw={alert.rawText} />
                     </div>
                   </div>
-                  {/* Sağ taraf: butonlar — yan yana, ortalanmış */}
-                  <div className="flex items-center gap-2 flex-shrink-0 self-center ml-2 sm:ml-4">
-                    {/* CHANGES butonu — ikincil, daha az vurgulu */}
-                    {(alert as any).previousRawText && (
+                  {/* Sağ taraf: butonlar — yan yana, ortalanmış: SNOOZE | CHANGES | ACK */}
+                  <div className="flex items-center gap-2 flex-shrink-0 self-center">
+                    {/* SNOOZE / UNSNOOZE butonu — first */}
+                    {isSnoozed(alert.icao) ? (
+                      <button onClick={() => unsnooze(alert.icao)}
+                        className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full border transition-all"
+                        title="Unsnooze"
+                        style={{ borderColor: "rgba(148,163,184,0.3)", color: "rgba(148,163,184,0.7)", backgroundColor: "rgba(148,163,184,0.06)" }}>
+                        <Bell size={14} />
+                      </button>
+                    ) : (
+                      <button onClick={() => setSnoozeMenuIcao(alert.icao)}
+                        className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full border transition-all"
+                        title="Snooze"
+                        style={{ borderColor: "rgba(148,163,184,0.3)", color: "rgba(148,163,184,0.7)", backgroundColor: "rgba(148,163,184,0.06)" }}>
+                        <BellOff size={14} />
+                      </button>
+                    )}
+                    {/* CHANGES butonu — second */}
+                    {alert.rawText && (
                       <button
                         onClick={() => openDiffModal(alert)}
-                        className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-full border border-sky-500/30 bg-sky-500/5 text-sky-400/80 text-[10px] sm:text-[11px] font-mono font-bold tracking-wider hover:bg-sky-500/12 hover:border-sky-400/50 hover:text-sky-300 transition-all"
+                        className="px-3 sm:px-5 py-1.5 sm:py-2 rounded-full border text-[10px] sm:text-xs font-mono font-bold tracking-[0.15em] sm:tracking-[0.2em] transition-all"
+                        style={{
+                          borderColor: "rgba(56,189,248,0.4)",
+                          color: "#38bdf8",
+                          backgroundColor: "rgba(56,189,248,0.08)",
+                        }}
                       >
                         CHANGES
                       </button>
                     )}
-                    {/* ACK butonu — birincil, hap şeklinde, beyaz metin, sofistike gölge */}
+                    {/* ACK butonu — third */}
                     {!isAcked(alert) && (
                       <button onClick={() => handleAck(alert.id)}
-                        className="flex-shrink-0 self-center ml-2 sm:ml-4 px-3 sm:px-5 py-1.5 sm:py-2 rounded-full border text-[10px] sm:text-xs font-mono font-bold tracking-[0.15em] sm:tracking-[0.2em] transition-all"
+                        className="px-3 sm:px-5 py-1.5 sm:py-2 rounded-full border text-[10px] sm:text-xs font-mono font-bold tracking-[0.15em] sm:tracking-[0.2em] transition-all"
                         style={{
                           borderColor: "rgba(16,185,129,0.6)",
                           color: "#10b981",
@@ -659,6 +731,30 @@ export default function Alerts() {
           alertType={diffAlertType}
           icao={diffAlertIcao}
         />
+      )}
+
+      {/* Snooze Duration Popup */}
+      {snoozeMenuIcao && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setSnoozeMenuIcao(null)}>
+          <div
+            className="bg-card border border-border rounded-xl p-4 shadow-2xl space-y-1.5 min-w-[180px]"
+            onClick={(e) => e.stopPropagation()}
+            style={{ animation: "fadeInUp 0.2s ease-out" }}
+          >
+            <p className="text-xs font-mono font-bold text-foreground mb-2 flex items-center gap-1.5">
+              <BellOff size={12} /> Snooze <span className="text-purple-400">{snoozeMenuIcao}</span>
+            </p>
+            {SNOOZE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => { snooze(snoozeMenuIcao, opt.value); setSnoozeMenuIcao(null); }}
+                className="block w-full text-left px-3 py-2 rounded-lg text-xs font-mono hover:bg-purple-500/10 hover:text-purple-400 transition-colors"
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* ── Test Alert Panel (hidden by default, toggle via secret) ── */}

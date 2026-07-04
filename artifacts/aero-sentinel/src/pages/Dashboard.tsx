@@ -53,8 +53,14 @@ export function useWatchlistWeather(icaos: string[]) {
     refetchIntervalInBackground: true,
     staleTime: 60_000,
   });
+  // Force refresh bypasses backend caches (in-memory + display cache)
   const refresh = () => queryClient.invalidateQueries({ queryKey: WEATHER_KEY(key) });
-  return { ...query, refresh };
+  const forceRefresh = () => queryClient.fetchQuery<WeatherItem[]>({
+    queryKey: WEATHER_KEY(key),
+    queryFn: () => fetch(`/api/watchlist/weather?icaos=${key}&force=true`).then((r) => r.json()),
+    staleTime: 0,
+  });
+  return { ...query, refresh, forceRefresh };
 }
 
 const SORT_OPTIONS: { value: SortMode; label: string }[] = [
@@ -197,11 +203,17 @@ export default function Dashboard() {
   const { data: monitor } = useGetMonitorStatus({
     query: { queryKey: getGetMonitorStatusQueryKey(), refetchInterval: 180_000 },
   });
-  const { data: weatherData, isLoading: weatherLoading, refresh: refreshWeather } = useWatchlistWeather(effectiveIcaos);
+  const { data: weatherData, isLoading: weatherLoading, refresh: refreshWeather, forceRefresh: forceRefreshWeather } = useWatchlistWeather(effectiveIcaos);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await refreshWeather();
+    try {
+      // Force refresh bypasses backend caches — re-fetches live from aviationweather.gov
+      await forceRefreshWeather();
+    } catch {
+      // Fallback to normal cache-busting refresh
+      await refreshWeather();
+    }
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
@@ -245,7 +257,9 @@ export default function Dashboard() {
       const nowCrit = airportIsCrit(w.rawTaf, w.rawMetar);
       const prevCrit = prev ? airportIsCrit(prev.rawTaf, prev.rawMetar) : false;
 
-      if (permGranted && nowCrit && !prevCrit) {
+      const appStartTime = (window as any).__APP_START_TIME ?? 0;
+      const isWithinSuppressionWindow = Date.now() - appStartTime < 90_000;
+      if (permGranted && nowCrit && !prevCrit && !isWithinSuppressionWindow) {
         const makeRe = (code: string) => new RegExp(`(?:^|\\s)${code.replace(/[+]/g, "\\+")}(?=\\s|$)`);
         const critCodesMetar = [...RED_WX].filter((code) => makeRe(code).test(w.rawMetar ?? ""));
         const critCodesTaf   = [...RED_WX].filter((code) => makeRe(code).test(w.rawTaf   ?? ""));
@@ -268,7 +282,7 @@ export default function Dashboard() {
             requireInteraction: false,
           });
           setTimeout(() => n.close(), 60_000);
-          n.onclick = () => { window.focus(); n.close(); };
+          n.onclick = () => { window.location.href = "/alerts"; window.focus(); n.close(); };
         } catch { /* blocked */ }
       }
       prevWeatherRef.current.set(w.icao, { rawMetar: w.rawMetar, rawTaf: w.rawTaf });

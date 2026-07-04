@@ -50,8 +50,8 @@ export default function AirportDetail({ icao }: Props) {
 
   // Alert history: useAlertNotifications cache'inden filtrele (ek API isteği yok)
   const { data: allAlerts, isLoading: alertsLoading } = useListAlerts(
-    { limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: Infinity } }
+    { limit: 100, since_hours: 6 } as any,
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), refetchInterval: Infinity } }
   );
   const alerts = allAlerts?.filter(a => a.icao.toUpperCase() === icao.toUpperCase()) ?? [];
 
@@ -68,8 +68,6 @@ export default function AirportDetail({ icao }: Props) {
   const parsedMetar = useMemo(() => (metar?.rawMetar ? parseMetar(metar.rawMetar) : null), [metar?.rawMetar]);
   const cat = parsedMetar?.flightCategory ?? FlightCategory.VFR;
   const catColor = CATEGORY_COLOR[cat];
-  const isDom = icao.startsWith("LT");
-
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
@@ -92,9 +90,6 @@ export default function AirportDetail({ icao }: Props) {
                   {cat}
                 </span>
               )}
-              <span className="text-xs font-mono text-muted-foreground border border-border px-2 py-0.5 rounded">
-                {isDom ? "DOM" : "INT"}
-              </span>
             </div>
           </div>
           {parsedMetar && (
@@ -171,11 +166,11 @@ export default function AirportDetail({ icao }: Props) {
               {alerts.map((alert) => (
                 <div key={alert.id}
                   className={`border rounded-lg px-4 py-3 transition-opacity ${alert.acknowledged ? "opacity-40" : ""} ${
-                    alert.type === "SPECI" ? "alert-speci" : alert.type === "TAF_AMD" ? "alert-taf-amd" : "alert-taf-cor"
+                    alert.type === "SPECI" ? "alert-speci" : alert.type === "TAF_AMD" ? "alert-taf-amd" : alert.type === "TAF_COR" ? "alert-taf-cor" : alert.type === "WX_EXTREME" ? "alert-wx-extreme" : alert.type === "WIND_EXTREME" ? "alert-wind-extreme" : ""
                   }`}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <AlertBadge type={alert.type as "TAF_AMD" | "TAF_COR" | "SPECI"} />
+                      <AlertBadge type={alert.type as any} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3 mb-1 flex-wrap">
                           <span className="text-xs text-muted-foreground font-mono">{format(new Date(alert.detectedAt), "dd MMM HH:mm")} UTC</span>

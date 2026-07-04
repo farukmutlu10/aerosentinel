@@ -3,11 +3,15 @@ import { useListAlerts, getListAlertsQueryKey } from "@workspace/api-client-reac
 import { useQueryClient } from "@tanstack/react-query";
 import { useAlertSound } from "@/hooks/useAlertSound";
 import { useWatchlist } from "@/context/WatchlistContext";
+import { useAlertSnooze } from "@/hooks/useAlertSnooze";
 
 const TYPE_LABELS: Record<string, string> = {
   TAF_AMD: "TAF Revision (AMD)",
   TAF_COR: "TAF Revision (COR)",
   SPECI: "SPECI Alert",
+  WX_EXTREME: "Extreme Weather",
+  WIND_EXTREME: "Extreme Wind",
+  LIFR: "Low IFR (LIFR)",
 };
 
 const AUTO_CLOSE_MS = 30_000;
@@ -15,13 +19,11 @@ const LOG = "[AeroNotif]";
 const log = (...args: unknown[]) => console.log(LOG, new Date().toISOString(), ...args);
 
 // ─── Persisted seen-alert tracker ───────────────────────────────────────────
-// sessionStorage'da son görülen alert ID'lerini sakla.
-// Sayfa kapanıp açıldığında, kapalı sürede gelen alertler bildirim tetikler.
-const SEEN_KEY = "aero-notif-seen-ids";
+const SEEN_KEY = "aero-notif-seen-ids-v2";
 
 function loadSeenIds(): Set<number> {
   try {
-    const raw = sessionStorage.getItem(SEEN_KEY);
+    const raw = localStorage.getItem(SEEN_KEY);
     if (!raw) return new Set();
     const arr = JSON.parse(raw);
     if (Array.isArray(arr)) return new Set(arr.filter((n) => typeof n === "number"));
@@ -31,9 +33,9 @@ function loadSeenIds(): Set<number> {
 
 function saveSeenIds(ids: Set<number>) {
   try {
-    // En fazla son 500 ID'yi sakla (sessionStorage boyut limiti)
+    // En fazla son 500 ID'yi sakla
     const arr = [...ids].sort((a, b) => b - a).slice(0, 500);
-    sessionStorage.setItem(SEEN_KEY, JSON.stringify(arr));
+    localStorage.setItem(SEEN_KEY, JSON.stringify(arr));
   } catch { /* ignore */ }
 }
 
@@ -62,6 +64,7 @@ async function sendNotification(title: string, options: NotificationOptions): Pr
 export function useAlertNotifications() {
   const { play: playAlert } = useAlertSound();
   const { effectiveIcaos } = useWatchlist();
+  const { isSnoozed } = useAlertSnooze();
   const [pendingToasts, setPendingToasts] = useState<Array<{
     id: string;
     title: string;
@@ -71,25 +74,33 @@ export function useAlertNotifications() {
   }>>([]);
   const seenIds = useRef<Set<number>>(loadSeenIds());
   const queryClient = useQueryClient();
-  const isFirstLoad = useRef(true);
-  const pollCount = useRef(0);
-  const watchlistSet = useRef<Set<string>>(new Set());
+
+  // ─── TIME-BASED SUPPRESSION (bulletproof) ────────────────────────────────
+  // Global timestamp set in main.tsx BEFORE React mounts.
+  // This is immune to SW cache, service worker timing, ref resets, etc.
+  const APP_START_TIME = (window as any).__APP_START_TIME ?? Date.now();
+  const SUPPRESS_MS = 90_000; // 90 seconds — suppress ALL notifications on first load
 
   const dismissToast = useCallback((id: string) => {
     setPendingToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
+  // ─── Cross-tab localStorage senkronizasyonu ───────────────────────────────
   useEffect(() => {
-    const newSet = new Set(effectiveIcaos.map(s => s.toUpperCase()));
-    const oldSize = watchlistSet.current.size;
-    watchlistSet.current = newSet;
-    if (oldSize > 0 && newSet.size !== oldSize) {
-      seenIds.current.clear();
-      isFirstLoad.current = true;
-      saveSeenIds(seenIds.current);
-      log(`Watchlist değişti (${oldSize} → ${newSet.size}): seenIds sıfırlandı`);
-    }
-  }, [effectiveIcaos]);
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === SEEN_KEY && e.newValue) {
+        try {
+          const arr = JSON.parse(e.newValue) as number[];
+          if (Array.isArray(arr)) {
+            seenIds.current = new Set(arr.filter((n) => typeof n === "number"));
+            log(`Cross-tab sync: seenIds güncellendi (${seenIds.current.size} entries)`);
+          }
+        } catch { /* ignore parse errors */ }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   const forceCheck = useCallback(async () => {
     log("forceCheck: query invalidation tetikleniyor");
@@ -98,21 +109,15 @@ export function useAlertNotifications() {
 
   // ─── Polling — useListAlerts ile (Alerts sayfasıyla aynı API) ──────────────
   const { data: allAlerts, error: recentError, isLoading } = useListAlerts(
-    { limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, refetchOnReconnect: true, refetchOnMount: true, retry: 3 } }
+    { limit: 100, since_hours: 6 } as any,
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, refetchOnReconnect: true, refetchOnMount: true, retry: 3 } }
   );
 
   useEffect(() => { if (recentError) log("⚠️ API HATASI:", recentError.message || recentError); }, [recentError]);
 
-  useEffect(() => {
-    pollCount.current++;
-    log(`Poll #${pollCount.current}: alerts.length = ${allAlerts?.length ?? 0} | isFirstLoad: ${isFirstLoad.current} | permission: ${typeof Notification !== "undefined" ? Notification.permission : "N/A"} | seenIds: ${seenIds.current.size} | loading: ${isLoading}`);
-    if (allAlerts && allAlerts.length > 0) log("  Alert IDs:", allAlerts.slice(0, 15).map(a => `${a.id}(${a.icao}:${a.type})`).join(", "));
-  }, [allAlerts]);
-
   // ─── Ana bildirim effect'i ─────────────────────────────────────────────────
   useEffect(() => {
-    // Cookie consent guard — banner kapanana kadar bildirim tetikleme
+    // Cookie consent guard
     const raw = localStorage.getItem('aero-cookie-consent');
     const consent = raw ? JSON.parse(raw) : null;
     if (!consent) {
@@ -122,28 +127,21 @@ export function useAlertNotifications() {
 
     if (!allAlerts?.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }
 
-    // İlk yükleme: sessionStorage'dan yüklenen seenIds zaten var.
-    // isFirstLoad = true VE sessionStorage boşsa (ilk ziyaret), mevcut alertleri seenIds'e ekle.
-    // isFirstLoad = true VE sessionStorage'da seenIds varsa (sayfa yenileme), kapalı sürede gelen alertleri bildir.
-    if (isFirstLoad.current) {
-      isFirstLoad.current = false;
-
-      if (seenIds.current.size === 0) {
-        // İlk ziyaret — sessionStorage boş. Tüm mevcut alertleri seenIds'e ekle (spam engeli).
-        allAlerts.forEach((a) => seenIds.current.add(a.id));
+    // ─── TIME-BASED SUPPRESSION: Within first 90 seconds, mark ALL as seen ─
+    const elapsed = Date.now() - APP_START_TIME;
+    if (elapsed < SUPPRESS_MS) {
+      const newIds = allAlerts
+        .map(a => a.id)
+        .filter((id): id is number => id != null && !seenIds.current.has(id));
+      if (newIds.length > 0) {
+        for (const id of newIds) seenIds.current.add(id);
         saveSeenIds(seenIds.current);
-        log(`İlk ziyaret (sessionStorage boş): ${allAlerts.length} alert seenIds'e eklendi (bildirim gönderilmedi)`);
-        return;
       }
-
-      // Sayfa yenileme — sessionStorage'da seenIds var.
-      // seenIds'de OLMAYAN alertler = kapalı sürede gelen yeni alertler → bildirim gönder!
-      const newOnLoad = allAlerts.filter((a) => !seenIds.current.has(a.id));
-      log(`Sayfa yenileme: ${newOnLoad.length} yeni alert sessionStorage'da yok → bildirim tetiklenecek`);
-      // isFirstLoad sonrası normal akışa devam et (return yok)
+      log(`Time-gate suppression (${Math.round(elapsed / 1000)}s < ${SUPPRESS_MS / 1000}s): ${newIds.length} alerts marked as seen, 0 notifications`);
+      return; // NO notifications during first 90 seconds
     }
 
-    // ─── YENİ ALERT'LERİ ALGILA VE BİLDİRİM GÖNDER ─────────────────────────
+    // ─── AFTER 90 SECONDS: Normal notification logic ──────────────────────
     const notifiedIcaos = new Set<string>();
     let newAlertCount = 0;
     let skippedCount = 0;
@@ -153,14 +151,21 @@ export function useAlertNotifications() {
       if (seenIds.current.has(alert.id)) continue;
 
       // Watchlist filtresi
-      if (watchlistSet.current.size > 0 && !watchlistSet.current.has(alert.icao.toUpperCase())) {
+      const watchlistSet = new Set(effectiveIcaos.map(s => s.toUpperCase()));
+      if (watchlistSet.size > 0 && !watchlistSet.has(alert.icao.toUpperCase())) {
         skippedCount++;
         seenIds.current.add(alert.id);
         continue;
       }
 
-      // ICAO deduplikasyon — aynı ICAO için sadece ilk alert
-      // (Aynı poll döngüsünde aynı ICAO için birden fazla alert gelirse)
+      // Snooze filter
+      if (isSnoozed(alert.icao)) {
+        skippedCount++;
+        seenIds.current.add(alert.id);
+        continue;
+      }
+
+      // ICAO deduplikasyon
       if (notifiedIcaos.has(alert.icao.toUpperCase())) {
         seenIds.current.add(alert.id);
         skippedCount++;
@@ -183,7 +188,7 @@ export function useAlertNotifications() {
         sendNotification(title, { body, icon, tag: `aero-alert-${alert.icao}-${alert.id}`, requireInteraction: false }).then((n) => {
           if (n) {
             const timer = setTimeout(() => n.close(), AUTO_CLOSE_MS);
-            n.onclick = () => { clearTimeout(timer); window.focus(); n.close(); };
+            n.onclick = () => { clearTimeout(timer); window.location.href = "/alerts"; n.close(); };
             n.onclose = () => clearTimeout(timer);
           }
         });
@@ -203,13 +208,13 @@ export function useAlertNotifications() {
       try { playAlert(); } catch { /* ignore */ }
     }
 
-    // seenIds'i sessionStorage'a kaydet
+    // seenIds'i localStorage'a kaydet
     if (newAlertCount > 0) saveSeenIds(seenIds.current);
 
     if (skippedCount > 0) log(`⏭️ ${skippedCount} alert atlandı (watchlist dışı veya duplicate)`);
     if (newAlertCount === 0) log("Yeni alert yok (tümü seenIds'de veya duplicate)");
     else log(`✅ ${newAlertCount} yeni alert için bildirim gönderildi`);
-  }, [allAlerts, playAlert]);
+  }, [allAlerts, playAlert, effectiveIcaos, isSnoozed]);
 
   return { forceCheck, pendingToasts, dismissToast };
 }

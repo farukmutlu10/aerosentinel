@@ -52,8 +52,8 @@ export function Footer() {
   const localAckedSet = useMemo(() => new Set(localAcked), [localAcked]);
 
   const { data: allAlerts } = useListAlerts(
-    { limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: Infinity, refetchIntervalInBackground: true } }
+    { limit: 100, since_hours: 6 } as any,
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), refetchInterval: Infinity, refetchIntervalInBackground: true } }
   );
 
   // Deduplicate by ICAO (keep latest), same as Alerts.tsx / NavHeader.tsx

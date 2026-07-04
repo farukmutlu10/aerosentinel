@@ -13,4 +13,6 @@ export const ListAlertsType = {
   TAF_AMD: 'TAF_AMD',
   TAF_COR: 'TAF_COR',
   SPECI: 'SPECI',
+  WX_EXTREME: 'WX_EXTREME',
+  WIND_EXTREME: 'WIND_EXTREME',
 } as const;

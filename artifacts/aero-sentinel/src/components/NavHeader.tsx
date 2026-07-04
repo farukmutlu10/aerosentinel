@@ -1,10 +1,12 @@
 import { Link, useLocation } from "wouter";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { BellOff, Bell } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useListAlerts, getListAlertsQueryKey } from "@workspace/api-client-react";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useLocalAck } from "@/App";
 import { useAlertSound } from "@/hooks/useAlertSound";
+import { useAlertSnooze, SNOOZE_OPTIONS, type SnoozeDuration } from "@/hooks/useAlertSnooze";
 
 interface Props {
   monitorStatus?: { running: boolean };
@@ -61,7 +63,9 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
   const { localAcked } = useLocalAck();
 
   const { play: playAlert, setEnabled: setSoundEnabled, isEnabled: isSoundEnabled } = useAlertSound();
+  const { snoozeAll, unsnoozeAll, isGloballySnoozed } = useAlertSnooze();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [snoozeMenuOpen, setSnoozeMenuOpen] = useState(false);
   const desktopSettingsRef = useRef<HTMLDivElement>(null);
   const mobileSettingsRef = useRef<HTMLDivElement>(null);
   const [soundOn, setSoundOn] = useState(() => {
@@ -156,8 +160,8 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
   const localAckedSet = useMemo(() => new Set(localAcked), [localAcked]);
 
   const { data: allAlerts } = useListAlerts(
-    { limit: 100 },
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100 }), refetchInterval: Infinity, refetchIntervalInBackground: true } }
+    { limit: 100, since_hours: 6 } as any,
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), refetchInterval: Infinity, refetchIntervalInBackground: true } }
   );
 
   // Deduplicate by ICAO (keep latest), same as Alerts.tsx
@@ -287,7 +291,7 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
 
       {/* Click outside to close settings dropdown */}
       {settingsOpen && (
-        <SettingsClickOutside desktopRef={desktopSettingsRef} mobileRef={mobileSettingsRef} portalRef={portalDropdownRef} onClose={() => setSettingsOpen(false)} />
+        <SettingsClickOutside desktopRef={desktopSettingsRef} mobileRef={mobileSettingsRef} portalRef={portalDropdownRef} onClose={() => { setSettingsOpen(false); setSnoozeMenuOpen(false); }} />
       )}
 
       {/* Portal dropdown — rendered outside the sticky header stacking context */}
@@ -339,6 +343,40 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
             )}
             Sound: {soundOn ? "On" : "Off"}
           </button>
+          <div className="my-1 h-px" style={{ backgroundColor: "rgba(255,255,255,0.06)" }} />
+          {isGloballySnoozed() ? (
+            <button
+              onClick={() => { unsnoozeAll(); setSettingsOpen(false); }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
+            >
+              <Bell size={13} />
+              Unsnooze All
+            </button>
+          ) : (
+            <button
+              onClick={() => setSnoozeMenuOpen(!snoozeMenuOpen)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted/50 font-mono font-bold tracking-wider text-[11px] w-full text-left"
+            >
+              <BellOff size={13} />
+              Snooze All
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="ml-auto">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+          )}
+          {snoozeMenuOpen && !isGloballySnoozed() && (
+            <div className="pl-6 pb-1">
+              {SNOOZE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => { snoozeAll(opt.value); setSnoozeMenuOpen(false); setSettingsOpen(false); }}
+                  className="block w-full text-left px-3 py-1.5 rounded text-[11px] font-mono hover:bg-purple-500/10 hover:text-purple-400 transition-colors"
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>,
         document.body
       )}

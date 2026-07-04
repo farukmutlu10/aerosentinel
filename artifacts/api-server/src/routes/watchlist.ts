@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { db, watchlistTable } from "@workspace/db";
+import { db, watchlistTable, alertsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { fetchWeatherForIcao, updateCachedIcaos, getAirports } from "../lib/monitor.js";
+import { fetchWeatherForIcao, updateCachedIcaos, getAirports, clearDisplayCache } from "../lib/monitor.js";
 
 const router = Router();
 
@@ -19,6 +19,126 @@ router.get("/watchlist", async (req, res) => {
   return res.json(rows.map((r) => r.icao));
 });
 
+// ── Initial alert check for newly added airports ─────────────────────────────
+// When a user adds a new airport, check if the current TAF/METAR already
+// contains alert-worthy conditions (AMD, COR, SPECI, extreme weather, etc.)
+// and generate alerts so the user sees historical context immediately.
+async function generateInitialAlerts(icao: string) {
+  try {
+    const { rawTaf, rawMetar } = await fetchWeatherForIcao(icao, { force: true });
+
+    if (rawTaf) {
+      if (rawTaf.includes("AMD") || rawTaf.includes("COR")) {
+        const alertType = rawTaf.includes("AMD") ? "TAF_AMD" : "TAF_COR";
+        await db.insert(alertsTable).values({ type: alertType as any, icao, rawText: rawTaf, previousRawText: null });
+        console.log(`[watchlist] ✅ Initial TAF alert: ${alertType} for ${icao}`);
+      }
+
+      // TAF-based extreme weather detection
+      const TAF_EXTREME_WX_CODES = [
+        "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",
+        "DS", "-DS", "+DS", "SS", "-SS", "+SS",
+        "-SN", "SN", "+SN", "-SHSN", "SHSN", "+SHSN",
+        "TSSN", "+TSSN", "TSGR", "TSPL",
+        "-FZRA", "FZRA", "+FZRA", "FZDZ", "-FZDZ", "+FZDZ", "FZFG", "FZSN",
+        "BLSN", "+BLSN", "-BLSN", "DRSN",
+        "-RASN", "RASN", "+RASN", "SHGR", "SHGS",
+        "IC", "PL", "GR", "GS", "VA", "FC", "SQ", "SG",
+      ];
+      let hasTafWxExtreme = false;
+      for (const code of TAF_EXTREME_WX_CODES) {
+        const escaped = code.replace(/[+]/g, "\\+");
+        if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(rawTaf)) { hasTafWxExtreme = true; break; }
+      }
+      if (hasTafWxExtreme) {
+        await db.insert(alertsTable).values({ type: "WX_EXTREME" as any, icao, rawText: rawTaf, previousRawText: null });
+        console.log(`[watchlist] ✅ Initial TAF WX_EXTREME alert for ${icao}`);
+      }
+
+      // TAF-based extreme wind detection
+      let hasTafWindExtreme = false;
+      for (const m of rawTaf.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/g)) {
+        const spd = parseInt(m[1]); const gst = m[2] ? parseInt(m[2]) : 0;
+        if (spd >= 25 || gst >= 29) { hasTafWindExtreme = true; break; }
+      }
+      if (!hasTafWindExtreme) {
+        for (const m of rawTaf.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?MPS\b/g)) {
+          const spd = parseInt(m[1]); const gst = m[2] ? parseInt(m[2]) : 0;
+          if (spd >= 13 || gst >= 15) { hasTafWindExtreme = true; break; }
+        }
+      }
+      if (hasTafWindExtreme) {
+        await db.insert(alertsTable).values({ type: "WIND_EXTREME" as any, icao, rawText: rawTaf, previousRawText: null });
+        console.log(`[watchlist] ✅ Initial TAF WIND_EXTREME alert for ${icao}`);
+      }
+    }
+
+    if (rawMetar) {
+      // SPECI check
+      if (rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ")) {
+        await db.insert(alertsTable).values({ type: "SPECI" as any, icao, rawText: rawMetar, previousRawText: null });
+        console.log(`[watchlist] ✅ Initial SPECI alert for ${icao}`);
+      }
+
+      // Extreme weather codes
+      const EXTREME_WX_CODES = [
+        "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",
+        "DS", "-DS", "+DS", "SS", "-SS", "+SS",
+        "-SN", "SN", "+SN", "-SHSN", "SHSN", "+SHSN",
+        "TSSN", "+TSSN", "TSGR", "TSPL",
+        "-FZRA", "FZRA", "+FZRA", "FZDZ", "-FZDZ", "+FZDZ", "FZFG", "FZSN",
+        "BLSN", "+BLSN", "-BLSN", "DRSN",
+        "-RASN", "RASN", "+RASN", "SHGR", "SHGS",
+        "IC", "PL", "GR", "GS", "VA", "FC", "SQ", "SG",
+      ];
+      let hasWxExtreme = false;
+      for (const code of EXTREME_WX_CODES) {
+        const escaped = code.replace(/[+]/g, "\\+");
+        if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(rawMetar)) { hasWxExtreme = true; break; }
+      }
+      if (hasWxExtreme) {
+        await db.insert(alertsTable).values({ type: "WX_EXTREME" as any, icao, rawText: rawMetar, previousRawText: null });
+        console.log(`[watchlist] ✅ Initial WX_EXTREME alert for ${icao}`);
+      }
+
+      // Extreme wind check
+      let hasWindExtreme = false;
+      for (const m of rawMetar.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/g)) {
+        const spd = parseInt(m[1]); const gst = m[2] ? parseInt(m[2]) : 0;
+        if (spd >= 25 || gst >= 29) { hasWindExtreme = true; break; }
+      }
+      if (!hasWindExtreme) {
+        for (const m of rawMetar.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?MPS\b/g)) {
+          const spd = parseInt(m[1]); const gst = m[2] ? parseInt(m[2]) : 0;
+          if (spd >= 13 || gst >= 15) { hasWindExtreme = true; break; }
+        }
+      }
+      if (hasWindExtreme) {
+        await db.insert(alertsTable).values({ type: "WIND_EXTREME" as any, icao, rawText: rawMetar, previousRawText: null });
+        console.log(`[watchlist] ✅ Initial WIND_EXTREME alert for ${icao}`);
+      }
+
+      // LIFR check
+      let hasLifr = false;
+      if (!rawMetar.includes("CAVOK")) {
+        const visMatch = rawMetar.match(/\b(\d{3}\d{1,2}|VRB\d{2,3})(?:G\d{2,3})?(?:KT|MPS|KMH)\s+(\d{4})\b/);
+        if (visMatch && parseInt(visMatch[2], 10) < 1600 && parseInt(visMatch[2], 10) > 0) hasLifr = true;
+        if (!hasLifr) {
+          for (const m of rawMetar.matchAll(/\b(BKN|OVC|VV)(\d{3})\b/g)) {
+            if (parseInt(m[2], 10) * 100 < 500) { hasLifr = true; break; }
+          }
+        }
+      }
+      if (hasLifr) {
+        await db.insert(alertsTable).values({ type: "LIFR" as any, icao, rawText: rawMetar, previousRawText: null });
+        console.log(`[watchlist] ✅ Initial LIFR alert for ${icao}`);
+      }
+    }
+  } catch (err) {
+    console.error(`[watchlist] Failed to generate initial alerts for ${icao}:`, err);
+  }
+}
+
 router.post("/watchlist", async (req, res) => {
   const userId = getDeviceId(req);
   const icao = ((req.body?.icao as string) ?? "").trim().toUpperCase();
@@ -31,6 +151,8 @@ router.post("/watchlist", async (req, res) => {
   if (!current.includes(icao)) {
     updateCachedIcaos([...current, icao]);
   }
+  // Fire-and-forget: check if current weather already has alert conditions
+  void generateInitialAlerts(icao);
   return res.json({ ok: true, icao });
 });
 
@@ -64,6 +186,7 @@ router.delete("/watchlist/:icao", async (req, res) => {
 
 router.get("/watchlist/weather", async (req, res) => {
   const userId = getDeviceId(req);
+  const force = req.query.force === "true" || req.query.force === "1";
   const icaosParam = ((req.query.icaos as string) ?? "").trim();
   const icaos = icaosParam
     .split(",")
@@ -82,10 +205,15 @@ router.get("/watchlist/weather", async (req, res) => {
     list = rows.length > 0 ? rows.map((r) => r.icao) : ["LTFH"];
   }
 
+  if (force) {
+    // Clear display cache for all requested ICAOs so fresh data is fetched
+    for (const icao of list) clearDisplayCache(icao);
+  }
+
   const results = await Promise.all(
     list.map(async (icao) => ({
       icao,
-      ...(await fetchWeatherForIcao(icao)),
+      ...(await fetchWeatherForIcao(icao, { force })),
     }))
   );
   return res.json(results);

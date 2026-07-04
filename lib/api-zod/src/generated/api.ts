@@ -23,7 +23,7 @@ export const HealthCheckResponse = zod.object({
 export const listAlertsQueryLimitDefault = 50;
 
 export const ListAlertsQueryParams = zod.object({
-  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI']).optional(),
+  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI', 'WX_EXTREME', 'WIND_EXTREME']).optional(),
   "icao": zod.coerce.string().optional(),
   "acknowledged": zod.coerce.boolean().optional(),
   "limit": zod.coerce.number().default(listAlertsQueryLimitDefault)
@@ -31,7 +31,7 @@ export const ListAlertsQueryParams = zod.object({
 
 export const ListAlertsResponseItem = zod.object({
   "id": zod.number(),
-  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI']),
+  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI', 'WX_EXTREME', 'WIND_EXTREME']),
   "icao": zod.string(),
   "rawText": zod.string(),
   "detectedAt": zod.coerce.date(),
@@ -49,6 +49,8 @@ export const GetAlertsSummaryResponse = zod.object({
   "unacknowledged": zod.number(),
   "tafRevisions": zod.number(),
   "speciAlerts": zod.number(),
+  "wxExtremeAlerts": zod.number(),
+  "windExtremeAlerts": zod.number(),
   "airportsAffected": zod.number(),
   "lastScan": zod.coerce.date().nullable()
 })
@@ -59,7 +61,7 @@ export const GetAlertsSummaryResponse = zod.object({
  */
 export const GetRecentAlertsResponseItem = zod.object({
   "id": zod.number(),
-  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI']),
+  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI', 'WX_EXTREME', 'WIND_EXTREME']),
   "icao": zod.string(),
   "rawText": zod.string(),
   "detectedAt": zod.coerce.date(),
@@ -78,7 +80,7 @@ export const AcknowledgeAlertParams = zod.object({
 
 export const AcknowledgeAlertResponse = zod.object({
   "id": zod.number(),
-  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI']),
+  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI', 'WX_EXTREME', 'WIND_EXTREME']),
   "icao": zod.string(),
   "rawText": zod.string(),
   "detectedAt": zod.coerce.date(),

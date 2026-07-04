@@ -2,7 +2,7 @@ import { pgTable, serial, text, boolean, timestamp, pgEnum } from "drizzle-orm/p
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const alertTypeEnum = pgEnum("alert_type", ["TAF_AMD", "TAF_COR", "SPECI"]);
+export const alertTypeEnum = pgEnum("alert_type", ["TAF_AMD", "TAF_COR", "SPECI", "WX_EXTREME", "WIND_EXTREME", "LIFR"]);
 
 export const alertsTable = pgTable("alerts", {
   id: serial("id").primaryKey(),

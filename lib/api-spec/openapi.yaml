@@ -38,7 +38,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [TAF_AMD, TAF_COR, SPECI]
+            enum: [TAF_AMD, TAF_COR, SPECI, WX_EXTREME, WIND_EXTREME, LIFR]
         - name: icao
           in: query
           schema:
@@ -199,7 +199,7 @@ components:
           type: integer
         type:
           type: string
-          enum: [TAF_AMD, TAF_COR, SPECI]
+          enum: [TAF_AMD, TAF_COR, SPECI, WX_EXTREME, WIND_EXTREME, LIFR]
         icao:
           type: string
         rawText:
@@ -215,7 +215,7 @@ components:
 
     AlertsSummary:
       type: object
-      required: [totalAlerts, unacknowledged, tafRevisions, speciAlerts, airportsAffected, lastScan]
+      required: [totalAlerts, unacknowledged, tafRevisions, speciAlerts, wxExtremeAlerts, windExtremeAlerts, lifrAlerts, airportsAffected, lastScan]
       properties:
         totalAlerts:
           type: integer
@@ -224,6 +224,12 @@ components:
         tafRevisions:
           type: integer
         speciAlerts:
+          type: integer
+        wxExtremeAlerts:
+          type: integer
+        windExtremeAlerts:
+          type: integer
+        lifrAlerts:
           type: integer
         airportsAffected:
           type: integer

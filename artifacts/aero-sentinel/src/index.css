@@ -161,6 +161,21 @@ html {
   border-color: hsl(0 80% 32% / 0.55);
   background-color: hsl(0 80% 55% / 0.12);
 }
+.alert-wx-extreme {
+  color: hsl(270 70% 35%);
+  border-color: hsl(270 70% 45% / 0.55);
+  background-color: hsl(270 70% 55% / 0.12);
+}
+.alert-wind-extreme {
+  color: hsl(350 70% 35%);
+  border-color: hsl(350 70% 50% / 0.55);
+  background-color: hsl(350 70% 60% / 0.12);
+}
+.alert-lifr {
+  color: hsl(240 60% 35%);
+  border-color: hsl(240 60% 50% / 0.55);
+  background-color: hsl(240 60% 55% / 0.12);
+}
 
 /* ── Alert type colors — dark ────────────────────────────── */
 .dark .alert-taf-amd {
@@ -177,6 +192,21 @@ html {
   color: hsl(0 85% 65%);
   border-color: hsl(0 85% 65% / 0.3);
   background-color: hsl(0 85% 65% / 0.07);
+}
+.dark .alert-wx-extreme {
+  color: hsl(270 80% 70%);
+  border-color: hsl(270 80% 70% / 0.3);
+  background-color: hsl(270 80% 70% / 0.07);
+}
+.dark .alert-wind-extreme {
+  color: hsl(350 80% 68%);
+  border-color: hsl(350 80% 68% / 0.3);
+  background-color: hsl(350 80% 68% / 0.07);
+}
+.dark .alert-lifr {
+  color: hsl(240 80% 72%);
+  border-color: hsl(240 80% 72% / 0.3);
+  background-color: hsl(240 80% 72% / 0.07);
 }
 
 @keyframes sentinel-pulse {

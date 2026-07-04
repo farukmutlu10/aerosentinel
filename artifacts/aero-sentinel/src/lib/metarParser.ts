@@ -377,7 +377,7 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
     } else if (t === "CB") {
       color = "#d1a054"; title = "Cumulonimbus";
     } else if (/^(BECMG|TEMPO|INTER|PROB\d{2})$/.test(t) || /^FM\d{4,6}$/.test(t) || /^AT\d{4}$/.test(t) || /^TL\d{4}$/.test(t)) {
-      bold = true; color = "currentColor"; title = "TAF change group";
+      title = "TAF change group";
     } else if (/^[-+]?(?:TS|SH|FZ|DR|BL|VC|MI|PR|BC|NSW)/.test(t) || /(?:DZ|RA|SN|SG|IC|PL|GR|GS|BR|FG|FU|VA|DU|SA|HZ|PO|CB|FC|SQ|SS|DS)/.test(t)) {
       const wx = wxColor(t);
       color = wx;

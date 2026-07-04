@@ -11,6 +11,9 @@ export interface AlertsSummary {
   unacknowledged: number;
   tafRevisions: number;
   speciAlerts: number;
+  wxExtremeAlerts: number;
+  windExtremeAlerts: number;
+  lifrAlerts: number;
   airportsAffected: number;
   /** @nullable */
   lastScan: Date | null;

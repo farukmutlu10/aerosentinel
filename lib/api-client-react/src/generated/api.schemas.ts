@@ -16,6 +16,9 @@ export const AlertType = {
   TAF_AMD: 'TAF_AMD',
   TAF_COR: 'TAF_COR',
   SPECI: 'SPECI',
+  WX_EXTREME: 'WX_EXTREME',
+  WIND_EXTREME: 'WIND_EXTREME',
+  LIFR: 'LIFR',
 } as const;
 
 export interface Alert {
@@ -34,6 +37,9 @@ export interface AlertsSummary {
   unacknowledged: number;
   tafRevisions: number;
   speciAlerts: number;
+  wxExtremeAlerts: number;
+  windExtremeAlerts: number;
+  lifrAlerts: number;
   airportsAffected: number;
   /** @nullable */
   lastScan: string | null;
@@ -88,5 +94,8 @@ export const ListAlertsType = {
   TAF_AMD: 'TAF_AMD',
   TAF_COR: 'TAF_COR',
   SPECI: 'SPECI',
+  WX_EXTREME: 'WX_EXTREME',
+  WIND_EXTREME: 'WIND_EXTREME',
+  LIFR: 'LIFR',
 } as const;
 

@@ -64,7 +64,7 @@ router.get("/alerts", async (req, res) => {
   }
 
   const { type, icao, acknowledged, limit = 50 } = parsed.data;
-  const sinceHours = raw.since_hours ? Number(raw.since_hours) : 6;
+  const sinceHours = raw.since_hours ? Number(raw.since_hours) : 48;
   const conditions = [];
   if (type)                       conditions.push(eq(alertsTable.type, type));
   if (icao)                       conditions.push(eq(alertsTable.icao, icao));
@@ -128,7 +128,7 @@ router.get("/alerts/summary", async (req, res) => {
   const watchlistIcaos = watchlistRows.map((r) => r.icao);
 
   if (watchlistIcaos.length === 0) {
-    const empty = { totalAlerts: 0, unacknowledged: 0, tafRevisions: 0, speciAlerts: 0, airportsAffected: 0, lastScan: null };
+    const empty = { totalAlerts: 0, unacknowledged: 0, tafRevisions: 0, speciAlerts: 0, wxExtremeAlerts: 0, windExtremeAlerts: 0, lifrAlerts: 0, airportsAffected: 0, lastScan: null };
     cache.set(cacheKey, { data: empty, ts: now });
     return res.json(empty);
   }
@@ -143,6 +143,9 @@ router.get("/alerts/summary", async (req, res) => {
     unacknowledged:   sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.acknowledged} = false)::int`,
     tafRevisions:     sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.type} IN ('TAF_AMD', 'TAF_COR'))::int`,
     speciAlerts:      sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.type} = 'SPECI')::int`,
+    wxExtremeAlerts:  sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.type} = 'WX_EXTREME')::int`,
+    windExtremeAlerts:sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.type} = 'WIND_EXTREME')::int`,
+    lifrAlerts:       sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.type} = 'LIFR')::int`,
     airportsAffected: sql<number>`COUNT(DISTINCT ${alertsTable.icao})::int`,
   }).from(alertsTable).where(and(...baseConditions));
 
@@ -150,12 +153,15 @@ router.get("/alerts/summary", async (req, res) => {
     .from(alertsTable).orderBy(desc(alertsTable.detectedAt)).limit(1);
 
   const result = {
-    totalAlerts:      agg?.total ?? 0,
-    unacknowledged:   agg?.unacknowledged ?? 0,
-    tafRevisions:     agg?.tafRevisions ?? 0,
-    speciAlerts:      agg?.speciAlerts ?? 0,
-    airportsAffected: agg?.airportsAffected ?? 0,
-    lastScan:         lastScanRow?.detectedAt ?? null,
+    totalAlerts:       agg?.total ?? 0,
+    unacknowledged:    agg?.unacknowledged ?? 0,
+    tafRevisions:      agg?.tafRevisions ?? 0,
+    speciAlerts:       agg?.speciAlerts ?? 0,
+    wxExtremeAlerts:   agg?.wxExtremeAlerts ?? 0,
+    windExtremeAlerts: agg?.windExtremeAlerts ?? 0,
+    lifrAlerts:        agg?.lifrAlerts ?? 0,
+    airportsAffected:  agg?.airportsAffected ?? 0,
+    lastScan:          lastScanRow?.detectedAt ?? null,
   };
 
   cache.set(cacheKey, { data: result, ts: now });
@@ -280,12 +286,34 @@ router.get("/alerts/:id/diff", async (req, res) => {
   if (rows.length === 0) return res.status(404).json({ error: "Alert not found" });
 
   const alert = rows[0];
+
+  // If previousRawText is null, try to find the most recent prior alert of same ICAO/type
+  let previousText = alert.previousRawText;
+  if (!previousText) {
+    const [prevRow] = await db
+      .select({ rawText: alertsTable.rawText })
+      .from(alertsTable)
+      .where(
+        and(
+          eq(alertsTable.icao, alert.icao),
+          eq(alertsTable.type, alert.type),
+          sql`${alertsTable.detectedAt} < ${alert.detectedAt}`
+        )
+      )
+      .orderBy(desc(alertsTable.detectedAt))
+      .limit(1);
+
+    if (prevRow?.rawText) {
+      previousText = prevRow.rawText;
+    }
+  }
+
   return res.json({
     id: alert.id,
     type: alert.type,
     icao: alert.icao,
     current: alert.rawText,
-    previous: alert.previousRawText,
+    previous: previousText ?? null,
     detectedAt: alert.detectedAt,
   });
 });
@@ -308,7 +336,7 @@ router.post("/alerts/test", async (req, res) => {
     }
   } catch {}
 
-  const types = ["SPECI", "TAF_AMD", "TAF_COR"];
+  const types = ["SPECI", "TAF_AMD", "TAF_COR", "WX_EXTREME", "WIND_EXTREME", "LIFR"];
   const type = types[Math.floor(Math.random() * types.length)];
   const rawText = `TEST ${type} ${icao} ${new Date().toISOString().slice(0, 10).replace(/-/g, "")} Test alert for notification testing`;
 
