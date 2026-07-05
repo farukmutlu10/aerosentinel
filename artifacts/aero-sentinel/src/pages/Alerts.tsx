@@ -254,7 +254,7 @@ export default function Alerts() {
   };
 
   const queryClient = useQueryClient();
-  const { isWatching, watchedIcaos } = useWatchlist();
+  const { isWatching, watchedIcaos, initialAlerts, initialAlertsReady } = useWatchlist();
   const { theme, toggleTheme } = useThemeContext();
 
   const { data: allAlerts, isLoading } = useListAlerts(
@@ -288,7 +288,25 @@ export default function Alerts() {
   };
 
   const alerts = useMemo(() => {
-    let list = allAlerts ?? [];
+    // Merge API alerts with initial alerts (initial alerts fill the gap before first poll)
+    const apiList = allAlerts ?? [];
+    let list: typeof apiList;
+
+    if (apiList.length > 0) {
+      // API data is available — use it as source of truth
+      // Merge in initial alerts that don't exist in API yet (negative IDs = live-detected, not in DB)
+      const apiKeys = new Set(apiList.map((a) => `${a.icao}-${a.type}`));
+      const extraInitials = initialAlerts
+        .filter((ia) => ia.id < 0 && !apiKeys.has(`${ia.icao}-${ia.type}`))
+        .map((ia) => ({ ...ia, id: ia.id, detectedAt: ia.detectedAt }));
+      list = [...apiList, ...extraInitials] as typeof apiList;
+    } else if (initialAlerts.length > 0 && initialAlertsReady) {
+      // No API data yet — show initial alerts immediately
+      list = initialAlerts.map((ia) => ({ ...ia })) as typeof apiList;
+    } else {
+      list = apiList;
+    }
+
     // Deduplicate: keep only the latest alert per ICAO + type combination
     const seen = new Map<string, number>();
     list = list.filter((a) => {
@@ -308,7 +326,7 @@ export default function Alerts() {
     else if (sortMode === "oldest") sorted.sort((a, b) => new Date(a.detectedAt).getTime() - new Date(b.detectedAt).getTime());
     else sorted.sort((a, b) => a.icao.localeCompare(b.icao));
     return sorted;
-  }, [allAlerts, activeTypesArr, hideAcknowledged, localAcked, isWatching, sortMode]);
+  }, [allAlerts, initialAlerts, initialAlertsReady, activeTypesArr, hideAcknowledged, localAcked, isWatching, sortMode]);
 
   const handleAckAll = () => {
     setAckingAll(true);

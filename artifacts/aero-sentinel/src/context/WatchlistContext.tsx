@@ -33,18 +33,34 @@ function getOrCreateDeviceId(): string {
 const deviceId = getOrCreateDeviceId();
 const headers: Record<string, string> = { "X-Device-ID": deviceId, "Content-Type": "application/json" };
 
+// Initial alert shape returned from sync endpoint
+export interface InitialAlert {
+  id: number;
+  type: string;
+  icao: string;
+  rawText: string;
+  previousRawText: string | null;
+  detectedAt: string;
+  acknowledged: boolean;
+  acknowledgedAt: string | null;
+}
+
 // On mount: replace backend list with this browser's localStorage list
-async function syncToBackend(icaos: string[]): Promise<void> {
+// Returns initial alerts from sync response for instant display
+async function syncToBackend(icaos: string[]): Promise<InitialAlert[]> {
   try {
-    await fetch("/api/watchlist/sync", {
+    const res = await fetch("/api/watchlist/sync", {
       method: "PUT",
       headers,
       body: JSON.stringify({ icaos }),
     });
+    const data = await res.json();
     // Notify other parts of the app (e.g. Alerts page) to refetch alerts
     window.dispatchEvent(new CustomEvent("watchlist-synced"));
+    return Array.isArray(data?.initialAlerts) ? data.initialAlerts : [];
   } catch {
     // silent — sync is best-effort
+    return [];
   }
 }
 
@@ -79,16 +95,25 @@ interface WatchlistContextValue {
   isWatching: (icao: string) => boolean;
   hasFilter: boolean;
   isLoading: false;
+  initialAlerts: InitialAlert[];
+  initialAlertsReady: boolean;
 }
 
 const WatchlistContext = createContext<WatchlistContextValue | null>(null);
 
 export function WatchlistProvider({ children }: { children: ReactNode }) {
   const [watchedIcaos, setWatchedIcaos] = useState<string[]>(loadLocal);
+  const [initialAlerts, setInitialAlerts] = useState<InitialAlert[]>([]);
+  const [initialAlertsReady, setInitialAlertsReady] = useState(false);
 
   // On mount: push this browser's list to backend as source of truth
   useEffect(() => {
-    syncToBackend(loadLocal());
+    syncToBackend(loadLocal()).then((alerts) => {
+      if (alerts.length > 0) {
+        setInitialAlerts(alerts);
+      }
+      setInitialAlertsReady(true);
+    });
   }, []);
 
   // ─── Cross-tab/cross-window sync ──────────────────────────────────────────
@@ -183,6 +208,8 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       isWatching,
       hasFilter: watchedIcaos.length > 0,
       isLoading: false,
+      initialAlerts,
+      initialAlertsReady,
     }}>
       {children}
     </WatchlistContext.Provider>
