@@ -25,10 +25,11 @@ router.get("/watchlist", async (req, res) => {
 // and generate alerts so the user sees historical context immediately.
 async function generateInitialAlerts(icao: string) {
   try {
-    const { rawTaf, rawMetar } = await fetchWeatherForIcao(icao, { force: true });
+    const { rawTaf, rawMetar, tafType, metarType } = await fetchWeatherForIcao(icao, { force: true });
 
     if (rawTaf) {
-      const hasAmdCor = rawTaf.includes("COR") || rawTaf.includes("AMD");
+      // Check both raw text AND API tafType field for AMD/COR detection
+      const hasAmdCor = rawTaf.includes("COR") || rawTaf.includes("AMD") || (tafType ?? "").toUpperCase() === "AMD" || (tafType ?? "").toUpperCase() === "COR";
       if (hasAmdCor) {
         const alertType = rawTaf.includes("COR") ? "TAF_COR" : "TAF_AMD";
         await db.insert(alertsTable).values({ type: alertType as any, icao, rawText: rawTaf, previousRawText: null });
@@ -102,7 +103,8 @@ async function generateInitialAlerts(icao: string) {
     }
 
     if (rawMetar) {
-      const hasSpeci = rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ");
+      // Check both raw text AND API metarType field for SPECI detection
+      const hasSpeci = rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ") || (metarType ?? "").toUpperCase() === "SPECI";
       if (hasSpeci) {
         await db.insert(alertsTable).values({ type: "SPECI" as any, icao, rawText: rawMetar, previousRawText: null });
         console.log(`[watchlist] ✅ Initial SPECI alert for ${icao}`);
