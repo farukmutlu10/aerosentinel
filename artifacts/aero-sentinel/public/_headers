@@ -10,6 +10,10 @@
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
 
+/*/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+  Pragma: no-cache
+
 /sw.js
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
