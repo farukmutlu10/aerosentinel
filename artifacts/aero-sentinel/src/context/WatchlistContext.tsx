@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { normalizeIcao } from "@/lib/icaoUtils";
 
 const DEFAULT_ICAO = "LTFH";
@@ -49,16 +49,22 @@ export interface InitialAlert {
 // Returns initial alerts from sync response for instant display
 async function syncToBackend(icaos: string[]): Promise<InitialAlert[]> {
   try {
+    console.log(`[WATCHLIST DIAG] syncToBackend called with ${icaos.length} ICAOs`, icaos.length > 0 ? icaos.slice(0, 5).join(",") + "…" : "(empty)");
+    console.log(`[WATCHLIST DIAG] localStorage raw:`, (localStorage.getItem(LS_KEY) ?? "(null)").slice(0, 200));
+    const bodyStr = JSON.stringify({ icaos });
+    console.log(`[WATCHLIST DIAG] request body (${bodyStr.length} bytes):`, bodyStr.slice(0, 200));
     const res = await fetch("/api/watchlist/sync", {
       method: "PUT",
       headers,
-      body: JSON.stringify({ icaos }),
+      body: bodyStr,
     });
     const data = await res.json();
+    console.log(`[WATCHLIST DIAG] server response:`, JSON.stringify(data).slice(0, 200));
     // Notify other parts of the app (e.g. Alerts page) to refetch alerts
     window.dispatchEvent(new CustomEvent("watchlist-synced"));
     return Array.isArray(data?.initialAlerts) ? data.initialAlerts : [];
-  } catch {
+  } catch (err) {
+    console.error("[WATCHLIST DIAG] syncToBackend FAILED:", err);
     // silent — sync is best-effort
     return [];
   }
@@ -105,6 +111,20 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
   const [watchedIcaos, setWatchedIcaos] = useState<string[]>(loadLocal);
   const [initialAlerts, setInitialAlerts] = useState<InitialAlert[]>([]);
   const [initialAlertsReady, setInitialAlertsReady] = useState(false);
+
+  // Debounce timer for re-syncing after batch addIcao calls (e.g. paste 97 airports)
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Schedule a debounced re-sync — reads the latest localStorage
+  const scheduleSync = useCallback(() => {
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => {
+      syncToBackend(loadLocal()).then((alerts) => {
+        if (alerts.length > 0) setInitialAlerts(alerts);
+        window.dispatchEvent(new CustomEvent("watchlist-synced"));
+      });
+    }, 500);
+  }, []);
 
   // On mount: push this browser's list to backend as source of truth
   useEffect(() => {
@@ -171,7 +191,9 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       window.dispatchEvent(new CustomEvent("watchlist-airport-added", { detail: icao }));
       return next;
     });
-  }, [broadcastUpdate]);
+    // Re-sync the full watchlist to backend after batch additions (debounced)
+    scheduleSync();
+  }, [broadcastUpdate, scheduleSync]);
 
   const removeIcao = useCallback((icao: string) => {
     const up = icao.toUpperCase();
