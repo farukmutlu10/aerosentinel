@@ -117,7 +117,11 @@ async function scanTaf(ids: string) {
     sonGorulenTs[icao] = now;
     if (sonGorulenTaf[icao] !== rawTaf) {
       const previousRawText = sonGorulenTaf[icao] ?? null;
+      const isFirstScan = previousRawText === null;
       sonGorulenTaf[icao] = rawTaf;
+      if (isFirstScan) {
+        console.log(`[monitor] 🆕 First TAF scan for ${icao}: len=${rawTaf.length}, hasAMD=${rawTaf.includes("AMD")}, hasCOR=${rawTaf.includes("COR")}`);
+      }
       // Persist to database
       try {
         await db.insert(monitorCacheTable)

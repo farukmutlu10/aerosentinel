@@ -191,8 +191,42 @@ router.post("/watchlist", async (req, res) => {
     updateCachedIcaos([...current, icao]);
   }
   // Fire-and-forget: check if current weather already has alert conditions
-  void generateInitialAlerts(icao);
+  void generateInitialAlerts(icao).catch(err => {
+    console.error(`[watchlist] ❌ generateInitialAlerts FAILED for ${icao}:`, err);
+  });
   return res.json({ ok: true, icao });
+});
+
+// ── Force re-check all watchlist airports for alert conditions ──
+router.post("/watchlist/force-check", async (req, res) => {
+  const userId = getDeviceId(req);
+  const rows = await db
+    .select({ icao: watchlistTable.icao })
+    .from(watchlistTable)
+    .where(eq(watchlistTable.userId, userId));
+  
+  if (rows.length === 0) {
+    return res.json({ ok: true, message: "No airports in watchlist", checked: 0 });
+  }
+
+  console.log(`[watchlist] 🔧 Force-check: re-running initial alerts for ${rows.length} airports (${rows.map(r => r.icao).join(", ")})`);
+  
+  let checked = 0;
+  let alertsCreated = 0;
+  for (const row of rows) {
+    try {
+      const prevCount = (await db.select({ id: alertsTable.id }).from(alertsTable).where(eq(alertsTable.icao, row.icao))).length;
+      await generateInitialAlerts(row.icao);
+      const afterCount = (await db.select({ id: alertsTable.id }).from(alertsTable).where(eq(alertsTable.icao, row.icao))).length;
+      if (afterCount > prevCount) alertsCreated += afterCount - prevCount;
+      checked++;
+    } catch (err) {
+      console.error(`[watchlist] ❌ Force-check failed for ${row.icao}:`, err);
+    }
+  }
+  
+  console.log(`[watchlist] ✅ Force-check done: ${checked} airports checked, ${alertsCreated} new alerts created`);
+  return res.json({ ok: true, checked, alertsCreated });
 });
 
 router.delete("/watchlist", async (req, res) => {
