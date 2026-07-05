@@ -23,7 +23,7 @@ import { iataToIcao } from "@/lib/iataMap";
 import {
   parseMetar, FlightCategory, CATEGORY_COLOR, catColor,
   extractTimeSlots, parseTafWorstCategory,
-  hasCritWx, hasBadgeWind, RED_WX,
+  hasCritWx, hasBadgeWind,
 } from "@/lib/metarParser";
 
 type RouteFilter = "ALL" | "DOM" | "INT";
@@ -133,9 +133,6 @@ export default function Dashboard() {
   // Mobile watchlist bottom sheet
   const [watchlistSheetOpen, setWatchlistSheetOpen] = useState(false);
 
-  // Notification tracking
-  const prevWeatherRef = useRef<Map<string, { rawMetar: string | null; rawTaf: string | null }>>(new Map());
-  const notifInitRef = useRef(false);
 
   const activeCats = new Set<string>(activeCatsArr);
   const critActive = activeCats.has(CRIT_KEY);
@@ -267,52 +264,6 @@ export default function Dashboard() {
     setIsPulling(false);
   };
 
-  // ── CRIT / Wind notifications ─────────────────────────────────────────────
-  useEffect(() => {
-    if (!weatherData) return;
-    const permGranted = typeof Notification !== "undefined" && Notification.permission === "granted";
-
-    if (!notifInitRef.current) {
-      for (const w of weatherData)
-        prevWeatherRef.current.set(w.icao, { rawMetar: w.rawMetar, rawTaf: w.rawTaf });
-      notifInitRef.current = true;
-      return;
-    }
-
-    for (const w of weatherData) {
-      const prev = prevWeatherRef.current.get(w.icao);
-      const nowCrit = airportIsCrit(w.rawTaf, w.rawMetar);
-      const prevCrit = prev ? airportIsCrit(prev.rawTaf, prev.rawMetar) : false;
-
-      if (permGranted && nowCrit && !prevCrit) {
-        const makeRe = (code: string) => new RegExp(`(?:^|\\s)${code.replace(/[+]/g, "\\+")}(?=\\s|$)`);
-        const critCodesMetar = [...RED_WX].filter((code) => makeRe(code).test(w.rawMetar ?? ""));
-        const critCodesTaf   = [...RED_WX].filter((code) => makeRe(code).test(w.rawTaf   ?? ""));
-        const windFromMetar  = hasBadgeWind(w.rawMetar);
-        const windFromTaf    = hasBadgeWind(w.rawTaf);
-        // Use TAF as source only when METAR has no crit condition
-        const useTaf    = !critCodesMetar.length && !windFromMetar && (critCodesTaf.length > 0 || windFromTaf);
-        const critCodes = useTaf ? critCodesTaf : critCodesMetar;
-        const windAlert = windFromMetar || windFromTaf;
-        const sourceRaw = useTaf ? (w.rawTaf ?? "") : (w.rawMetar ?? "");
-        const body = [
-          critCodes.length ? critCodes.slice(0, 5).join(", ") : windAlert ? "EXTREME WIND" : "Critical condition",
-          sourceRaw.slice(0, 120),
-        ].filter(Boolean).join("\n");
-        try {
-          const n = new Notification(`⚠ CRITICAL — ${w.icao}`, {
-            body,
-            icon: `${import.meta.env.BASE_URL}alert-icon.png?v=7`,
-            tag: `crit-${w.icao}-${Date.now()}`,
-            requireInteraction: false,
-          });
-          setTimeout(() => n.close(), 60_000);
-          n.onclick = () => { window.location.href = "/alerts"; window.focus(); n.close(); };
-        } catch { /* blocked */ }
-      }
-      prevWeatherRef.current.set(w.icao, { rawMetar: w.rawMetar, rawTaf: w.rawTaf });
-    }
-  }, [weatherData]);
 
   const airports = useMemo(() => {
     if (!weatherData) return [];
