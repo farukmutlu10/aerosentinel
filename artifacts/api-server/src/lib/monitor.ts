@@ -122,7 +122,7 @@ async function fetchJson(url: string): Promise<unknown[]> {
   return [];
 }
 
-async function refreshIcaoCache(): Promise<string[]> {
+export async function refreshIcaoCache(): Promise<string[]> {
   // Tüm kullanıcılardaki benzersiz ICAO'lar
   const allRows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
   if (allRows.length === 0) {

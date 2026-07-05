@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, watchlistTable, alertsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { fetchWeatherForIcao, updateCachedIcaos, getAirports, clearDisplayCache } from "../lib/monitor.js";
+import { fetchWeatherForIcao, updateCachedIcaos, getAirports, clearDisplayCache, refreshIcaoCache } from "../lib/monitor.js";
 
 const router = Router();
 
@@ -248,7 +248,14 @@ router.put("/watchlist/sync", async (req, res) => {
   if (icaos.length > 0) {
     await db.insert(watchlistTable).values(icaos.map((icao) => ({ icao, userId }))).onConflictDoNothing();
   }
-  updateCachedIcaos(icaos.length > 0 ? icaos : ["LTFH"]);
+  // Refresh cache from ALL users' watchlists (not just this user's)
+  await refreshIcaoCache();
+  // Fire-and-forget: generate initial alerts for each new airport
+  for (const icao of icaos) {
+    void generateInitialAlerts(icao).catch(err => {
+      console.error(`[watchlist] ❌ generateInitialAlerts FAILED for ${icao}:`, err);
+    });
+  }
   return res.json({ ok: true, icaos });
 });
 
