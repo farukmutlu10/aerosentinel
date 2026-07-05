@@ -34,12 +34,18 @@ const deviceId = getOrCreateDeviceId();
 const headers: Record<string, string> = { "X-Device-ID": deviceId, "Content-Type": "application/json" };
 
 // On mount: replace backend list with this browser's localStorage list
-function syncToBackend(icaos: string[]) {
-  void fetch("/api/watchlist/sync", {
-    method: "PUT",
-    headers,
-    body: JSON.stringify({ icaos }),
-  }).catch(() => {});
+async function syncToBackend(icaos: string[]): Promise<void> {
+  try {
+    await fetch("/api/watchlist/sync", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ icaos }),
+    });
+    // Notify other parts of the app (e.g. Alerts page) to refetch alerts
+    window.dispatchEvent(new CustomEvent("watchlist-synced"));
+  } catch {
+    // silent — sync is best-effort
+  }
 }
 
 function apiAdd(icao: string) {
@@ -148,6 +154,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       const next = prev.filter((c) => c !== up);
       broadcastUpdate(next);
       apiRemove(up);
+      window.dispatchEvent(new CustomEvent("watchlist-synced"));
       return next;
     });
   }, [broadcastUpdate]);
@@ -156,6 +163,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     setWatchedIcaos([]);
     broadcastUpdate([]);
     apiClear();
+    window.dispatchEvent(new CustomEvent("watchlist-synced"));
   }, [broadcastUpdate]);
 
   const effectiveIcaos = watchedIcaos.length > 0 ? watchedIcaos : [DEFAULT_ICAO];

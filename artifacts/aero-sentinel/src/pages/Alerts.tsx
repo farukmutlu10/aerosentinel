@@ -259,8 +259,22 @@ export default function Alerts() {
 
   const { data: allAlerts, isLoading } = useListAlerts(
     { limit: 100, since_hours: 6 } as any,
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), refetchInterval: Infinity, refetchIntervalInBackground: true } }
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true } }
   );
+
+  // Invalidate alerts when watchlist syncs or an airport is added
+  useEffect(() => {
+    const handleSync = () => {
+      queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetAlertsSummaryQueryKey() });
+    };
+    window.addEventListener("watchlist-synced", handleSync);
+    window.addEventListener("watchlist-airport-added", handleSync);
+    return () => {
+      window.removeEventListener("watchlist-synced", handleSync);
+      window.removeEventListener("watchlist-airport-added", handleSync);
+    };
+  }, [queryClient]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
