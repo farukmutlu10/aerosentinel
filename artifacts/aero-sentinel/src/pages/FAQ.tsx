@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { Footer } from "@/components/Footer";
+import { PageMeta } from "@/hooks/usePageMeta";
+import { pageMeta, faqJsonLd, breadcrumbJsonLd, SITE_URL } from "@/lib/page-meta";
 
 interface FAQItem {
   question: string;
@@ -91,6 +93,13 @@ const faqData: FAQItem[] = [
 ];
 
 export default function FAQ() {
+  const { title, description } = pageMeta.faq;
+  const faqStructured = faqJsonLd(faqData);
+  const breadcrumbs = breadcrumbJsonLd([
+    { name: "Home", url: SITE_URL },
+    { name: "FAQ", url: `${SITE_URL}/faq` },
+  ]);
+  const combinedJsonLd = { "@context": "https://schema.org", "@graph": [faqStructured, breadcrumbs] };
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   const toggle = (index: number) => {
@@ -99,6 +108,7 @@ export default function FAQ() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <PageMeta title={title} description={description} jsonLd={combinedJsonLd} />
       {/* Header */}
       <header className="border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
         <Link

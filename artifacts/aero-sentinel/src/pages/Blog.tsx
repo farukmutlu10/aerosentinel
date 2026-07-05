@@ -2,8 +2,15 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { blogPosts } from "@/data/blog-posts";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageMeta } from "@/hooks/usePageMeta";
+import { pageMeta, breadcrumbJsonLd, SITE_URL } from "@/lib/page-meta";
 
 export default function Blog() {
+  const { title, description } = pageMeta.blog;
+  const breadcrumbs = breadcrumbJsonLd([
+    { name: "Home", url: SITE_URL },
+    { name: "Blog", url: `${SITE_URL}/blog` },
+  ]);
   const [search, setSearch] = useState("");
 
   const filtered = blogPosts.filter((post) => {
@@ -18,6 +25,7 @@ export default function Blog() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <PageMeta title={title} description={description} jsonLd={breadcrumbs} />
       {/* Header */}
       <header className="border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
         <Link

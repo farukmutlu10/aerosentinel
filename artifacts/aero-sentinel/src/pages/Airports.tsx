@@ -5,6 +5,8 @@ import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { useThemeContext } from "@/App";
+import { PageMeta } from "@/hooks/usePageMeta";
+import { pageMeta, breadcrumbJsonLd, SITE_URL } from "@/lib/page-meta";
 import { parseMetar, analyzeTafWindow, type TafWindowResult, FlightCategory, CATEGORY_COLOR } from "@/lib/metarParser";
 // ── Excel parsing ─────────────────────────────────────────────────────────────
 
@@ -848,8 +850,14 @@ export default function Airports() {
     || flightSearch.trim() !== "" || regSearch.trim() !== "" || fromSearch.trim() !== "" || toSearch.trim() !== ""
     || etdFrom.trim() !== "" || etdTo.trim() !== "" || filterAnalysis !== "ALL";
 
+  const breadcrumbs = breadcrumbJsonLd([
+    { name: "Home", url: SITE_URL },
+    { name: "Airports", url: `${SITE_URL}/airports` },
+  ]);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <PageMeta title={pageMeta.airports.title} description={pageMeta.airports.description} jsonLd={breadcrumbs} />
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
       <main

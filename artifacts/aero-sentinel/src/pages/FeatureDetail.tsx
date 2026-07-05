@@ -1,6 +1,8 @@
 import { Link, useParams } from "wouter";
 import { getFeatureBySlug } from "@/data/features";
 import { Footer } from "@/components/Footer";
+import { PageMeta } from "@/hooks/usePageMeta";
+import { featureDetailMeta } from "@/lib/page-meta";
 
 export default function FeatureDetail() {
   const params = useParams();
@@ -35,8 +37,10 @@ export default function FeatureDetail() {
     );
   }
 
+  const meta = featureDetailMeta(feature);
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <PageMeta title={meta.title} description={meta.description} canonical={meta.canonical} jsonLd={meta.breadcrumbs} />
       {/* Header */}
       <header className="border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
         <Link

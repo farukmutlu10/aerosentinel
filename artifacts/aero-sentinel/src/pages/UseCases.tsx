@@ -1,9 +1,18 @@
 import { Link } from "wouter";
 import { useCases } from "@/data/use-cases";
+import { PageMeta } from "@/hooks/usePageMeta";
+import { pageMeta, breadcrumbJsonLd, SITE_URL } from "@/lib/page-meta";
 
 export default function UseCases() {
+  const { title, description } = pageMeta.useCases;
+  const breadcrumbs = breadcrumbJsonLd([
+    { name: "Home", url: SITE_URL },
+    { name: "Use Cases", url: `${SITE_URL}/use-cases` },
+  ]);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <PageMeta title={title} description={description} jsonLd={breadcrumbs} />
       {/* Header */}
       <header className="border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
         <Link

@@ -2,6 +2,8 @@ import { Link } from "wouter";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { useThemeContext } from "@/App";
+import { PageMeta } from "@/hooks/usePageMeta";
+import { airportDetailMeta } from "@/lib/page-meta";
 import { TafText } from "@/components/TafText";
 import { ColoredRawText } from "@/components/ColoredRawText";
 import {
@@ -68,8 +70,10 @@ export default function AirportDetail({ icao }: Props) {
   const parsedMetar = useMemo(() => (metar?.rawMetar ? parseMetar(metar.rawMetar) : null), [metar?.rawMetar]);
   const cat = parsedMetar?.flightCategory ?? FlightCategory.VFR;
   const catColor = CATEGORY_COLOR[cat];
+  const meta = airportDetailMeta(icao);
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <PageMeta title={meta.title} description={meta.description} canonical={meta.canonical} jsonLd={meta.jsonLd} />
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 pt-8 pb-24 sm:pb-8 space-y-6">

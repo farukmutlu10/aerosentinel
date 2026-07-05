@@ -2,6 +2,8 @@ import { useMemo, useState, useEffect, useRef, type KeyboardEvent } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { createPortal } from "react-dom";
+import { PageMeta } from "@/hooks/usePageMeta";
+import { pageMeta } from "@/lib/page-meta";
 import {
   useGetMonitorStatus, getGetMonitorStatusQueryKey,
 } from "@workspace/api-client-react";
@@ -96,6 +98,8 @@ function worstOf(a: FlightCategory, b: FlightCategory): FlightCategory {
 }
 
 export default function Dashboard() {
+  const { title, description, jsonLd } = pageMeta.dashboard;
+
   const { theme, toggleTheme } = useThemeContext();
   const { effectiveIcaos, watchedIcaos, addIcao, removeIcao, clearWatchlist, hasFilter } = useWatchlist();
   const [selectedTz] = useSelectedTimezone();
@@ -395,6 +399,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <PageMeta title={title} description={description} jsonLd={jsonLd} />
       <NavHeader monitorStatus={monitor} theme={theme} onToggleTheme={toggleTheme} />
 
       <main

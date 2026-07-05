@@ -13,6 +13,8 @@ import { ClockCard } from "@/components/ClockDisplay";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import { PageMeta } from "@/hooks/usePageMeta";
+import { pageMeta, breadcrumbJsonLd, SITE_URL } from "@/lib/page-meta";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertBadge } from "@/components/AlertBadge";
 import { IataBadge } from "@/components/IataBadge";
@@ -300,8 +302,14 @@ export default function Alerts() {
   const speciAlerts    = alerts.filter((a) => a.type === "SPECI").length;
   const critWxAlerts   = alerts.filter((a) => CRIT_WX_TYPES.includes(a.type as AlertType)).length;
 
+  const breadcrumbs = breadcrumbJsonLd([
+    { name: "Home", url: SITE_URL },
+    { name: "Alerts", url: `${SITE_URL}/alerts` },
+  ]);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <PageMeta title={pageMeta.alerts.title} description={pageMeta.alerts.description} jsonLd={breadcrumbs} />
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
       <main

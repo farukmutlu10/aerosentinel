@@ -1,12 +1,15 @@
 import { Link } from "wouter";
 import { NavHeader } from "@/components/NavHeader";
 import { useThemeContext } from "@/App";
+import { PageMeta } from "@/hooks/usePageMeta";
+import { pageMeta } from "@/lib/page-meta";
 
 export default function NotFound() {
   const { theme, toggleTheme } = useThemeContext();
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <PageMeta title={pageMeta.notFound.title} description={pageMeta.notFound.description} />
       <NavHeader theme={theme} onToggleTheme={toggleTheme} />
 
       <main className="flex-1 flex items-center justify-center px-4">

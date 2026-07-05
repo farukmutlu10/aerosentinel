@@ -1,0 +1,46 @@
+# AERO-SENTINEL
+
+> Professional aviation weather monitoring platform providing real-time TAF, METAR, and SPECI alerts for pilots, dispatchers, and aviation professionals.
+
+## Site Information
+
+- **URL**: https://aerosentinel.app
+- **Type**: Web Application (SPA)
+- **Category**: Aviation Weather Monitoring
+- **Language**: English
+
+## Key Pages
+
+- [Dashboard](https://aerosentinel.app/) — Real-time TAF/METAR monitoring dashboard with personalized airport watchlists
+- [Alerts](https://aerosentinel.app/alerts) — Weather alert management and history for watchlist airports
+- [Airports](https://aerosentinel.app/airports) — Global airport weather data browser and flight analysis tool
+- [Blog](https://aerosentinel.app/blog) — Aviation weather guides and educational articles
+- [Features](https://aerosentinel.app/features) — Platform feature overview and descriptions
+- [Use Cases](https://aerosentinel.app/use-cases) — How different aviation professionals use AERO-SENTINEL
+- [FAQ](https://aerosentinel.app/faq) — Frequently asked questions about the platform
+- [About](https://aerosentinel.app/about) — About AERO-SENTINEL
+
+## Data Sources
+
+All weather data originates from official ICAO-standard aviation weather sources. METAR and TAF reports are issued by certified weather observers and licensed meteorologists at airport meteorological stations worldwide.
+
+## Features
+
+- Real-time TAF/METAR monitoring with instant change detection
+- SPECI and weather change alerts via browser push notifications
+- Personalized airport watchlists (stored locally, no account required)
+- Decoded weather data with human-readable translations
+- Flight category classification (VFR, MVFR, IFR, LIFR)
+- Historical TAF change tracking and trend analysis
+- PWA support for mobile and kiosk use
+
+## Allowed Paths
+
+- All public pages are open to crawling and indexing
+- API endpoints (`/api/*`) are not intended for LLM access
+
+## Contact
+
+- Email: contact@aerosentinel.app
+- Privacy Policy: https://aerosentinel.app/privacy
+- Terms of Service: https://aerosentinel.app/terms

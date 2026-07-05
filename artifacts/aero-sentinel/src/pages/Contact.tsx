@@ -1,10 +1,17 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { Send, CheckCircle, AlertCircle, ArrowLeft, Mail, MapPin, Clock } from "lucide-react";
+import { PageMeta } from "@/hooks/usePageMeta";
+import { pageMeta, breadcrumbJsonLd, SITE_URL } from "@/lib/page-meta";
 
 const WORKER_URL = 'https://aerosentinel-email.farukmutlu10.workers.dev/';
 
 export default function Contact() {
+  const { title, description } = pageMeta.contact;
+  const breadcrumbs = breadcrumbJsonLd([
+    { name: "Home", url: SITE_URL },
+    { name: "Contact", url: `${SITE_URL}/contact` },
+  ]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [subject, setSubject] = useState('');
@@ -36,6 +43,7 @@ export default function Contact() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <PageMeta title={title} description={description} jsonLd={breadcrumbs} />
       {/* Header */}
       <header className="border-b border-border px-4 py-3 flex items-center gap-3">
         <Link href="/" className="flex items-center gap-2 text-foreground hover:opacity-80 transition-opacity">

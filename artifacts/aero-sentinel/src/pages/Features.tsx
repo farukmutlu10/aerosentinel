@@ -1,9 +1,18 @@
 import { Link } from "wouter";
 import { features } from "@/data/features";
+import { PageMeta } from "@/hooks/usePageMeta";
+import { pageMeta, breadcrumbJsonLd, SITE_URL } from "@/lib/page-meta";
 
 export default function Features() {
+  const { title, description } = pageMeta.features;
+  const breadcrumbs = breadcrumbJsonLd([
+    { name: "Home", url: SITE_URL },
+    { name: "Features", url: `${SITE_URL}/features` },
+  ]);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <PageMeta title={title} description={description} jsonLd={breadcrumbs} />
       {/* Header */}
       <header className="border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
         <Link

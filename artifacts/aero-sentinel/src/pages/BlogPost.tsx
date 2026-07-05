@@ -1,6 +1,8 @@
 import { Link, useParams } from "wouter";
 import { getBlogPostBySlug } from "@/data/blog-posts";
 import { useEffect } from "react";
+import { PageMeta } from "@/hooks/usePageMeta";
+import { blogPostMeta } from "@/lib/page-meta";
 
 export default function BlogPost() {
   const params = useParams<{ slug: string }>();
@@ -37,8 +39,11 @@ export default function BlogPost() {
     );
   }
 
+  const meta = blogPostMeta(post);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <PageMeta title={meta.title} description={meta.description} canonical={meta.canonical} ogType={meta.ogType} jsonLd={meta.jsonLd} />
       {/* Header */}
       <header className="border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
         <Link
