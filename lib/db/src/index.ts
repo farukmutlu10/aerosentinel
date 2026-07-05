@@ -258,24 +258,92 @@ function memDb() {
   };
 }
 
+// ── Resolve DATABASE_URL with fallback chain ──────────────────
+const DB_URL_CANDIDATES = [
+  "DATABASE_URL",
+  "DATABASE_PRIVATE_URL",
+  "POSTGRES_URL",
+  "POSTGRESQL_URL",
+];
+
+function resolveDatabaseUrl(): string | undefined {
+  // Diagnostic: log which DB-related env vars exist (names only, no values for security)
+  const present: string[] = [];
+  const empty: string[] = [];
+  for (const name of DB_URL_CANDIDATES) {
+    const val = process.env[name];
+    if (val === undefined) {
+      // not set at all
+    } else if (val === "") {
+      empty.push(name);
+    } else {
+      present.push(name);
+    }
+  }
+  // Also check PG* vars
+  const pgVars = ["PGHOST", "PGPORT", "PGUSER", "PGPASSWORD", "PGDATABASE"];
+  const pgPresent = pgVars.filter((v) => !!process.env[v]);
+
+  console.log("[db] Env var scan:", JSON.stringify({ present, empty, pgPresent }));
+
+  // 1. Try candidates in order
+  for (const name of DB_URL_CANDIDATES) {
+    const val = process.env[name];
+    if (val) {
+      if (name !== "DATABASE_URL") {
+        console.log(`[db] ⚠️ DATABASE_URL not found — using fallback: ${name}`);
+      }
+      return val;
+    }
+  }
+
+  // 2. Try constructing from individual PG* vars
+  if (process.env["PGHOST"] && process.env["PGDATABASE"]) {
+    const user = process.env["PGUSER"] ?? "postgres";
+    const pass = process.env["PGPASSWORD"] ? `:${process.env["PGPASSWORD"]}` : "";
+    const host = process.env["PGHOST"];
+    const port = process.env["PGPORT"] ? `:${process.env["PGPORT"]}` : ":5432";
+    const db2 = process.env["PGDATABASE"];
+    const constructed = `postgresql://${user}${pass}@${host}${port}/${db2}`;
+    console.log("[db] ⚠️ Constructed DATABASE_URL from PG* variables");
+    return constructed;
+  }
+
+  // 3. Nothing found
+  if (empty.length > 0) {
+    console.error(
+      `[db] ❌ ${empty.join(", ")} is SET but EMPTY — this usually means a Railway variable reference ` +
+      `(\${{...}}) is not resolving. Check that the PostgreSQL service is linked to this service in Railway Dashboard.`
+    );
+  }
+  return undefined;
+}
+
 let db: ReturnType<typeof drizzle> | ReturnType<typeof memDb>;
 let pool: pg.Pool | null = null;
 
-if (process.env["DATABASE_URL"]) {
+const resolvedDbUrl = resolveDatabaseUrl();
+
+if (resolvedDbUrl) {
   pool = new Pool({
-    connectionString: process.env["DATABASE_URL"],
+    connectionString: resolvedDbUrl,
     connectionTimeoutMillis: 15_000, // 15s timeout — prevent infinite hangs when DB is unreachable
     idleTimeoutMillis: 30_000,
   });
   db = drizzle(pool, { schema });
   console.log(
     "[db] Connected to PostgreSQL:",
-    String(process.env["DATABASE_URL"]).replace(/\/\/.*@/, "//***@"),
+    String(resolvedDbUrl).replace(/\/\/.*@/, "//***@"),
   );
 } else {
   db = memDb();
   pool = null;
-  console.log("[db] DATABASE_URL not set — using in-memory fallback");
+  console.error(
+    "[db] ❌ DATABASE_URL not set — using in-memory fallback.\n" +
+    "     ⚠️ Data will NOT persist across restarts. Only LTFH will be monitored.\n" +
+    "     Fix: Set DATABASE_URL in Railway Dashboard → Service → Variables.\n" +
+    "     If using PostgreSQL plugin, ensure it is LINKED to this service."
+  );
 }
 
 export { db, pool, memStore };
