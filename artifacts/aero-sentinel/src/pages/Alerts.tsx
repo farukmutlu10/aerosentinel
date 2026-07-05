@@ -257,10 +257,15 @@ export default function Alerts() {
   const { isWatching, watchedIcaos, initialAlerts, initialAlertsReady } = useWatchlist();
   const { theme, toggleTheme } = useThemeContext();
 
-  const { data: allAlerts, isLoading } = useListAlerts(
+  const { data: allAlerts, isLoading, dataUpdatedAt } = useListAlerts(
     { limit: 100, since_hours: 6 } as any,
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true } }
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), staleTime: 0, refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true } }
   );
+
+  // ─── DIAGNOSTIC: Log Alerts page query data ────────────────────────────
+  useEffect(() => {
+    console.log(`[ALERTS DIAG] Query data: alerts=${allAlerts?.length ?? "undefined"} updatedAt=${dataUpdatedAt ? new Date(dataUpdatedAt).toISOString() : "never"} isLoading=${isLoading} initialAlerts=${initialAlerts.length} ready=${initialAlertsReady}`);
+  }, [allAlerts, dataUpdatedAt, isLoading, initialAlerts.length, initialAlertsReady]);
 
   // Invalidate alerts when watchlist syncs or an airport is added
   useEffect(() => {

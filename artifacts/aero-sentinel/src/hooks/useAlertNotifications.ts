@@ -108,15 +108,24 @@ export function useAlertNotifications() {
   }, [queryClient]);
 
   // ─── Polling — useListAlerts ile (Alerts sayfasıyla aynı API) ──────────────
-  const { data: allAlerts, error: recentError, isLoading } = useListAlerts(
+  const { data: allAlerts, error: recentError, isLoading, dataUpdatedAt } = useListAlerts(
     { limit: 100, since_hours: 6 } as any,
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, refetchOnReconnect: true, refetchOnMount: true, retry: 3 } }
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), staleTime: 0, refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, refetchOnReconnect: true, refetchOnMount: true, retry: 3 } }
   );
+
+  // ─── DIAGNOSTIC: Log polling data changes ──────────────────────────────
+  useEffect(() => {
+    log(`[DIAG] Polling data güncellendi: alerts=${allAlerts?.length ?? "undefined"} updatedAt=${dataUpdatedAt ? new Date(dataUpdatedAt).toISOString() : "never"} isLoading=${isLoading}`);
+  }, [allAlerts, dataUpdatedAt, isLoading]);
 
   useEffect(() => { if (recentError) log("⚠️ API HATASI:", recentError.message || recentError); }, [recentError]);
 
   // ─── Ana bildirim effect'i ─────────────────────────────────────────────────
   useEffect(() => {
+    // ─── DIAGNOSTIC LOG: Log every effect invocation ─────────────────────
+    const alertIds = allAlerts?.map(a => a.id) ?? [];
+    log(`[DIAG] Effect tetiklendi: allAlerts=${allAlerts?.length ?? "undefined"} ids=[${alertIds.slice(0, 5).join(",")}${alertIds.length > 5 ? "..." : ""}] isFirstFetch=${isFirstFetch.current} seenIds=${seenIds.current.size} consent=${!!localStorage.getItem('aero-cookie-consent')}`);
+
     // Cookie consent guard
     const raw = localStorage.getItem('aero-cookie-consent');
     const consent = raw ? JSON.parse(raw) : null;
@@ -137,10 +146,21 @@ export function useAlertNotifications() {
       return;
     }
 
-    if (!allAlerts?.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }
-
-    // ─── FIRST-FETCH SUPPRESSION: Mark all existing alerts as seen on first fetch ─
+    // ─── FIRST-FETCH SUPPRESSION: Advance isFirstFetch BEFORE empty check ─
+    // BUG FIX: Previously, isFirstFetch stayed true if the first fetch returned
+    // empty data. When alerts arrived on subsequent fetches, they were ALL
+    // suppressed as "pre-existing" — no notifications ever fired.
+    // Now: isFirstFetch is set to false on the first effect run WITH data,
+    // regardless of whether the array is empty or not.
     if (isFirstFetch.current) {
+      if (!allAlerts?.length) {
+        // First effect run but no data yet — advance the flag so the NEXT
+        // fetch with data triggers normal notification logic instead of
+        // being silently suppressed.
+        isFirstFetch.current = false;
+        log(`[DIAG] First-fetch: data empty, isFirstFetch → false (next fetch with data will trigger notifications)`);
+        return;
+      }
       isFirstFetch.current = false;
       const existingIds = allAlerts
         .map(a => a.id)
@@ -152,6 +172,8 @@ export function useAlertNotifications() {
       log(`First-fetch suppression: ${existingIds.length} existing alerts marked as seen, 0 notifications`);
       return; // No notifications for pre-existing alerts
     }
+
+    if (!allAlerts?.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }
 
     // ─── NORMAL NOTIFICATION LOGIC: Process genuinely new alerts ──────────
     let newAlertCount = 0;
@@ -216,9 +238,26 @@ export function useAlertNotifications() {
     if (newAlertCount > 0 || skippedCount > 0) saveSeenIds(seenIds.current);
 
     if (skippedCount > 0) log(`⏭️ ${skippedCount} alert atlandı (watchlist dışı veya duplicate)`);
-    if (newAlertCount === 0) log("Yeni alert yok (tümü seenIds'de veya duplicate)");
+    if (newAlertCount === 0) log(`[DIAG] Yeni alert yok — toplam ${allAlerts.length} alert incelendi, seenIds=${seenIds.current.size}`);
     else log(`✅ ${newAlertCount} yeni alert için bildirim gönderildi`);
   }, [allAlerts, playAlert, effectiveIcaos, isSnoozed]);
+
+  // ─── Periodic backend refresh trigger ───────────────────────────────────
+  // Calls /api/alerts/summary?refresh=1 every 2 minutes to trigger the backend
+  // to scan for new weather data and create alert records. Without this,
+  // the backend may not create new alerts until explicitly triggered.
+  useEffect(() => {
+    const REFRESH_INTERVAL = 120_000; // 2 minutes
+    const intervalId = setInterval(() => {
+      log("[DIAG] Periodic backend refresh tetikleniyor...");
+      fetch("/api/alerts/summary?refresh=1").then(r => {
+        log(`[DIAG] Backend refresh response: ${r.status}`);
+      }).catch(err => {
+        log("[DIAG] Backend refresh hatası:", err);
+      });
+    }, REFRESH_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, []);
 
   return { forceCheck, pendingToasts, dismissToast };
 }
