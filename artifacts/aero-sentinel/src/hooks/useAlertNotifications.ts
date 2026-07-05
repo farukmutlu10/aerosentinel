@@ -5,6 +5,11 @@ import { useAlertSound } from "@/hooks/useAlertSound";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useAlertSnooze } from "@/hooks/useAlertSnooze";
 
+// ─── V4 key: bump when seenIds persistence logic changes ─────────────────────
+// V3→V4: Fixed over-persistence bug where watchlist-filtered alerts were added
+// to seenIds, permanently suppressing notifications after watchlist changes.
+const SEEN_KEY = "aero-notif-seen-ids-v4";
+
 const TYPE_LABELS: Record<string, string> = {
   TAF_AMD: "TAF Revision (AMD)",
   TAF_COR: "TAF Revision (COR)",
@@ -19,9 +24,10 @@ const LOG = "[AeroNotif]";
 const log = (...args: unknown[]) => console.log(LOG, new Date().toISOString(), ...args);
 
 // ─── Persisted seen-alert tracker ───────────────────────────────────────────
-const SEEN_KEY = "aero-notif-seen-ids-v3";
 
 function loadSeenIds(): Set<number> {
+  // Clean up old v3 key (migration from v3→v4 seenIds logic)
+  try { localStorage.removeItem("aero-notif-seen-ids-v3"); } catch { /* ignore */ }
   try {
     const raw = localStorage.getItem(SEEN_KEY);
     if (!raw) return new Set();
@@ -74,6 +80,9 @@ export function useAlertNotifications() {
   }>>([]);
   const seenIds = useRef<Set<number>>(loadSeenIds());
   const queryClient = useQueryClient();
+  const effectiveIcaosRef = useRef(effectiveIcaos);
+  // Keep ref in sync with latest effectiveIcaos
+  effectiveIcaosRef.current = effectiveIcaos;
 
   // ─── FIRST-FETCH SUPPRESSION ──────────────────────────────────────────────
   // On the first successful API response, mark all existing alerts as seen.
@@ -107,6 +116,21 @@ export function useAlertNotifications() {
     await queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
   }, [queryClient]);
 
+  // ─── watchlist-synced listener: re-check alerts when watchlist changes ──────
+  // When the watchlist syncs to backend, the API may return different alerts.
+  // Invalidate the query so the next poll returns fresh data filtered by the
+  // correct watchlist. Also reset isFirstFetch so the new data set is properly
+  // suppressed (all existing alerts marked as seen).
+  useEffect(() => {
+    const handleWatchlistSynced = () => {
+      log("watchlist-synced: resetting isFirstFetch and invalidating queries");
+      isFirstFetch.current = true;
+      queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
+    };
+    window.addEventListener("watchlist-synced", handleWatchlistSynced);
+    return () => window.removeEventListener("watchlist-synced", handleWatchlistSynced);
+  }, [queryClient]);
+
   // ─── Polling — useListAlerts ile (Alerts sayfasıyla aynı API) ──────────────
   const { data: allAlerts, error: recentError, isLoading } = useListAlerts(
     { limit: 100, since_hours: 6 } as any,
@@ -123,16 +147,26 @@ export function useAlertNotifications() {
     const consent = raw ? JSON.parse(raw) : null;
     const hasCookieConsent = !!consent;
 
-    // ─── FIRST-FETCH SUPPRESSION: Advance isFirstFetch BEFORE empty check ─
-    // Previously, isFirstFetch stayed true if the first fetch returned empty data.
-    // When alerts arrived on subsequent fetches, they were ALL suppressed.
-    // Now: isFirstFetch is set to false on the first effect run, regardless of data.
+    // ─── FIRST-FETCH SUPPRESSION ──────────────────────────────────────────────
+    // On the first successful API response (allAlerts is defined, not undefined),
+    // mark all existing alerts as seen. This prevents notifications for
+    // pre-existing alerts on page load.
+    // IMPORTANT: Only clear isFirstFetch when allAlerts is DEFINED (not loading).
+    // Previously it was cleared on undefined (loading state), which meant the
+    // actual first data arrival bypassed suppression.
     if (isFirstFetch.current) {
-      if (!allAlerts?.length) {
-        isFirstFetch.current = false;
+      // Wait for actual data — don't clear the flag on loading state (undefined)
+      if (allAlerts === undefined) {
+        log("First-fetch: still loading (allAlerts=undefined), waiting...");
         return;
       }
       isFirstFetch.current = false;
+
+      if (!allAlerts.length) {
+        log("First-fetch: empty data set, 0 existing alerts to suppress");
+        return;
+      }
+
       const existingIds = allAlerts
         .map(a => a.id)
         .filter((id): id is number => id != null && !seenIds.current.has(id));
@@ -148,28 +182,32 @@ export function useAlertNotifications() {
 
     // ─── NORMAL NOTIFICATION LOGIC: Process genuinely new alerts ──────────
     let newAlertCount = 0;
-    let skippedCount = 0;
+    let skippedWatchlist = 0;
+    let skippedSnooze = 0;
+    let skippedSeen = 0;
     const hasPermission = typeof Notification !== "undefined" && Notification.permission === "granted";
 
-    const watchlistSet = new Set(effectiveIcaos.map(s => s.toUpperCase()));
+    // Use ref to get the latest effectiveIcaos (avoids stale closure issues)
+    const currentIcaos = effectiveIcaosRef.current;
+    const watchlistSet = new Set(currentIcaos.map(s => s.toUpperCase()));
 
     for (const alert of allAlerts) {
-      if (seenIds.current.has(alert.id)) continue;
+      // Already seen → skip silently (don't add again)
+      if (seenIds.current.has(alert.id)) { skippedSeen++; continue; }
 
-      // Watchlist filtresi
+      // Watchlist filter — do NOT add to seenIds (watchlist may change later)
       if (watchlistSet.size > 0 && !watchlistSet.has(alert.icao.toUpperCase())) {
-        skippedCount++;
-        seenIds.current.add(alert.id);
+        skippedWatchlist++;
         continue;
       }
 
-      // Snooze filter
+      // Snooze filter — do NOT add to seenIds (snooze will expire later)
       if (isSnoozed(alert.icao)) {
-        skippedCount++;
-        seenIds.current.add(alert.id);
+        skippedSnooze++;
         continue;
       }
 
+      // ─── Genuinely new alert → mark as seen and notify ──────────────────
       seenIds.current.add(alert.id);
       newAlertCount++;
 
@@ -205,11 +243,12 @@ export function useAlertNotifications() {
       try { playAlert(); } catch { /* ignore */ }
     }
 
-    // seenIds'i localStorage'a kaydet
-    if (newAlertCount > 0 || skippedCount > 0) saveSeenIds(seenIds.current);
+    // Only save seenIds when new alerts were actually processed (not skipped)
+    if (newAlertCount > 0) saveSeenIds(seenIds.current);
 
-    if (skippedCount > 0) log(`⏭️ ${skippedCount} alert atlandı (watchlist dışı veya duplicate)`);
-    if (newAlertCount === 0) log("Yeni alert yok (tümü seenIds'de veya duplicate)");
+    const totalSkipped = skippedWatchlist + skippedSnooze + skippedSeen;
+    if (totalSkipped > 0) log(`⏭️ ${totalSkipped} atlandı (seen=${skippedSeen} watchlist=${skippedWatchlist} snooze=${skippedSnooze})`);
+    if (newAlertCount === 0) log("Yeni alert yok (tümü seenIds'de veya filtrelenmiş)");
     else log(`✅ ${newAlertCount} yeni alert için bildirim gönderildi`);
   }, [allAlerts, playAlert, effectiveIcaos, isSnoozed]);
 
