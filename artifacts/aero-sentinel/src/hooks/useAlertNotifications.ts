@@ -126,24 +126,14 @@ export function useAlertNotifications() {
     const alertIds = allAlerts?.map(a => a.id) ?? [];
     log(`[DIAG] Effect tetiklendi: allAlerts=${allAlerts?.length ?? "undefined"} ids=[${alertIds.slice(0, 5).join(",")}${alertIds.length > 5 ? "..." : ""}] isFirstFetch=${isFirstFetch.current} seenIds=${seenIds.current.size} consent=${!!localStorage.getItem('aero-cookie-consent')}`);
 
-    // Cookie consent guard
+    // Cookie consent guard — only blocks browser notifications (Notification API).
+    // In-app toasts and sounds are core app functionality and work without consent.
+    // Alerts are still marked as seen to prevent notification flood when consent is later granted.
     const raw = localStorage.getItem('aero-cookie-consent');
     const consent = raw ? JSON.parse(raw) : null;
-    if (!consent) {
-      // Mark alerts as seen even without consent to prevent notification flood
-      // when consent is later granted — but don't send any notifications
-      if (allAlerts?.length) {
-        let marked = 0;
-        for (const alert of allAlerts) {
-          if (!seenIds.current.has(alert.id)) {
-            seenIds.current.add(alert.id);
-            marked++;
-          }
-        }
-        if (marked > 0) saveSeenIds(seenIds.current);
-        log(`⏳ Cookie consent yok — ${marked} alert seenIds'e eklendi (bildirim gönderilmedi)`);
-      }
-      return;
+    const hasCookieConsent = !!consent;
+    if (!hasCookieConsent) {
+      log(`[DIAG] Cookie consent yok — browser notification engellendi ama in-app toast ve ses çalışacak`);
     }
 
     // ─── FIRST-FETCH SUPPRESSION: Advance isFirstFetch BEFORE empty check ─
@@ -209,8 +199,8 @@ export function useAlertNotifications() {
 
       log("🔔 YENİ ALERT BİLDİRİM:", alert.id, alert.type, alert.icao);
 
-      // Browser notification gönder (izin varsa)
-      if (hasPermission) {
+      // Browser notification gönder (izin + cookie consent varsa)
+      if (hasPermission && hasCookieConsent) {
         sendNotification(title, { body, icon, tag: `aero-alert-${alert.icao}-${alert.id}`, requireInteraction: false }).then((n) => {
           if (n) {
             const timer = setTimeout(() => n.close(), AUTO_CLOSE_MS);
