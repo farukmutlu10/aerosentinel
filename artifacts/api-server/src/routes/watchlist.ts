@@ -139,7 +139,7 @@ async function detectLiveAlerts(icaos: string[]): Promise<InitialAlert[]> {
   for (const batchIds of batches) {
     const [tafData, metarData] = await Promise.all([
       fetchJsonFast(`${INIT_BASE_URL}/taf?ids=${batchIds}&format=json`),
-      fetchJsonFast(`${INIT_BASE_URL}/metar?ids=${batchIds}&format=json`),
+      fetchJsonFast(`${INIT_BASE_URL}/metar?ids=${batchIds}&format=json&hours=2`),
     ]);
     allTafData.push(...tafData);
     allMetarData.push(...metarData);
@@ -172,22 +172,48 @@ async function detectLiveAlerts(icaos: string[]): Promise<InitialAlert[]> {
     }
   }
 
-  // Process METAR
-  for (const entry of metarData as Array<{ icaoId?: string; rawOb?: string; metarType?: string }>) {
+  // Process METAR — deduplicate by ICAO (hours=2 returns multiple entries/station).
+  // Group by ICAO, sort newest-first, process latest for conditions and always
+  // surface SPECI entries regardless of position in the history.
+  type MetarEntry = { icaoId?: string; rawOb?: string; metarType?: string; obsTime?: number };
+  const metarByIcao = new Map<string, MetarEntry[]>();
+  for (const entry of metarData as MetarEntry[]) {
     const icao = entry.icaoId;
-    const rawMetar = entry.rawOb ?? "";
-    const metarType = (entry.metarType ?? "").toUpperCase();
-    if (!icao || !rawMetar) continue;
+    if (!icao) continue;
+    let arr = metarByIcao.get(icao);
+    if (!arr) { arr = []; metarByIcao.set(icao, arr); }
+    arr.push(entry);
+  }
 
-    const hasSpeci = rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ") || metarType === "SPECI";
-    if (hasSpeci) {
-      results.push({ id: -results.length - 1, type: "SPECI", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
-    } else if (hasLifrConditions(rawMetar)) {
-      results.push({ id: -results.length - 1, type: "LIFR", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
-    } else if (hasWxExtreme(rawMetar)) {
-      results.push({ id: -results.length - 1, type: "WX_EXTREME", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
-    } else if (hasWindExtreme(rawMetar)) {
-      results.push({ id: -results.length - 1, type: "WIND_EXTREME", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
+  for (const [icao, entries] of metarByIcao) {
+    entries.sort((a, b) => (b.obsTime ?? 0) - (a.obsTime ?? 0));
+    const hasSpeciAlready = new Set<string>();
+
+    // First pass: surface ALL SPECI entries (retroactive detection)
+    for (const entry of entries) {
+      const rawMetar = entry.rawOb ?? "";
+      const metarType = (entry.metarType ?? "").toUpperCase();
+      if (!rawMetar) continue;
+      const isSpeci = rawMetar.startsWith("SPECI") || metarType === "SPECI";
+      if (isSpeci && !hasSpeciAlready.has(rawMetar)) {
+        hasSpeciAlready.add(rawMetar);
+        results.push({ id: -results.length - 1, type: "SPECI", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
+      }
+    }
+
+    // Second pass: check latest entry for non-SPECI conditions (only if no SPECI found)
+    if (hasSpeciAlready.size === 0) {
+      const latest = entries[0];
+      const rawMetar = latest?.rawOb ?? "";
+      if (rawMetar) {
+        if (hasLifrConditions(rawMetar)) {
+          results.push({ id: -results.length - 1, type: "LIFR", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
+        } else if (hasWxExtreme(rawMetar)) {
+          results.push({ id: -results.length - 1, type: "WX_EXTREME", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
+        } else if (hasWindExtreme(rawMetar)) {
+          results.push({ id: -results.length - 1, type: "WIND_EXTREME", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
+        }
+      }
     }
   }
 

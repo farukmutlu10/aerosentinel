@@ -131,6 +131,23 @@ export function useAlertNotifications() {
     return () => window.removeEventListener("watchlist-synced", handleWatchlistSynced);
   }, [queryClient]);
 
+  // ─── Background tab throttling compensation ────────────────────────────────
+  // Chrome throttles JS timers (including setInterval/setTimeout) to once per
+  // minute when a tab is in the background. This means refetchInterval: 30_000
+  // actually fires ~every 60s when the tab is hidden. To compensate, listen for
+  // visibilitychange and immediately invalidate queries when the user returns to
+  // the tab, so any missed polls are instantly caught up.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        log("Tab visible — invalidating queries to compensate for background throttling");
+        queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [queryClient]);
+
   // ─── Polling — useListAlerts ile (Alerts sayfasıyla aynı API) ──────────────
   const { data: allAlerts, error: recentError, isLoading } = useListAlerts(
     { limit: 100, since_hours: 6 } as any,

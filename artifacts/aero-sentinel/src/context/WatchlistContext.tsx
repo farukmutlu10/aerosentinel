@@ -51,25 +51,31 @@ export interface InitialAlert {
 // AFTER setting initialAlerts state, to avoid race condition where query invalidation
 // triggers a GET /alerts refetch before initialAlerts are available in React state.
 async function syncToBackend(icaos: string[]): Promise<InitialAlert[]> {
-  try {
-    console.log(`[WATCHLIST DIAG] syncToBackend called with ${icaos.length} ICAOs`, icaos.length > 0 ? icaos.slice(0, 5).join(",") + "…" : "(empty)");
-    console.log(`[WATCHLIST DIAG] localStorage raw:`, (localStorage.getItem(LS_KEY) ?? "(null)").slice(0, 200));
-    const bodyStr = JSON.stringify({ icaos });
-    console.log(`[WATCHLIST DIAG] request body (${bodyStr.length} bytes):`, bodyStr.slice(0, 200));
-    const res = await fetch("/api/watchlist/sync", {
-      method: "PUT",
-      headers,
-      body: bodyStr,
-    });
-    const data = await res.json();
-    const alerts = Array.isArray(data?.initialAlerts) ? data.initialAlerts : [];
-    console.log(`[WATCHLIST DIAG] server response: ok=${data?.ok} initialAlerts=${alerts.length} icaos=${Array.isArray(data?.icaos) ? data.icaos.length : "?"}`);
-    return alerts;
-  } catch (err) {
-    console.error("[WATCHLIST DIAG] syncToBackend FAILED:", err);
-    // silent — sync is best-effort
-    return [];
+  const MAX_RETRIES = 3;
+  const bodyStr = JSON.stringify({ icaos });
+  console.log(`[WATCHLIST DIAG] syncToBackend called with ${icaos.length} ICAOs`, icaos.length > 0 ? icaos.slice(0, 5).join(",") + "…" : "(empty)");
+  console.log(`[WATCHLIST DIAG] localStorage raw:`, (localStorage.getItem(LS_KEY) ?? "(null)").slice(0, 200));
+  console.log(`[WATCHLIST DIAG] request body (${bodyStr.length} bytes):`, bodyStr.slice(0, 200));
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch("/api/watchlist/sync", {
+        method: "PUT",
+        headers,
+        body: bodyStr,
+      });
+      const data = await res.json();
+      const alerts = Array.isArray(data?.initialAlerts) ? data.initialAlerts : [];
+      console.log(`[WATCHLIST DIAG] server response: ok=${data?.ok} initialAlerts=${alerts.length} icaos=${Array.isArray(data?.icaos) ? data.icaos.length : "?"}`);
+      return alerts;
+    } catch (err) {
+      console.error(`[WATCHLIST DIAG] syncToBackend FAILED (attempt ${attempt}/${MAX_RETRIES}):`, err);
+      if (attempt < MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+      }
+    }
   }
+  console.error(`[WATCHLIST DIAG] syncToBackend: all ${MAX_RETRIES} attempts failed — monitor may miss airports`);
+  return [];
 }
 
 function apiAdd(icao: string) {
