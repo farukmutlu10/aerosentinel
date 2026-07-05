@@ -46,7 +46,7 @@ const TABS = [
 
 export function Footer() {
   const [location] = useLocation();
-  const { isWatching } = useWatchlist();
+  const { isWatching, initialAlerts, initialAlertsReady } = useWatchlist();
   const { localAcked } = useLocalAck();
 
   const localAckedSet = useMemo(() => new Set(localAcked), [localAcked]);
@@ -56,11 +56,27 @@ export function Footer() {
     { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), refetchInterval: Infinity, refetchIntervalInBackground: true } }
   );
 
+  // Merge API alerts with initialAlerts (same logic as Alerts.tsx / NavHeader.tsx)
+  const mergedAlerts = useMemo(() => {
+    const apiList = allAlerts ?? [];
+    if (apiList.length > 0 && initialAlerts.length > 0) {
+      const apiKeys = new Set(apiList.map((a) => `${a.icao}-${a.type}`));
+      const extraInitials = initialAlerts
+        .filter((ia) => ia.id < 0 && !apiKeys.has(`${ia.icao}-${ia.type}`))
+        .map((ia) => ({ ...ia } as typeof apiList[number]));
+      return [...apiList, ...extraInitials];
+    }
+    if (initialAlerts.length > 0 && initialAlertsReady && apiList.length === 0) {
+      return initialAlerts.map((ia) => ({ ...ia })) as typeof apiList;
+    }
+    return apiList;
+  }, [allAlerts, initialAlerts, initialAlertsReady]);
+
   // Deduplicate by ICAO (keep latest), same as Alerts.tsx / NavHeader.tsx
   const dedupedAlerts = useMemo(() => {
-    if (!allAlerts) return [];
+    if (!mergedAlerts) return [];
     const seen = new Map<string, number>();
-    return allAlerts.filter((a) => {
+    return mergedAlerts.filter((a) => {
       const prev = seen.get(a.icao);
       const ts = new Date(a.detectedAt).getTime();
       if (prev === undefined || ts > prev) {
@@ -69,7 +85,7 @@ export function Footer() {
       }
       return false;
     });
-  }, [allAlerts]);
+  }, [mergedAlerts]);
 
   const unacknowledgedCount = dedupedAlerts
     ? dedupedAlerts.filter((a) => isWatching(a.icao) && !a.acknowledged && !localAckedSet.has(a.id)).length
