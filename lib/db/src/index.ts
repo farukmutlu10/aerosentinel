@@ -26,12 +26,22 @@ interface MemAlertEntry {
   acknowledgedAt: Date | null;
 }
 
+interface MemPushSubscriptionEntry {
+  id: number;
+  userId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  createdAt: Date;
+}
+
 const memStore: {
   watchlist: MemWatchlistEntry[];
   alerts: MemAlertEntry[];
   monitorCache: MemMonitorCacheEntry[];
-} = { watchlist: [], alerts: [], monitorCache: [] };
-let memNextId = { wl: 1, alert: 1 };
+  pushSubscriptions: MemPushSubscriptionEntry[];
+} = { watchlist: [], alerts: [], monitorCache: [], pushSubscriptions: [] };
+let memNextId = { wl: 1, alert: 1, pushSub: 1 };
 
 /**
  * Creates a lightweight thenable query-builder surrogate for the in-memory
@@ -75,9 +85,10 @@ function memDb() {
     select: () => ({
       from: (table: any) => {
         const t = tableName(table);
-        if (t === "monitor_cache") return memQuery([...memStore.monitorCache]);
-        if (t === "watchlist")     return memQuery([...memStore.watchlist]);
-        if (t === "alerts")        return memQuery([...memStore.alerts]);
+        if (t === "monitor_cache")      return memQuery([...memStore.monitorCache]);
+        if (t === "watchlist")          return memQuery([...memStore.watchlist]);
+        if (t === "alerts")             return memQuery([...memStore.alerts]);
+        if (t === "push_subscriptions") return memQuery([...memStore.pushSubscriptions]);
         return memQuery([]);
       },
     }),
@@ -130,6 +141,24 @@ function memDb() {
                 acknowledged: false,
                 acknowledgedAt: null,
               });
+            }
+          } else if (t === "push_subscriptions") {
+            for (const item of arr) {
+              const existing = memStore.pushSubscriptions.find((r) => r.endpoint === item.endpoint);
+              if (existing) {
+                existing.p256dh = item.p256dh ?? existing.p256dh;
+                existing.auth = item.auth ?? existing.auth;
+                existing.userId = item.userId ?? existing.userId;
+              } else {
+                memStore.pushSubscriptions.push({
+                  id: memNextId.pushSub++,
+                  userId: item.userId ?? "legacy",
+                  endpoint: item.endpoint ?? "",
+                  p256dh: item.p256dh ?? "",
+                  auth: item.auth ?? "",
+                  createdAt: new Date(),
+                });
+              }
             }
           }
         };
@@ -230,7 +259,8 @@ function memDb() {
       const fn: any = () => {
         if (t === "alerts") { memStore.alerts = []; }
         else if (t === "watchlist") { memStore.watchlist = []; }
-        else { memStore.watchlist = []; memStore.alerts = []; memStore.monitorCache = []; }
+        else if (t === "push_subscriptions") { memStore.pushSubscriptions = []; }
+        else { memStore.watchlist = []; memStore.alerts = []; memStore.monitorCache = []; memStore.pushSubscriptions = []; }
         return Promise.resolve();
       };
       fn.where = (condition: any) => {
@@ -250,6 +280,13 @@ function memDb() {
           }
         } else if (t === "watchlist") {
           memStore.watchlist = [];
+        } else if (t === "push_subscriptions") {
+          const condVal = extractEqValue(condition);
+          if (condVal !== undefined) {
+            memStore.pushSubscriptions = memStore.pushSubscriptions.filter((s) => s.endpoint !== condVal && s.userId !== condVal);
+          } else {
+            memStore.pushSubscriptions = [];
+          }
         }
         return Promise.resolve();
       };

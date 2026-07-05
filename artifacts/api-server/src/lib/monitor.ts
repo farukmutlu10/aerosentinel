@@ -1,5 +1,6 @@
 import { db, alertsTable, watchlistTable, monitorCacheTable } from "@workspace/db";
 import { eq, and, sql, gte } from "drizzle-orm";
+import { sendPushForAlert } from "./push.js";
 
 let cachedIcaos: string[] = [];
 
@@ -225,6 +226,7 @@ async function scanTaf(ids: string) {
           await db.insert(alertsTable).values({ type: alertType, icao, rawText: rawTaf, previousRawText });
           tafAlertsInserted++;
           console.log(`[monitor] ✅ TAF alert: ${alertType} for ${icao}`);
+          void sendPushForAlert(alertType, icao, rawTaf, 0);
         } catch (err) {
           console.error(`[monitor] ❌ TAF insert FAILED for ${icao}:`, err);
         }
@@ -248,6 +250,7 @@ async function scanTaf(ids: string) {
           try {
             await db.insert(alertsTable).values({ type: "LIFR", icao, rawText: rawTaf, previousRawText });
             console.log(`[monitor] ✅ TAF LIFR alert for ${icao}`);
+            void sendPushForAlert("LIFR", icao, rawTaf, 0);
           } catch (err) {
             console.error(`[monitor] Failed to insert TAF LIFR alert for ${icao}:`, err);
           }
@@ -291,6 +294,7 @@ async function scanTaf(ids: string) {
           try {
             await db.insert(alertsTable).values({ type: "WX_EXTREME", icao, rawText: rawTaf, previousRawText });
             console.log(`[monitor] ✅ TAF WX_EXTREME alert for ${icao}`);
+            void sendPushForAlert("WX_EXTREME", icao, rawTaf, 0);
           } catch (err) {
             console.error(`[monitor] Failed to insert TAF WX_EXTREME alert for ${icao}:`, err);
           }
@@ -332,6 +336,7 @@ async function scanTaf(ids: string) {
           try {
             await db.insert(alertsTable).values({ type: "WIND_EXTREME", icao, rawText: rawTaf, previousRawText });
             console.log(`[monitor] ✅ TAF WIND_EXTREME alert for ${icao}`);
+            void sendPushForAlert("WIND_EXTREME", icao, rawTaf, 0);
           } catch (err) {
             console.error(`[monitor] Failed to insert TAF WIND_EXTREME alert for ${icao}:`, err);
           }
@@ -422,6 +427,7 @@ async function scanTaf(ids: string) {
             try {
               await db.insert(alertsTable).values({ type: alertType, icao, rawText: periodText, previousRawText: rawTaf });
               console.log(`[monitor] ✅ TAF ${alertType} (period re-eval) for ${icao} [${periodKey}]`);
+              void sendPushForAlert(alertType, icao, periodText, 0);
             } catch (err) {
               console.error(`[monitor] Failed to insert TAF ${alertType} for ${icao}:`, err);
             }
@@ -526,6 +532,7 @@ async function scanMetar(ids: string) {
           await db.insert(alertsTable).values({ type: "SPECI", icao, rawText: rawMetar, previousRawText });
           metAlertsInserted++;
           console.log(`[monitor] ✅ SPECI alert for ${icao}`);
+          void sendPushForAlert("SPECI", icao, rawMetar, 0);
         } catch (err) {
           console.error(`[monitor] ❌ SPECI insert FAILED for ${icao}:`, err);
         }
@@ -550,6 +557,7 @@ async function scanMetar(ids: string) {
           try {
             await db.insert(alertsTable).values({ type: "LIFR", icao, rawText: rawMetar, previousRawText });
             console.log(`[monitor] ✅ LIFR alert for ${icao}`);
+            void sendPushForAlert("LIFR", icao, rawMetar, 0);
           } catch (err) {
             console.error(`[monitor] Failed to insert LIFR alert for ${icao}:`, err);
           }
@@ -593,6 +601,7 @@ async function scanMetar(ids: string) {
           try {
             await db.insert(alertsTable).values({ type: "WX_EXTREME", icao, rawText: rawMetar, previousRawText });
             console.log(`[monitor] ✅ WX_EXTREME alert for ${icao}`);
+            void sendPushForAlert("WX_EXTREME", icao, rawMetar, 0);
           } catch (err) {
             console.error(`[monitor] Failed to insert WX_EXTREME alert for ${icao}:`, err);
           }
@@ -634,6 +643,7 @@ async function scanMetar(ids: string) {
           try {
             await db.insert(alertsTable).values({ type: "WIND_EXTREME", icao, rawText: rawMetar, previousRawText });
             console.log(`[monitor] ✅ WIND_EXTREME alert for ${icao}`);
+            void sendPushForAlert("WIND_EXTREME", icao, rawMetar, 0);
           } catch (err) {
             console.error(`[monitor] Failed to insert WIND_EXTREME alert for ${icao}:`, err);
           }
@@ -676,6 +686,7 @@ async function scanMetar(ids: string) {
           metSpeciFromHistory++;
           metAlertsInserted++;
           console.log(`[monitor] ✅ SPECI (from history) alert for ${icao}: "${entryRaw.slice(0, 60)}"`);
+          void sendPushForAlert("SPECI", icao, entryRaw, 0);
         } catch (err) {
           console.error(`[monitor] ❌ SPECI (from history) insert FAILED for ${icao}:`, err);
         }

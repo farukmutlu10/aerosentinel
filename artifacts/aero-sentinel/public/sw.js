@@ -1,5 +1,5 @@
-const CACHE_NAME = 'aerosentinel-v18';
-const ASSET_CACHE = 'caches-v18';
+const CACHE_NAME = 'aerosentinel-v19';
+const ASSET_CACHE = 'caches-v19';
 const MAX_CACHE_ENTRIES = 100;
 
 self.addEventListener('install', e => {
@@ -87,19 +87,38 @@ self.addEventListener('fetch', e => {
   );
 });
 
+// ─── Push event handler — shows notification when server sends push ──────────
+self.addEventListener('push', e => {
+  let data = { title: 'AERO-SENTINEL', body: 'New alert', icon: '/alert-icon.png?v=7', tag: 'aero-alert', data: { url: '/alerts' } };
+  try {
+    if (e.data) data = { ...data, ...e.data.json() };
+  } catch { /* fallback to defaults */ }
+
+  e.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: data.icon,
+      tag: data.tag,
+      data: data.data,
+      requireInteraction: false,
+    })
+  );
+});
+
 // ─── Notification tıklama handler'ı — navigate to /alerts ─────────────────────
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  const targetUrl = e.notification.data?.url || '/alerts';
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
       for (const client of clientList) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
           // Focus first, then navigate — chained properly inside waitUntil
-          return client.focus().then(() => client.navigate('/alerts'));
+          return client.focus().then(() => client.navigate(targetUrl));
         }
       }
       if (clients.openWindow) {
-        return clients.openWindow('/alerts');
+        return clients.openWindow(targetUrl);
       }
     })
   );

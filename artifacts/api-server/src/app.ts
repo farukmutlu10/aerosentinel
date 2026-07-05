@@ -8,6 +8,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { startMonitor } from "./lib/monitor.js";
 import { runMigrations } from "./lib/migrate.js";
+import { configureVapid } from "./lib/push.js";
 
 const app: Express = express();
 
@@ -92,6 +93,9 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 app.use("/api", router);
+
+// Configure VAPID keys for web push notifications
+configureVapid();
 
 // Migration'ları çalıştır, BİTTİKTEN SONRA monitor'u başlat.
 // Aksi halde tablolar oluşmadan monitor sorgu atıp "relation does not exist" (42P01) hatası verir.

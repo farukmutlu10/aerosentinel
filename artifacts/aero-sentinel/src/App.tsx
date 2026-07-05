@@ -18,6 +18,7 @@ import { CookieConsent, getCookiePreferences } from "@/components/CookieConsent"
 import { AdSenseConsent } from "@/components/AdSenseConsent";
 import { BackToTop } from "@/components/BackToTop";
 import { NotificationBanner } from "@/components/NotificationBanner";
+import { PushNotificationPrompt } from "@/components/PushNotificationPrompt";
 
 // ── Route-based code splitting (React.lazy) ──────────────────────────────────
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
@@ -168,6 +169,7 @@ function AppInner() {
         <Toaster />
         <CookieConsent />
         <NotificationBanner />
+        <PushNotificationPrompt />
         <AdSenseConsent />
         <BackToTop />
       </LocalAckContext.Provider>
