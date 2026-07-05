@@ -109,19 +109,29 @@ async function scanTaf(ids: string) {
   const now = Date.now();
   const returnedIcaos: string[] = [];
   const watchlistSet = new Set(allIcaos);
-  for (const entry of allData as Array<{ icaoId?: string; rawTAF?: string }>) {
+  let tafEntriesWithRaw = 0;
+  let tafEntriesWithoutRaw = 0;
+  let tafChangesDetected = 0;
+  let tafAmdCorDetected = 0;
+  let tafAlertsInserted = 0;
+  for (const entry of allData as Array<{ icaoId?: string; rawTAF?: string; tafType?: string; prior?: number }>) {
     const icao = entry.icaoId;
     const rawTaf = entry.rawTAF ?? "";
+    const tafType = (entry.tafType ?? "").toUpperCase();
+    const prior = entry.prior;
     if (!icao) continue;
     returnedIcaos.push(icao);
     sonGorulenTs[icao] = now;
+    if (rawTaf) tafEntriesWithRaw++; else tafEntriesWithoutRaw++;
     if (sonGorulenTaf[icao] !== rawTaf) {
+      tafChangesDetected++;
       const previousRawText = sonGorulenTaf[icao] ?? null;
       const isFirstScan = previousRawText === null;
+      const cachedLen = previousRawText?.length ?? -1;
+      const newLen = rawTaf.length;
+      const tafPrefix = rawTaf.substring(0, 50);
+      console.log(`[monitor] 🔄 TAF CHANGE: ${icao} | cached=${cachedLen} new=${newLen} | "${tafPrefix}" | prior=${prior} tafType="${tafType}" firstScan=${isFirstScan}`);
       sonGorulenTaf[icao] = rawTaf;
-      if (isFirstScan) {
-        console.log(`[monitor] 🆕 First TAF scan for ${icao}: len=${rawTaf.length}, hasAMD=${rawTaf.includes("AMD")}, hasCOR=${rawTaf.includes("COR")}`);
-      }
       // Persist to database
       try {
         await db.insert(monitorCacheTable)
@@ -133,11 +143,13 @@ async function scanTaf(ids: string) {
       } catch (err) {
         console.error(`[monitor] Failed to persist TAF cache for ${icao}:`, err);
       }
-      const hasAmdCor = rawTaf.includes("COR") || rawTaf.includes("AMD");
+      const hasAmdCor = rawTaf.includes("COR") || rawTaf.includes("AMD") || tafType === "AMD" || tafType === "COR";
       if (hasAmdCor) {
+        tafAmdCorDetected++;
         const alertType = rawTaf.includes("COR") ? "TAF_COR" : "TAF_AMD";
         try {
           await db.insert(alertsTable).values({ type: alertType, icao, rawText: rawTaf, previousRawText });
+          tafAlertsInserted++;
           console.log(`[monitor] ✅ TAF alert: ${alertType} for ${icao}`);
         } catch (err) {
           console.error(`[monitor] ❌ TAF insert FAILED for ${icao}:`, err);
@@ -264,7 +276,7 @@ async function scanTaf(ids: string) {
   if (missingAirports.length > 0) {
     console.log(`[monitor] ⚠️ DIAG: ${missingAirports.length} airports MISSING from TAF API response! Examples: ${missingAirports.slice(0, 10).join(", ")}`);
   }
-  console.log(`[monitor] TAF scan: ${allData.length} entries for ${requestedCount} airports (missing: ${missingAirports.length})`);
+  console.log(`[monitor] TAF scan SUMMARY: ${allData.length} entries for ${requestedCount} airports | rawTAF: ${tafEntriesWithRaw}✓ ${tafEntriesWithoutRaw}✗ | changes: ${tafChangesDetected} | amdCor: ${tafAmdCorDetected} | inserted: ${tafAlertsInserted} | missing: ${missingAirports.length}`);
 }
 
 async function scanMetar(ids: string) {
@@ -286,20 +298,31 @@ async function scanMetar(ids: string) {
   const now = Date.now();
   const returnedIcaos: string[] = [];
   const watchlistSet = new Set(allIcaos);
+  let metEntriesWithRaw = 0;
+  let metEntriesWithoutRaw = 0;
+  let metChangesDetected = 0;
+  let metAlertsInserted = 0;
   for (const entry of allData as Array<{ icaoId?: string; rawOb?: string; metarType?: string }>) {
     const icao = entry.icaoId;
     const rawMetar = entry.rawOb ?? "";
+    const metarType = (entry.metarType ?? "").toUpperCase();
     if (!icao) continue;
     returnedIcaos.push(icao);
     sonGorulenTs[icao] = now;
+    if (rawMetar) metEntriesWithRaw++; else metEntriesWithoutRaw++;
 
     // ── DIAG: Log SPECI-related entries for key airports ─────────────────
     if (icao === "UAUU" || icao === "ULLI") {
-      console.log(`[monitor] 🔍 DIAG METAR ${icao}: metarType=${entry.metarType} rawOb_start="${rawMetar.slice(0, 60)}" isSpeci=${rawMetar.startsWith("SPECI")} changed=${sonGorulenMetar[icao] !== rawMetar} cached="${(sonGorulenMetar[icao] ?? "(none)").slice(0, 60)}"`);
+      console.log(`[monitor] 🔍 DIAG METAR ${icao}: metarType="${metarType}" rawOb_start="${rawMetar.slice(0, 60)}" isSpeci=${rawMetar.startsWith("SPECI")} changed=${sonGorulenMetar[icao] !== rawMetar} cached="${(sonGorulenMetar[icao] ?? "(none)").slice(0, 60)}"`);
     }
 
     if (sonGorulenMetar[icao] !== rawMetar) {
+      metChangesDetected++;
       const previousRawText = sonGorulenMetar[icao] ?? null;
+      const cachedLen = previousRawText?.length ?? -1;
+      const newLen = rawMetar.length;
+      const metarPrefix = rawMetar.substring(0, 50);
+      console.log(`[monitor] 🔄 METAR CHANGE: ${icao} | cached=${cachedLen} new=${newLen} | "${metarPrefix}" | metarType="${metarType}"`);
       sonGorulenMetar[icao] = rawMetar;
       // Persist to database
       try {
@@ -312,10 +335,11 @@ async function scanMetar(ids: string) {
       } catch (err) {
         console.error(`[monitor] Failed to persist METAR cache for ${icao}:`, err);
       }
-      const hasSpeci = rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ");
+      const hasSpeci = rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ") || metarType === "SPECI";
       if (hasSpeci) {
         try {
           await db.insert(alertsTable).values({ type: "SPECI", icao, rawText: rawMetar, previousRawText });
+          metAlertsInserted++;
           console.log(`[monitor] ✅ SPECI alert for ${icao}`);
         } catch (err) {
           console.error(`[monitor] ❌ SPECI insert FAILED for ${icao}:`, err);
@@ -446,7 +470,7 @@ async function scanMetar(ids: string) {
       console.log(`[monitor] 🚨 DIAG: UAUU is MISSING from METAR API response!`);
     }
   }
-  console.log(`[monitor] METAR scan: ${allData.length} entries for ${requestedCount} airports (missing: ${missingAirports.length})`);
+  console.log(`[monitor] METAR scan SUMMARY: ${allData.length} entries for ${requestedCount} airports | rawOb: ${metEntriesWithRaw}✓ ${metEntriesWithoutRaw}✗ | changes: ${metChangesDetected} | alerts: ${metAlertsInserted} | missing: ${missingAirports.length}`);
 }
 
 function hasLifrConditions(rawMetar: string): boolean {
@@ -567,7 +591,7 @@ export function getAllWeather(): Array<{ icao: string; rawMetar: string | null; 
 export async function fetchWeatherForIcao(
   icao: string,
   { force = false }: { force?: boolean } = {},
-): Promise<{ rawTaf: string | null; rawMetar: string | null }> {
+): Promise<{ rawTaf: string | null; rawMetar: string | null; tafType: string | null; metarType: string | null }> {
   if (!force) {
     const ts      = sonGorulenTs[icao] ?? 0;
     const isFresh = Date.now() - ts < WEATHER_CACHE_MAX_AGE;
@@ -579,6 +603,8 @@ export async function fetchWeatherForIcao(
       return {
         rawTaf:   sonGorulenTaf[icao]   ?? null,
         rawMetar: sonGorulenMetar[icao] ?? null,
+        tafType: null,
+        metarType: null,
       };
     }
 
@@ -586,7 +612,7 @@ export async function fetchWeatherForIcao(
     const dcEntry = displayCache[icao];
     if (dcEntry && Date.now() - dcEntry.ts < DISPLAY_CACHE_MAX_AGE
         && (dcEntry.rawTaf !== null || dcEntry.rawMetar !== null)) {
-      return { rawTaf: dcEntry.rawTaf, rawMetar: dcEntry.rawMetar };
+      return { rawTaf: dcEntry.rawTaf, rawMetar: dcEntry.rawMetar, tafType: null, metarType: null };
     }
   }
 
@@ -596,15 +622,19 @@ export async function fetchWeatherForIcao(
       fetchJson(`${BASE_URL}/taf?ids=${icao}&format=json`),
       fetchJson(`${BASE_URL}/metar?ids=${icao}&format=json`),
     ]);
-    const rawTaf   = (tafData   as Array<{ rawTAF?: string }>)[0]?.rawTAF ?? null;
-    const rawMetar = (metarData as Array<{ rawOb?:  string }>)[0]?.rawOb  ?? null;
+    const tafEntry = (tafData as Array<{ rawTAF?: string; tafType?: string }>)[0];
+    const metarEntry = (metarData as Array<{ rawOb?: string; metarType?: string }>)[0];
+    const rawTaf   = tafEntry?.rawTAF ?? null;
+    const rawMetar = metarEntry?.rawOb  ?? null;
+    const tafType  = tafEntry?.tafType ?? null;
+    const metarType = metarEntry?.metarType ?? null;
 
     // Store in display cache ONLY — NEVER touch monitor's change-detection state
     displayCache[icao] = { rawTaf, rawMetar, ts: Date.now() };
 
-    return { rawTaf, rawMetar };
+    return { rawTaf, rawMetar, tafType, metarType };
   } catch {
-    return { rawTaf: null, rawMetar: null };
+    return { rawTaf: null, rawMetar: null, tafType: null, metarType: null };
   }
 }
 
