@@ -1,5 +1,5 @@
 import { db, alertsTable, watchlistTable, monitorCacheTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, gte } from "drizzle-orm";
 
 let cachedIcaos: string[] = [];
 
@@ -123,8 +123,10 @@ async function fetchJson(url: string): Promise<unknown[]> {
 }
 
 export async function refreshIcaoCache(): Promise<string[]> {
-  // Tüm kullanıcılardaki benzersiz ICAO'lar
-  const allRows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable);
+  // Only include watchlist entries added within the last 30 days
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const allRows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable)
+    .where(gte(watchlistTable.addedAt, thirtyDaysAgo));
   if (allRows.length === 0) {
     await db.insert(watchlistTable).values({ icao: "LTFH", userId: "legacy" }).onConflictDoNothing();
     cachedIcaos = ["LTFH"];

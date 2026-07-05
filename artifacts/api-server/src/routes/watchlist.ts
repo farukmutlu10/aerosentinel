@@ -291,6 +291,8 @@ router.delete("/watchlist/:icao", async (req, res) => {
   const userId = getDeviceId(req);
   const icao = req.params.icao?.toUpperCase();
   await db.delete(watchlistTable).where(and(eq(watchlistTable.icao, icao), eq(watchlistTable.userId, userId)));
+  // Refresh the in-memory ICAO cache so the monitor stops scanning removed airports
+  await refreshIcaoCache();
   return res.json({ ok: true, icao });
 });
 
