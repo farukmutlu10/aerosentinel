@@ -52,6 +52,7 @@ router.get("/alerts", async (req, res) => {
   };
   const parsed = ListAlertsQueryParams.safeParse(coerced);
   if (!parsed.success) {
+    console.error(`[GET /alerts] Zod validation FAILED for userId=${userId.slice(0, 8)}…:`, JSON.stringify(parsed.error.issues));
     return res.status(400).json({ error: "Invalid query params" });
   }
 
@@ -60,6 +61,8 @@ router.get("/alerts", async (req, res) => {
   const entry = cache.get(cacheKey);
   const now = Date.now();
   if (entry && now - entry.ts < RECENT_CACHE_TTL) {
+    const cached = entry.data as object[];
+    console.log(`[GET /alerts] CACHE HIT userId=${userId.slice(0, 8)}… count=${Array.isArray(cached) ? cached.length : "?"} age=${Math.round((now - entry.ts) / 1000)}s`);
     return res.json(entry.data);
   }
 
@@ -74,6 +77,7 @@ router.get("/alerts", async (req, res) => {
     .where(eq(watchlistTable.userId, userId));
   const userIcaos = userWatchlist.map((r) => r.icao);
   if (userIcaos.length === 0) {
+    console.log(`[GET /alerts] EMPTY WATCHLIST userId=${userId.slice(0, 8)}… → returning []`);
     return res.json([]);
   }
   conditions.push(inArray(alertsTable.icao, userIcaos));
@@ -105,6 +109,7 @@ router.get("/alerts", async (req, res) => {
   // ── Cache store ──────────────────────────────────────────────────
   cache.set(cacheKey, { data: alerts, ts: now });
 
+  console.log(`[GET /alerts] userId=${userId.slice(0, 8)}… watchlist=${userIcaos.length} ICAOs since=${sinceHours}h limit=${limit} → ${alerts.length} alerts returned`);
   return res.json(alerts);
 });
 

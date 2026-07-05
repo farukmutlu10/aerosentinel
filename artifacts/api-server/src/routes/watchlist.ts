@@ -3,6 +3,12 @@ import { db, watchlistTable, alertsTable } from "@workspace/db";
 import { eq, and, inArray, sql, desc } from "drizzle-orm";
 import { updateCachedIcaos, getAirports, clearDisplayCache, refreshIcaoCache, fetchWeatherForIcao } from "../lib/monitor.js";
 
+// Access the alerts cache declared in alerts.ts (global)
+declare global {
+  // eslint-disable-next-line no-var
+  var __alertsCache: Map<string, { data: object | object[]; ts: number }> | undefined;
+}
+
 const router = Router();
 
 function getDeviceId(req: Express.Request): string {
@@ -44,10 +50,12 @@ router.delete("/watchlist", async (req, res) => {
 // ── Lightweight single-attempt fetch (no retries, no monitor side-effects) ──
 const INIT_HEADERS = { "User-Agent": "Mozilla/5.0 AERO-SENTINEL/1.8" };
 const INIT_BASE_URL = "https://aviationweather.gov/api/data";
+const INIT_BATCH_SIZE = 50; // Match monitor's batch size
+const INIT_TIMEOUT_MS = 15_000; // 15s per batch (was 8s for all)
 
 async function fetchJsonFast(url: string): Promise<unknown[]> {
   try {
-    const res = await fetch(url, { headers: INIT_HEADERS, signal: AbortSignal.timeout(8000) });
+    const res = await fetch(url, { headers: INIT_HEADERS, signal: AbortSignal.timeout(INIT_TIMEOUT_MS) });
     if (!res.ok) return [];
     const text = await res.text();
     if (!text || text.trim().length === 0) return [];
@@ -113,14 +121,34 @@ interface InitialAlert {
 
 async function detectLiveAlerts(icaos: string[]): Promise<InitialAlert[]> {
   const results: InitialAlert[] = [];
-  const ids = icaos.join(",");
-  if (!ids) return results;
+  if (icaos.length === 0) return results;
 
-  // Fetch TAF and METAR in parallel (single attempt, fast timeout)
-  const [tafData, metarData] = await Promise.all([
-    fetchJsonFast(`${INIT_BASE_URL}/taf?ids=${ids}&format=json`),
-    fetchJsonFast(`${INIT_BASE_URL}/metar?ids=${ids}&format=json`),
-  ]);
+  // Batch ICAOs into groups of INIT_BATCH_SIZE (matching monitor behavior)
+  // to avoid URL-too-long issues and timeouts with large watchlists
+  const batches: string[] = [];
+  for (let i = 0; i < icaos.length; i += INIT_BATCH_SIZE) {
+    batches.push(icaos.slice(i, i + INIT_BATCH_SIZE).join(","));
+  }
+
+  console.log(`[watchlist/sync:detectLiveAlerts] ${icaos.length} ICAOs in ${batches.length} batch(es) of ≤${INIT_BATCH_SIZE}`);
+
+  // Fetch TAF and METAR in parallel for ALL batches, then merge
+  const allTafData: unknown[] = [];
+  const allMetarData: unknown[] = [];
+
+  for (const batchIds of batches) {
+    const [tafData, metarData] = await Promise.all([
+      fetchJsonFast(`${INIT_BASE_URL}/taf?ids=${batchIds}&format=json`),
+      fetchJsonFast(`${INIT_BASE_URL}/metar?ids=${batchIds}&format=json`),
+    ]);
+    allTafData.push(...tafData);
+    allMetarData.push(...metarData);
+  }
+
+  const tafData = allTafData;
+  const metarData = allMetarData;
+
+  console.log(`[watchlist/sync:detectLiveAlerts] API returned: ${tafData.length} TAF, ${metarData.length} METAR entries`);
 
   const now = new Date();
 
@@ -181,6 +209,12 @@ router.put("/watchlist/sync", async (req, res) => {
   // Refresh cache from ALL users' watchlists (not just this user's)
   await refreshIcaoCache();
 
+  // Invalidate alerts cache so GET /alerts picks up the new watchlist immediately
+  // (prevents stale empty-result cache from blocking post-sync queries)
+  globalThis.__alertsCache?.clear();
+
+  console.log(`[watchlist/sync] userId=${userId.slice(0, 8)}… synced ${icaos.length} ICAOs`);
+
   // ── Inline initial alerts: DB + live detection ──────────────────────
   let initialAlerts: InitialAlert[] = [];
 
@@ -212,13 +246,15 @@ router.put("/watchlist/sync", async (req, res) => {
         detectedAt: a.detectedAt.toISOString(),
         acknowledgedAt: a.acknowledgedAt ? a.acknowledgedAt.toISOString() : null,
       }));
+      console.log(`[watchlist/sync] DB alerts: ${initialAlerts.length} found for ${icaos.length} ICAOs`);
     } catch (err) {
       console.error("[watchlist/sync] Failed to query initial alerts:", err);
     }
 
-    // 2. Detect live alerts from current weather (fast, single attempt, no DB writes)
+    // 2. Detect live alerts from current weather (batched, no DB writes)
     try {
       const liveAlerts = await detectLiveAlerts(icaos);
+      console.log(`[watchlist/sync] Live alerts detected: ${liveAlerts.length}`);
       // Merge: live alerts that don't already exist in DB results
       // (match by ICAO + type to avoid duplicates)
       const existingKeys = new Set(initialAlerts.map((a) => `${a.icao}-${a.type}`));
@@ -232,6 +268,7 @@ router.put("/watchlist/sync", async (req, res) => {
     }
   }
 
+  console.log(`[watchlist/sync] Response: ${initialAlerts.length} initialAlerts for ${icaos.length} ICAOs`);
   return res.json({ ok: true, icaos, initialAlerts });
 });
 
