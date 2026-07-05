@@ -60,14 +60,22 @@ const TYPE_LABELS: Record<AlertType | "CRIT_WX", string> = {
 };
 
 const TYPE_COLORS: Record<AlertType | "CRIT_WX", string> = {
-  TAF_AMD: "#facc15",  // yellow-400 — matches AlertBadge
-  TAF_COR: "#fb923c",  // orange-400 — matches AlertBadge
-  SPECI:   "#f87171",  // red-400   — matches AlertBadge
-  WX_EXTREME:  "#a855f7",  // purple-500
-  WIND_EXTREME: "#fb7185",  // rose-400
-  LIFR:    "#6366f1",  // indigo-500
-  CRIT_WX: "#a855f7",  // purple-500 — unified critical wx color
+  TAF_AMD: "hsl(var(--alert-yellow))",  // yellow — matches AlertBadge
+  TAF_COR: "hsl(var(--alert-orange))",  // orange — matches AlertBadge
+  SPECI:   "hsl(var(--alert-red))",     // red    — matches AlertBadge
+  WX_EXTREME:  "hsl(var(--alert-purple))",  // purple
+  WIND_EXTREME: "hsl(var(--alert-rose))",  // rose
+  LIFR:    "hsl(var(--alert-indigo))",  // indigo
+  CRIT_WX: "hsl(var(--alert-purple))",  // purple — unified critical wx color
 };
+
+/** CSS-variable-based color with alpha — replaces hex suffix pattern */
+function typeColorAlpha(t: DisplayType, alpha: number): string {
+  const map: Record<DisplayType, string> = {
+    TAF_AMD: "--alert-yellow", TAF_COR: "--alert-orange", SPECI: "--alert-red", CRIT_WX: "--alert-purple",
+  };
+  return `hsl(var(${map[t]}) / ${alpha})`;
+}
 
 const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "newest",  label: "Newest" },
@@ -337,22 +345,22 @@ export default function Alerts() {
 
         {/* Stats — Mobile: 2×2 grid + full-width clock | Desktop: flex row */}
         <div className="grid grid-cols-3 gap-1.5 sm:hidden">
-          <StatCard label="Total" value={dash ?? String(totalAlerts)} icon={<IconList />} bg="rgba(100,116,139,0.06)" border="0.5px solid rgba(100,116,139,0.15)" numberColor="rgba(100,116,139,0.9)" labelColor="rgba(100,116,139,0.5)" barFill="rgba(255,255,255,0.2)" barWidth={100} />
-          <StatCard label="Unacked" value={dash ?? String(unackedCount)} icon={<IconAlert />} bg="rgba(226,75,74,0.08)" border="0.5px solid rgba(226,75,74,0.25)" numberColor="#e24b4a" labelColor="rgba(226,75,74,0.6)" barFill="#e24b4a" barWidth={totalAlerts > 0 ? (unackedCount / totalAlerts) * 100 : 0} pulse={unackedCount > 0} />
-          <StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} icon={<IconTaf />} bg="rgba(239,159,39,0.07)" border="0.5px solid rgba(239,159,39,0.2)" numberColor="#ef9f27" labelColor="rgba(239,159,39,0.6)" barFill="#ef9f27" barWidth={totalAlerts > 0 ? (tafRevisions / totalAlerts) * 100 : 0} />
-          <StatCard label="SPECI" value={dash ?? String(speciAlerts)} icon={<IconSpeci />} bg="rgba(255,140,50,0.07)" border="0.5px solid rgba(255,140,50,0.2)" numberColor="#ff8c32" labelColor="rgba(255,140,50,0.6)" barFill="#ff8c32" barWidth={totalAlerts > 0 ? (speciAlerts / totalAlerts) * 100 : 0} />
-          <StatCard label="CRIT WX" value={dash ?? String(critWxAlerts)} icon={<IconWx />} bg="rgba(168,85,247,0.07)" border="0.5px solid rgba(168,85,247,0.2)" numberColor="#a855f7" labelColor="rgba(168,85,247,0.6)" barFill="#a855f7" barWidth={totalAlerts > 0 ? (critWxAlerts / totalAlerts) * 100 : 0} pulse={critWxAlerts > 0} />
+          <StatCard label="Total" value={dash ?? String(totalAlerts)} icon={<IconList />} bg="rgba(100,116,139,0.06)" border="0.5px solid rgba(100,116,139,0.15)" numberColor="rgba(100,116,139,0.9)" labelColor="hsl(var(--stat-label-slate))" barFill="rgba(255,255,255,0.2)" barWidth={100} />
+          <StatCard label="Unacked" value={dash ?? String(unackedCount)} icon={<IconAlert />} bg="rgba(226,75,74,0.08)" border="0.5px solid rgba(226,75,74,0.25)" numberColor="#e24b4a" labelColor="hsl(var(--stat-label-red))" barFill="#e24b4a" barWidth={totalAlerts > 0 ? (unackedCount / totalAlerts) * 100 : 0} pulse={unackedCount > 0} />
+          <StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} icon={<IconTaf />} bg="rgba(239,159,39,0.07)" border="0.5px solid rgba(239,159,39,0.2)" numberColor="hsl(var(--stat-amber))" labelColor="hsl(var(--stat-label-amber))" barFill="hsl(var(--stat-amber))" barWidth={totalAlerts > 0 ? (tafRevisions / totalAlerts) * 100 : 0} />
+          <StatCard label="SPECI" value={dash ?? String(speciAlerts)} icon={<IconSpeci />} bg="rgba(255,140,50,0.07)" border="0.5px solid rgba(255,140,50,0.2)" numberColor="hsl(var(--stat-orange))" labelColor="hsl(var(--stat-label-orange))" barFill="hsl(var(--stat-orange))" barWidth={totalAlerts > 0 ? (speciAlerts / totalAlerts) * 100 : 0} />
+          <StatCard label="CRIT WX" value={dash ?? String(critWxAlerts)} icon={<IconWx />} bg="rgba(168,85,247,0.07)" border="0.5px solid rgba(168,85,247,0.2)" numberColor="hsl(var(--cat-lifr))" labelColor="hsl(var(--stat-label-purple))" barFill="hsl(var(--cat-lifr))" barWidth={totalAlerts > 0 ? (critWxAlerts / totalAlerts) * 100 : 0} pulse={critWxAlerts > 0} />
         </div>
         <div className="sm:hidden">
           <ClockCard />
         </div>
         {/* Desktop: flex row */}
         <div className="hidden sm:flex sm:flex-nowrap" style={{gap:"10px"}}>
-          <div className="w-full sm:flex-1"><StatCard label="Total" value={dash ?? String(totalAlerts)} icon={<IconList />} bg="rgba(100,116,139,0.06)" border="0.5px solid rgba(100,116,139,0.15)" numberColor="rgba(100,116,139,0.9)" labelColor="rgba(100,116,139,0.5)" barFill="rgba(255,255,255,0.2)" barWidth={100} /></div>
-          <div className="w-full sm:flex-1"><StatCard label="Unacked" value={dash ?? String(unackedCount)} icon={<IconAlert />} bg="rgba(226,75,74,0.08)" border="0.5px solid rgba(226,75,74,0.25)" numberColor="#e24b4a" labelColor="rgba(226,75,74,0.6)" barFill="#e24b4a" barWidth={totalAlerts > 0 ? (unackedCount / totalAlerts) * 100 : 0} pulse={unackedCount > 0} /></div>
-          <div className="w-full sm:flex-1"><StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} icon={<IconTaf />} bg="rgba(239,159,39,0.07)" border="0.5px solid rgba(239,159,39,0.2)" numberColor="#ef9f27" labelColor="rgba(239,159,39,0.6)" barFill="#ef9f27" barWidth={totalAlerts > 0 ? (tafRevisions / totalAlerts) * 100 : 0} /></div>
-          <div className="w-full sm:flex-1"><StatCard label="SPECI" value={dash ?? String(speciAlerts)} icon={<IconSpeci />} bg="rgba(255,140,50,0.07)" border="0.5px solid rgba(255,140,50,0.2)" numberColor="#ff8c32" labelColor="rgba(255,140,50,0.6)" barFill="#ff8c32" barWidth={totalAlerts > 0 ? (speciAlerts / totalAlerts) * 100 : 0} /></div>
-          <div className="w-full sm:flex-1"><StatCard label="CRIT WX" value={dash ?? String(critWxAlerts)} icon={<IconWx />} bg="rgba(168,85,247,0.07)" border="0.5px solid rgba(168,85,247,0.2)" numberColor="#a855f7" labelColor="rgba(168,85,247,0.6)" barFill="#a855f7" barWidth={totalAlerts > 0 ? (critWxAlerts / totalAlerts) * 100 : 0} pulse={critWxAlerts > 0} /></div>
+          <div className="w-full sm:flex-1"><StatCard label="Total" value={dash ?? String(totalAlerts)} icon={<IconList />} bg="rgba(100,116,139,0.06)" border="0.5px solid rgba(100,116,139,0.15)" numberColor="rgba(100,116,139,0.9)" labelColor="hsl(var(--stat-label-slate))" barFill="rgba(255,255,255,0.2)" barWidth={100} /></div>
+          <div className="w-full sm:flex-1"><StatCard label="Unacked" value={dash ?? String(unackedCount)} icon={<IconAlert />} bg="rgba(226,75,74,0.08)" border="0.5px solid rgba(226,75,74,0.25)" numberColor="#e24b4a" labelColor="hsl(var(--stat-label-red))" barFill="#e24b4a" barWidth={totalAlerts > 0 ? (unackedCount / totalAlerts) * 100 : 0} pulse={unackedCount > 0} /></div>
+          <div className="w-full sm:flex-1"><StatCard label="TAF Rev" value={dash ?? String(tafRevisions)} icon={<IconTaf />} bg="rgba(239,159,39,0.07)" border="0.5px solid rgba(239,159,39,0.2)" numberColor="hsl(var(--stat-amber))" labelColor="hsl(var(--stat-label-amber))" barFill="hsl(var(--stat-amber))" barWidth={totalAlerts > 0 ? (tafRevisions / totalAlerts) * 100 : 0} /></div>
+          <div className="w-full sm:flex-1"><StatCard label="SPECI" value={dash ?? String(speciAlerts)} icon={<IconSpeci />} bg="rgba(255,140,50,0.07)" border="0.5px solid rgba(255,140,50,0.2)" numberColor="hsl(var(--stat-orange))" labelColor="hsl(var(--stat-label-orange))" barFill="hsl(var(--stat-orange))" barWidth={totalAlerts > 0 ? (speciAlerts / totalAlerts) * 100 : 0} /></div>
+          <div className="w-full sm:flex-1"><StatCard label="CRIT WX" value={dash ?? String(critWxAlerts)} icon={<IconWx />} bg="rgba(168,85,247,0.07)" border="0.5px solid rgba(168,85,247,0.2)" numberColor="hsl(var(--cat-lifr))" labelColor="hsl(var(--stat-label-purple))" barFill="hsl(var(--cat-lifr))" barWidth={totalAlerts > 0 ? (critWxAlerts / totalAlerts) * 100 : 0} pulse={critWxAlerts > 0} /></div>
           <div className="w-full sm:flex-1">
             <ClockCard />
           </div>
@@ -366,13 +374,13 @@ export default function Alerts() {
             {DISPLAY_TYPES.map((t) => (
               <button key={t} onClick={() => toggleType(t)} className="filter-btn"
                 style={activeTypesArr.includes(t) ? {
-                  backgroundColor: TYPE_COLORS[t] + "26",
+                  backgroundColor: typeColorAlpha(t, 0.15),
                   color: TYPE_COLORS[t],
                   borderColor: TYPE_COLORS[t],
                 } : {
                   backgroundColor: "transparent",
-                  color: TYPE_COLORS[t] + "99",
-                  borderColor: TYPE_COLORS[t] + "4D",
+                  color: typeColorAlpha(t, 0.6),
+                  borderColor: typeColorAlpha(t, 0.3),
                 }}>
                 {TYPE_LABELS[t]}
               </button>
@@ -382,7 +390,7 @@ export default function Alerts() {
           <div className="filter-group">
             {SORT_OPTIONS.map((s) => (
               <button key={s.value} onClick={() => setSortMode(s.value)} className="filter-btn"
-                style={sortMode === s.value ? { backgroundColor: "rgba(212,168,67,0.15)", color: "#d4a843", borderColor: "#d4a843" } : { backgroundColor: "transparent", color: "rgba(212,168,67,0.6)", borderColor: "rgba(212,168,67,0.3)" }}>
+                style={sortMode === s.value ? { backgroundColor: "hsl(var(--primary) / 0.15)", color: "hsl(var(--primary))", borderColor: "hsl(var(--primary))" } : { backgroundColor: "transparent", color: "hsl(var(--primary) / 0.6)", borderColor: "hsl(var(--primary) / 0.3)" }}>
                 {s.label}
               </button>
             ))}
@@ -390,13 +398,13 @@ export default function Alerts() {
           <span className="text-border text-xs">|</span>
           <button onClick={() => setHideAcknowledged(!hideAcknowledged)} className="filter-btn"
             style={hideAcknowledged ? {
-              backgroundColor: "rgba(212,168,67,0.15)",
-              color: "#d4a843",
-              borderColor: "rgba(212,168,67,0.5)",
+              backgroundColor: "hsl(var(--primary) / 0.15)",
+              color: "hsl(var(--primary))",
+              borderColor: "hsl(var(--primary) / 0.5)",
             } : {
               backgroundColor: "transparent",
-              color: "rgba(212,168,67,0.7)",
-              borderColor: "rgba(212,168,67,0.3)",
+              color: "hsl(var(--primary) / 0.7)",
+              borderColor: "hsl(var(--primary) / 0.3)",
             }}>
             {hideAcknowledged ? "Show All" : "Hide ACK'ed"}
           </button>
@@ -412,11 +420,11 @@ export default function Alerts() {
           )}
           <div className="ml-auto flex items-center gap-2">
             {unackedCount > 0 && (
-              <button onClick={handleAckAll} disabled={ackingAll} className="filter-btn" style={{ borderColor: "rgba(16,185,129,0.6)", color: "#10b981", backgroundColor: "rgba(16,185,129,0.12)" }}>
+              <button onClick={handleAckAll} disabled={ackingAll} className="filter-btn" style={{ borderColor: "hsl(var(--btn-green) / 0.6)", color: "hsl(var(--btn-green))", backgroundColor: "hsl(var(--btn-green) / 0.12)" }}>
                 {ackingAll ? "..." : `ACK All (${unackedCount})`}
               </button>
             )}
-            <button onClick={handleRefresh} disabled={isRefreshing} className="filter-btn flex items-center gap-1.5" style={{ borderColor: "rgba(56,189,248,0.4)", color: "#38bdf8", backgroundColor: "rgba(56,189,248,0.08)" }}>
+            <button onClick={handleRefresh} disabled={isRefreshing} className="filter-btn flex items-center gap-1.5" style={{ borderColor: "hsl(var(--btn-blue) / 0.4)", color: "hsl(var(--btn-blue))", backgroundColor: "hsl(var(--btn-blue) / 0.08)" }}>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
                 className={isRefreshing ? "animate-spin" : ""}>
                 <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
@@ -433,42 +441,42 @@ export default function Alerts() {
             <div className="filter-group">
               {DISPLAY_TYPES.map((t) => (
                 <button key={t} onClick={() => toggleType(t)} className="filter-btn"
-                  style={activeTypesArr.includes(t) ? {
-                    backgroundColor: TYPE_COLORS[t] + "26",
-                    color: TYPE_COLORS[t],
-                    borderColor: TYPE_COLORS[t],
-                  } : {
-                    backgroundColor: "transparent",
-                    color: TYPE_COLORS[t] + "99",
-                    borderColor: TYPE_COLORS[t] + "4D",
-                  }}>
-                  {TYPE_LABELS[t]}
-                </button>
-              ))}
+                    style={activeTypesArr.includes(t) ? {
+                      backgroundColor: typeColorAlpha(t, 0.15),
+                      color: TYPE_COLORS[t],
+                      borderColor: TYPE_COLORS[t],
+                    } : {
+                      backgroundColor: "transparent",
+                      color: typeColorAlpha(t, 0.6),
+                      borderColor: typeColorAlpha(t, 0.3),
+                    }}>
+                    {TYPE_LABELS[t]}
+                  </button>
+                ))}
+              </div>
+              <div className="w-px h-5" style={{ backgroundColor: "rgba(255,255,255,0.1)" }} />
+              <div className="filter-group">
+                {SORT_OPTIONS.map((s) => (
+                  <button key={s.value} onClick={() => setSortMode(s.value)} className="filter-btn"
+                    style={sortMode === s.value ? { backgroundColor: "hsl(var(--primary) / 0.15)", color: "hsl(var(--primary))", borderColor: "hsl(var(--primary))" } : { backgroundColor: "transparent", color: "hsl(var(--primary) / 0.6)", borderColor: "hsl(var(--primary) / 0.3)" }}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="w-px h-5" style={{ backgroundColor: "rgba(255,255,255,0.1)" }} />
-            <div className="filter-group">
-              {SORT_OPTIONS.map((s) => (
-                <button key={s.value} onClick={() => setSortMode(s.value)} className="filter-btn"
-                  style={sortMode === s.value ? { backgroundColor: "rgba(212,168,67,0.15)", color: "#d4a843", borderColor: "#d4a843" } : { backgroundColor: "transparent", color: "rgba(212,168,67,0.6)", borderColor: "rgba(212,168,67,0.3)" }}>
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={() => setHideAcknowledged(!hideAcknowledged)} className="filter-btn"
-              style={hideAcknowledged ? {
-                backgroundColor: "rgba(212,168,67,0.15)",
-                color: "#d4a843",
-                borderColor: "rgba(212,168,67,0.5)",
-              } : {
-                backgroundColor: "transparent",
-                color: "rgba(212,168,67,0.7)",
-                borderColor: "rgba(212,168,67,0.3)",
-              }}>
-              {hideAcknowledged ? "Show All" : "Hide ACK'ed"}
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={() => setHideAcknowledged(!hideAcknowledged)} className="filter-btn"
+                style={hideAcknowledged ? {
+                  backgroundColor: "hsl(var(--primary) / 0.15)",
+                  color: "hsl(var(--primary))",
+                  borderColor: "hsl(var(--primary) / 0.5)",
+                } : {
+                  backgroundColor: "transparent",
+                  color: "hsl(var(--primary) / 0.7)",
+                  borderColor: "hsl(var(--primary) / 0.3)",
+                }}>
+                {hideAcknowledged ? "Show All" : "Hide ACK'ed"}
+              </button>
             {isFiltered && <div className="w-px h-5" style={{ backgroundColor: "rgba(212,168,67,0.3)" }} />}
             {isFiltered && (
               <button onClick={resetFilters} className="filter-btn"
@@ -481,11 +489,11 @@ export default function Alerts() {
             )}
             <div className="flex-1" />
             {unackedCount > 0 && (
-              <button onClick={handleAckAll} disabled={ackingAll} className="filter-btn" style={{ borderColor: "rgba(16,185,129,0.6)", color: "#10b981", backgroundColor: "rgba(16,185,129,0.12)" }}>
+              <button onClick={handleAckAll} disabled={ackingAll} className="filter-btn" style={{ borderColor: "hsl(var(--btn-green) / 0.6)", color: "hsl(var(--btn-green))", backgroundColor: "hsl(var(--btn-green) / 0.12)" }}>
                 {ackingAll ? "..." : `ACK All (${unackedCount})`}
               </button>
             )}
-            <button onClick={handleRefresh} disabled={isRefreshing} className="filter-btn flex items-center gap-1.5" style={{ borderColor: "rgba(56,189,248,0.4)", color: "#38bdf8", backgroundColor: "rgba(56,189,248,0.08)" }}>
+            <button onClick={handleRefresh} disabled={isRefreshing} className="filter-btn flex items-center gap-1.5" style={{ borderColor: "hsl(var(--btn-blue) / 0.4)", color: "hsl(var(--btn-blue))", backgroundColor: "hsl(var(--btn-blue) / 0.08)" }}>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
                 className={isRefreshing ? "animate-spin" : ""}>
                 <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
@@ -624,9 +632,9 @@ export default function Alerts() {
                         onClick={() => openDiffModal(alert)}
                         className="px-3 sm:px-5 py-1.5 sm:py-2 rounded-full border text-[10px] sm:text-xs font-mono font-bold tracking-[0.15em] sm:tracking-[0.2em] transition-all"
                         style={{
-                          borderColor: "rgba(56,189,248,0.4)",
-                          color: "#38bdf8",
-                          backgroundColor: "rgba(56,189,248,0.08)",
+                          borderColor: "hsl(var(--btn-blue) / 0.4)",
+                          color: "hsl(var(--btn-blue))",
+                          backgroundColor: "hsl(var(--btn-blue) / 0.08)",
                         }}
                       >
                         CHANGES
@@ -637,10 +645,10 @@ export default function Alerts() {
                       <button onClick={() => handleAck(alert.id)}
                         className="px-3 sm:px-5 py-1.5 sm:py-2 rounded-full border text-[10px] sm:text-xs font-mono font-bold tracking-[0.15em] sm:tracking-[0.2em] transition-all"
                         style={{
-                          borderColor: "rgba(16,185,129,0.6)",
-                          color: "#10b981",
-                          backgroundColor: "rgba(16,185,129,0.12)",
-                          boxShadow: "0 2px 8px rgba(16,185,129,0.2)",
+                          borderColor: "hsl(var(--btn-green) / 0.6)",
+                          color: "hsl(var(--btn-green))",
+                          backgroundColor: "hsl(var(--btn-green) / 0.12)",
+                          boxShadow: "0 2px 8px hsl(var(--btn-green) / 0.2)",
                         }}>
                         ACK
                       </button>

@@ -88,6 +88,46 @@ html {
   --app-font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --app-font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
   --radius: 0.375rem;
+
+  /* ── WCAG AA compliant color tokens (light mode) ──── */
+  /* Flight category colors — same hue, darkened for light bg contrast ≥4.5:1 */
+  --cat-vfr: 142 70% 29%;       /* #167f3d */
+  --cat-mvfr: 217 91% 48%;      /* #0a5de0 — darkened 2% for ≥4.5:1 on light bg */
+  --cat-ifr: 0 84% 44%;         /* #d11212 — darkened 2% for ≥4.5:1 on light bg */
+  --cat-lifr: 271 91% 55%;      /* #8c21ef — darkened 3% for ≥4.5:1 on light bg */
+
+  /* Weather token colors — light mode (darkened for white bg) */
+  --wx-blue: 198 93% 35%;       /* #067baf  — station/METAR/SPECI header */
+  --wx-red: 0 84% 50%;          /* #eb1515  — danger wind/wx */
+  --wx-orange: 25 95% 39%;      /* #c35305  — strong wind/orange wx */
+  --wx-purple: 271 91% 61%;     /* #9e42f6  — LIFR vis/ceil */
+  --wx-slate: 214 20% 48%;      /* #627793  — cloud/temp/pressure */
+  --wx-slate-dim: 214 15% 46%;  /* #647386  — time/RVR/CAVOK */
+  --wx-amber: 36 57% 37%;       /* #936728  — CB/BR/HZ — darkened 2% for ≥4.5:1 on light bg */
+  --wx-muted: 214 15% 46%;      /* #647386  — muted text (light) */
+
+  /* Stat card number colors (light mode — large text ≥3:1) */
+  --stat-amber: 36 86% 43%;     /* #ca7f0f */
+  --stat-orange: 26 100% 46%;   /* #ea6700 */
+
+  /* Stat card label colors (light mode — small text ≥4.5:1) */
+  --stat-label-slate: 214 15% 46%;   /* #647386 */
+  --stat-label-red: 0 73% 49%;       /* #d82222 */
+  --stat-label-amber: 36 86% 34%;    /* #9f640c */
+  --stat-label-orange: 27 100% 35%;  /* #b35000 — darkened 2% for ≥4.5:1 on light bg */
+  --stat-label-purple: 270 91% 59%;  /* #9837f6 */
+
+  /* Button accent colors (light mode) */
+  --btn-blue: 199 93% 35%;      /* #0678ab  — CHANGES/REFRESH */
+  --btn-green: 160 84% 26%;     /* #0b7c56  — ACK */
+
+  /* Alert type filter badge colors (light mode — for Alerts.tsx TYPE_COLORS) */
+  --alert-yellow: 48 96% 27%;   /* #886d03 */
+  --alert-orange: 27 96% 35%;   /* #af5104 */
+  --alert-red: 0 91% 43%;       /* #d00a0a */
+  --alert-purple: 270 96% 56%;  /* #9025fa */
+  --alert-rose: 351 94% 42%;    /* #d20624 */
+  --alert-indigo: 230 94% 56%;  /* #2549f8 */
 }
 
 /* ── DARK MODE ─────────────────────────────────────────── */
@@ -126,6 +166,46 @@ html {
   --sidebar-primary-foreground: 220 20% 7%;
   --sidebar-accent: 220 15% 14%;
   --sidebar-accent-foreground: 210 20% 80%;
+
+  /* ── WCAG AA compliant color tokens (dark mode) ───── */
+  /* Flight category colors — same hue, original/lightened for dark bg */
+  --cat-vfr: 142 71% 45%;       /* #22c55e */
+  --cat-mvfr: 217 91% 62%;      /* #4588f6 */
+  --cat-ifr: 0 84% 62%;         /* #f04d4d */
+  --cat-lifr: 270 91% 69%;      /* #b167f9 — bumped 1% for ≥4.5:1 on dark bg */
+
+  /* Weather token colors — dark mode (original/bright for dark bg) */
+  --wx-blue: 198 93% 60%;       /* #38bdf8 */
+  --wx-red: 0 84% 60%;          /* #ef4444 */
+  --wx-orange: 25 95% 53%;      /* #f97316 */
+  --wx-purple: 271 91% 66%;     /* #aa5af7 */
+  --wx-slate: 215 16% 53%;      /* #73839a */
+  --wx-slate-dim: 217 17% 57%;  /* #7e8ca3 */
+  --wx-amber: 36 58% 57%;       /* #d1a054 */
+  --wx-muted: 210 15% 55%;      /* hsl default muted-foreground */
+
+  /* Stat card number colors (dark mode — large text ≥3:1) */
+  --stat-amber: 36 86% 55%;     /* #ef9f27 */
+  --stat-orange: 26 100% 60%;   /* #ff8c32 */
+
+  /* Stat card label colors (dark mode — small text ≥4.5:1) */
+  --stat-label-slate: 217 17% 55%;   /* #78879f */
+  --stat-label-red: 359 45% 61%;     /* #c86d6f */
+  --stat-label-amber: 36 62% 44%;    /* #b77e2b */
+  --stat-label-orange: 26 59% 49%;   /* #c87434 */
+  --stat-label-purple: 269 45% 63%;  /* #9f76cb */
+
+  /* Button accent colors (dark mode — original values, already pass) */
+  --btn-blue: 198 93% 60%;      /* #38bdf8 */
+  --btn-green: 160 84% 39%;     /* #10b981 */
+
+  /* Alert type filter badge colors (dark mode — original values, already pass) */
+  --alert-yellow: 48 96% 53%;   /* #facc15 */
+  --alert-orange: 27 96% 61%;   /* #fb923c */
+  --alert-red: 0 91% 71%;       /* #f87171 */
+  --alert-purple: 270 95% 75%;  /* #c084fc */
+  --alert-rose: 351 95% 71%;    /* #fb7185 */
+  --alert-indigo: 230 94% 82%;  /* #a5b4fc */
 }
 
 @layer base {

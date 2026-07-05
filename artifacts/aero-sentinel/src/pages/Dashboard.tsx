@@ -21,7 +21,7 @@ import { usePersistedState } from "@/hooks/usePersistedState";
 import { normalizeIcao } from "@/lib/icaoUtils";
 import { iataToIcao } from "@/lib/iataMap";
 import {
-  parseMetar, FlightCategory, CATEGORY_COLOR,
+  parseMetar, FlightCategory, CATEGORY_COLOR, catColor,
   extractTimeSlots, parseTafWorstCategory,
   hasCritWx, hasBadgeWind, RED_WX,
 } from "@/lib/metarParser";
@@ -669,9 +669,9 @@ export default function Dashboard() {
                   <button key={cat} onClick={() => toggleCat(cat)}
                     className="filter-btn flex-1"
                     style={isActive ? {
-                      borderColor: CATEGORY_COLOR[cat] + "99",
-                      color: CATEGORY_COLOR[cat],
-                      backgroundColor: CATEGORY_COLOR[cat] + "18",
+                      borderColor: catColor(cat, 0.6),
+                      color: catColor(cat),
+                      backgroundColor: catColor(cat, 0.09),
                     } : undefined}>
                     {cat}
                   </button>
@@ -680,7 +680,7 @@ export default function Dashboard() {
               <button onClick={toggleCritFilter}
                 className="filter-btn flex-1"
                 style={critActive ? {
-                  borderColor: "#ef444499", color: "#ef4444", backgroundColor: "#ef444418",
+                  borderColor: "hsl(var(--wx-red) / 0.6)", color: "hsl(var(--wx-red))", backgroundColor: "hsl(var(--wx-red) / 0.09)",
                 } : undefined}>
                 CRIT
               </button>
@@ -797,26 +797,26 @@ export default function Dashboard() {
             {/* Category filters — all same toggle logic */}
             <div className="flex items-center gap-1">
               {ALL_CATS.map((cat) => {
-                const isActive = activeCats.has(cat);
-                return (
-                  <button key={cat} onClick={() => toggleCat(cat)}
-                    className="filter-btn"
-                    style={isActive ? {
-                      borderColor: CATEGORY_COLOR[cat] + "99",
-                      color: CATEGORY_COLOR[cat],
-                      backgroundColor: CATEGORY_COLOR[cat] + "18",
-                    } : undefined}>
-                    {cat}
-                  </button>
-                );
-              })}
-              <button onClick={toggleCritFilter}
-                className="filter-btn"
-                style={critActive ? {
-                  borderColor: "#ef444499", color: "#ef4444", backgroundColor: "#ef444418",
-                } : undefined}>
-                CRIT
-              </button>
+                  const isActive = activeCats.has(cat);
+                  return (
+                    <button key={cat} onClick={() => toggleCat(cat)}
+                      className="filter-btn"
+                      style={isActive ? {
+                        borderColor: catColor(cat, 0.6),
+                        color: catColor(cat),
+                        backgroundColor: catColor(cat, 0.09),
+                      } : undefined}>
+                      {cat}
+                    </button>
+                  );
+                })}
+                <button onClick={toggleCritFilter}
+                  className="filter-btn"
+                  style={critActive ? {
+                    borderColor: "hsl(var(--wx-red) / 0.6)", color: "hsl(var(--wx-red))", backgroundColor: "hsl(var(--wx-red) / 0.09)",
+                  } : undefined}>
+                  CRIT
+                </button>
             </div>
             <span className="text-border text-xs font-mono">|</span>
 
@@ -963,7 +963,7 @@ export default function Dashboard() {
                 disabled={isRefreshing}
                 title="Refresh weather data"
                 className="filter-btn flex items-center gap-1 sm:gap-1.5 font-bold disabled:opacity-50 flex-shrink-0 transition-all"
-                style={{ borderColor: "#38BDF840", color: "#38BDF8", backgroundColor: "#38BDF810" }}
+                style={{ borderColor: "hsl(var(--btn-blue) / 0.25)", color: "hsl(var(--btn-blue))", backgroundColor: "hsl(var(--btn-blue) / 0.06)" }}
               >
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={isRefreshing ? "animate-spin" : ""}>
                   <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
@@ -1067,10 +1067,10 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
   parsed: ReturnType<typeof parseMetar> | null; view: ViewMode;
 }) {
   const metarCat = parsed?.flightCategory ?? FlightCategory.VFR;
-  const metarColor = CATEGORY_COLOR[metarCat];
+  const metarColor = catColor(metarCat);
   const tafWorst = parseTafWorstCategory(rawTaf);
   const tafCat = tafWorst ?? metarCat;
-  const tafColor = rawTaf ? CATEGORY_COLOR[tafCat] : "hsl(var(--border))";
+  const tafColor = rawTaf ? catColor(tafCat) : "hsl(var(--border))";
   const metarBorderColor = rawMetar ? metarColor : "hsl(var(--border))";
 
   const showLeftStrip = view === "TAF" || view === "BOTH";
@@ -1082,7 +1082,7 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
   const critAny = airportIsCrit(rawTaf, rawMetar);
 
   const bothWorst = worstOf(tafCat, metarCat);
-  const bothWorstColor = CATEGORY_COLOR[bothWorst];
+  const bothWorstColor = catColor(bothWorst);
 
   const borderStyle: React.CSSProperties = {};
   if (showLeftStrip) { borderStyle.borderLeftWidth = "3px"; borderStyle.borderLeftColor = tafColor; }
@@ -1123,19 +1123,19 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
             {/* Single category badge — worst in BOTH mode */}
             {view === "TAF" && rawTaf && tafWorst && (
               <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
-                style={{ color: CATEGORY_COLOR[tafCat], borderColor: `${CATEGORY_COLOR[tafCat]}60`, backgroundColor: `${CATEGORY_COLOR[tafCat]}18` }}>
+                style={{ color: catColor(tafCat), borderColor: catColor(tafCat, 0.38), backgroundColor: catColor(tafCat, 0.09) }}>
                 {tafCat}
               </span>
             )}
             {view === "METAR" && rawMetar && (
               <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
-                style={{ color: metarColor, borderColor: `${metarColor}60`, backgroundColor: `${metarColor}18` }}>
+                style={{ color: catColor(metarCat), borderColor: catColor(metarCat, 0.38), backgroundColor: catColor(metarCat, 0.09) }}>
                 {metarCat}
               </span>
             )}
             {view === "BOTH" && (rawTaf || rawMetar) && (
               <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
-                style={{ color: bothWorstColor, borderColor: `${bothWorstColor}60`, backgroundColor: `${bothWorstColor}18` }}>
+                style={{ color: catColor(bothWorst), borderColor: catColor(bothWorst, 0.38), backgroundColor: catColor(bothWorst, 0.09) }}>
                 {bothWorst}
               </span>
             )}

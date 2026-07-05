@@ -17,7 +17,7 @@ import { useWatchlistWeather } from "@/pages/Dashboard";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { AlertBadge } from "@/components/AlertBadge";
 import { IataBadge } from "@/components/IataBadge";
-import { parseMetar, CATEGORY_COLOR, FlightCategory } from "@/lib/metarParser";
+import { parseMetar, catColor, FlightCategory } from "@/lib/metarParser";
 import { formatDistanceToNow, format } from "date-fns";
 import { useMemo } from "react";
 
@@ -69,7 +69,7 @@ export default function AirportDetail({ icao }: Props) {
 
   const parsedMetar = useMemo(() => (metar?.rawMetar ? parseMetar(metar.rawMetar) : null), [metar?.rawMetar]);
   const cat = parsedMetar?.flightCategory ?? FlightCategory.VFR;
-  const catColor = CATEGORY_COLOR[cat];
+  const catColorVal = catColor(cat);
   const meta = airportDetailMeta(icao);
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -90,9 +90,9 @@ export default function AirportDetail({ icao }: Props) {
               </h2>
               {parsedMetar && (
                 <span className="text-sm font-mono font-bold px-2.5 py-1 rounded border"
-                  style={{ color: catColor, borderColor: `${catColor}60`, backgroundColor: `${catColor}18` }}>
-                  {cat}
-                </span>
+                    style={{ color: catColorVal, borderColor: catColor(cat, 0.38), backgroundColor: catColor(cat, 0.09) }}>
+                    {cat}
+                  </span>
               )}
             </div>
           </div>
@@ -105,7 +105,7 @@ export default function AirportDetail({ icao }: Props) {
                   {parsedMetar.visibility != null && (
                     <div>
                       <span className="text-muted-foreground">VIS </span>
-                      <span style={{ color: parsedMetar.visibility >= 8001 ? "#22c55e" : parsedMetar.visibility >= 5000 ? "#3b82f6" : parsedMetar.visibility >= 1500 ? "#ef4444" : "#a855f7" }}>
+                      <span style={{ color: parsedMetar.visibility >= 8001 ? "hsl(var(--cat-vfr))" : parsedMetar.visibility >= 5000 ? "hsl(var(--cat-mvfr))" : parsedMetar.visibility >= 1500 ? "hsl(var(--wx-red))" : "hsl(var(--wx-purple))" }}>
                         {parsedMetar.visibility >= 9999 ? "9999+" : parsedMetar.visibility}m
                       </span>
                     </div>
@@ -113,7 +113,7 @@ export default function AirportDetail({ icao }: Props) {
                   {parsedMetar.ceiling && (
                     <div>
                       <span className="text-muted-foreground">CEIL </span>
-                      <span style={{ color: parsedMetar.ceiling.feet > 3000 ? "#22c55e" : parsedMetar.ceiling.feet >= 1000 ? "#3b82f6" : parsedMetar.ceiling.feet >= 500 ? "#ef4444" : "#a855f7" }}>
+                      <span style={{ color: parsedMetar.ceiling.feet > 3000 ? "hsl(var(--cat-vfr))" : parsedMetar.ceiling.feet >= 1000 ? "hsl(var(--cat-mvfr))" : parsedMetar.ceiling.feet >= 500 ? "hsl(var(--wx-red))" : "hsl(var(--wx-purple))" }}>
                         {parsedMetar.ceiling.type}{String(parsedMetar.ceiling.feet / 100).padStart(3, "0")} ({parsedMetar.ceiling.feet}ft)
                       </span>
                     </div>

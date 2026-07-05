@@ -5,12 +5,20 @@ export enum FlightCategory {
   LIFR = "LIFR",
 }
 
+/** CSS-variable-based category color — theme-aware via :root / .dark */
 export const CATEGORY_COLOR: Record<FlightCategory, string> = {
-  [FlightCategory.VFR]:  "#22c55e",
-  [FlightCategory.MVFR]: "#3b82f6",
-  [FlightCategory.IFR]:  "#ef4444",
-  [FlightCategory.LIFR]: "#a855f7",
+  [FlightCategory.VFR]:  "hsl(var(--cat-vfr))",
+  [FlightCategory.MVFR]: "hsl(var(--cat-mvfr))",
+  [FlightCategory.IFR]:  "hsl(var(--cat-ifr))",
+  [FlightCategory.LIFR]: "hsl(var(--cat-lifr))",
 };
+
+/** Get category color as hsl() with optional alpha (0-1) — supports hex-suffix-style opacity */
+export function catColor(cat: FlightCategory, alpha?: number): string {
+  return alpha !== undefined
+    ? `hsl(var(--cat-${cat.toLowerCase()}) / ${alpha})`
+    : `hsl(var(--cat-${cat.toLowerCase()}))`;
+}
 
 export const CATEGORY_BG: Record<FlightCategory, string> = {
   [FlightCategory.VFR]:  "bg-green-500/10 border-green-500/40",
@@ -147,8 +155,8 @@ function parseWind(raw: string): WindData | undefined {
     const gustKt = ktM.groups.gst ? parseInt(ktM.groups.gst) : undefined;
     const g = gustKt ?? 0;
     let dangerColor: string;
-    if (sustainedKt >= 15 || g >= 25) dangerColor = "#ef4444";
-    else if (sustainedKt >= 12 || g >= 20) dangerColor = "#f97316";
+    if (sustainedKt >= 15 || g >= 25) dangerColor = "hsl(var(--wx-red))";
+    else if (sustainedKt >= 12 || g >= 20) dangerColor = "hsl(var(--wx-orange))";
     else dangerColor = "";
     return { direction: ktM.groups.dir, sustainedKt, gustKt, dangerColor, windBadge: sustainedKt >= 25 || g >= 29, raw: ktM[0] };
   }
@@ -159,8 +167,8 @@ function parseWind(raw: string): WindData | undefined {
     const gustMPS = mpsM.groups.gst ? parseInt(mpsM.groups.gst) : undefined;
     const g = gustMPS ?? 0;
     let dangerColor: string;
-    if (sustainedMPS >= 12 || g >= 20) dangerColor = "#ef4444";
-    else if (sustainedMPS >= 6 || g >= 10) dangerColor = "#f97316";
+    if (sustainedMPS >= 12 || g >= 20) dangerColor = "hsl(var(--wx-red))";
+    else if (sustainedMPS >= 6 || g >= 10) dangerColor = "hsl(var(--wx-orange))";
     else dangerColor = "";
     return {
       direction: mpsM.groups.dir,
@@ -181,8 +189,8 @@ function parseWind(raw: string): WindData | undefined {
     const gustKt = gustKMH ? Math.round(gustKMH * 0.5399568) : undefined;
     const g = gustKt ?? 0;
     let dangerColor: string;
-    if (sustainedKt >= 15 || g >= 25) dangerColor = "#ef4444";
-    else if (sustainedKt >= 12 || g >= 20) dangerColor = "#f97316";
+    if (sustainedKt >= 15 || g >= 25) dangerColor = "hsl(var(--wx-red))";
+    else if (sustainedKt >= 12 || g >= 20) dangerColor = "hsl(var(--wx-orange))";
     else dangerColor = "";
     return {
       direction: kmhM.groups.dir,
@@ -315,36 +323,36 @@ export interface DisplayToken {
 
 function visColor(m?: number): string {
   if (!m) return "";
-  if (m < 1600) return "#a855f7";
-  if (m < 4800) return "#ef4444";
+  if (m < 1600) return "hsl(var(--wx-purple))";
+  if (m < 4800) return "hsl(var(--wx-red))";
   return "";
 }
 
 function ceilColor(ft: number): string {
-  if (ft < 500) return "#a855f7";
-  if (ft < 1000) return "#ef4444";
+  if (ft < 500) return "hsl(var(--wx-purple))";
+  if (ft < 1000) return "hsl(var(--wx-red))";
   return "";
 }
 
 function wxColor(code: string): string {
-  if (RED_WX.has(code)) return "#ef4444";
-  if (ORANGE_WX.has(code)) return "#f97316";
-  if (/^(BR|HZ)$/.test(code)) return "#d1a054";
-  if (/^CB$/.test(code)) return "#d1a054";
+  if (RED_WX.has(code)) return "hsl(var(--wx-red))";
+  if (ORANGE_WX.has(code)) return "hsl(var(--wx-orange))";
+  if (/^(BR|HZ)$/.test(code)) return "hsl(var(--wx-amber))";
+  if (/^CB$/.test(code)) return "hsl(var(--wx-amber))";
   const base = code.replace(/^[-+]/, "");
   // GR (hail) anywhere → always red
-  if (/GR/.test(base)) return "#ef4444";
-  if (RED_WX.has(base)) return "#ef4444";
-  if (ORANGE_WX.has(base)) return "#f97316";
-  if (/^(BL|DR)(SN|RA)/.test(base)) return "#ef4444";
-  if (/^(DS|SS|SG)$/.test(base)) return "#ef4444";
-  if (/^FZ(FG|DZ|SN|RA)/.test(base)) return "#ef4444";
-  if (/^TS(SN|GR|PL|IC)/.test(base)) return "#ef4444";
-  if (/^RA(SN)/.test(base)) return "#ef4444";
-  if (/^SH(GR|GS)/.test(base)) return "#ef4444";
-  if (/^TS/.test(base)) return "#f97316";
-  if (/^(SH|VC)/.test(base)) return "#f97316";
-  return "#94a3b8";
+  if (/GR/.test(base)) return "hsl(var(--wx-red))";
+  if (RED_WX.has(base)) return "hsl(var(--wx-red))";
+  if (ORANGE_WX.has(base)) return "hsl(var(--wx-orange))";
+  if (/^(BL|DR)(SN|RA)/.test(base)) return "hsl(var(--wx-red))";
+  if (/^(DS|SS|SG)$/.test(base)) return "hsl(var(--wx-red))";
+  if (/^FZ(FG|DZ|SN|RA)/.test(base)) return "hsl(var(--wx-red))";
+  if (/^TS(SN|GR|PL|IC)/.test(base)) return "hsl(var(--wx-red))";
+  if (/^RA(SN)/.test(base)) return "hsl(var(--wx-red))";
+  if (/^SH(GR|GS)/.test(base)) return "hsl(var(--wx-red))";
+  if (/^TS/.test(base)) return "hsl(var(--wx-orange))";
+  if (/^(SH|VC)/.test(base)) return "hsl(var(--wx-orange))";
+  return "hsl(var(--wx-slate))";
 }
 
 export function tokenizeRaw(raw: string): DisplayToken[] {
@@ -362,9 +370,9 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
       // İlk parça: cloud layer
       const cloudToken = cbSplit[1] + cbSplit[2];
       const ft = parseInt(cbSplit[2]) * 100;
-      tokens.push({ text: cloudToken, color: "#94a3b8", title: `Cloud: ${ft}ft` });
+      tokens.push({ text: cloudToken, color: "hsl(var(--wx-slate))", title: `Cloud: ${ft}ft` });
       // İkinci parça: CB
-      tokens.push({ text: "CB", color: "#d1a054", title: "Cumulonimbus" });
+      tokens.push({ text: "CB", color: "hsl(var(--wx-amber))", title: "Cumulonimbus" });
       nonSpaceIdx++;
       continue;
     }
@@ -373,9 +381,9 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
     let title: string | undefined;
 
     if (/^(METAR|SPECI|TAF|AMD|COR|NIL)$/.test(t)) {
-      color = "#38BDF8"; bold = true;
+      color = "hsl(var(--wx-blue))"; bold = true;
     } else if (t === "CB") {
-      color = "#d1a054"; title = "Cumulonimbus";
+      color = "hsl(var(--wx-amber))"; title = "Cumulonimbus";
     } else if (/^(BECMG|TEMPO|INTER|PROB\d{2})$/.test(t) || /^FM\d{4,6}$/.test(t) || /^AT\d{4}$/.test(t) || /^TL\d{4}$/.test(t)) {
       title = "TAF change group";
     } else if (/^[-+]?(?:TS|SH|FZ|DR|BL|VC|MI|PR|BC|NSW)/.test(t) || /(?:DZ|RA|SN|SG|IC|PL|GR|GS|BR|FG|FU|VA|DU|SA|HZ|PO|CB|FC|SQ|SS|DS)/.test(t)) {
@@ -384,24 +392,24 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
       const label = WX_LABELS[t];
       if (label) title = label;
     } else if (nonSpaceIdx <= 2 && /^[A-Z]{4}$/.test(t) && !/^(AUTO|CORR|NOSIG|BECMG|TEMPO|INTER|PROB)$/.test(t)) {
-      color = "#38BDF8"; bold = true; title = `Station: ${t}`;
+      color = "hsl(var(--wx-blue))"; bold = true; title = `Station: ${t}`;
     } else if (/^\d{6}Z$/.test(t) || /^\d{4}\/\d{4}$/.test(t)) {
-      color = "#64748b"; title = "Time";
+      color = "hsl(var(--wx-slate-dim))"; title = "Time";
     } else if (/^(VRB|\d{3})\d{2,3}(G\d{2,3})?KT$/.test(t)) {
       const spd = parseInt(t.match(/(?:VRB|\d{3})(\d{2,3})/)?.[1] ?? "0");
       const gst = parseInt(t.match(/G(\d{2,3})/)?.[1] ?? "0");
       if (spd >= 15 || gst >= 25) {
-        color = "#ef4444"; title = `Wind: Dangerous (${spd} kt${gst ? `/G${gst} kt` : ""})`;
+        color = "hsl(var(--wx-red))"; title = `Wind: Dangerous (${spd} kt${gst ? `/G${gst} kt` : ""})`;
       } else if (spd >= 12 || gst >= 20) {
-        color = "#f97316"; title = `Wind: Strong (${spd} kt${gst ? `/G${gst} kt` : ""})`;
+        color = "hsl(var(--wx-orange))"; title = `Wind: Strong (${spd} kt${gst ? `/G${gst} kt` : ""})`;
       }
     } else if (/^(VRB|\d{3})\d{2,3}(G\d{2,3})?MPS$/.test(t)) {
       const spd = parseInt(t.match(/(?:VRB|\d{3})(\d{2,3})/)?.[1] ?? "0");
       const gst = parseInt(t.match(/G(\d{2,3})/)?.[1] ?? "0");
       if (spd >= 8 || gst >= 12) {
-        color = "#ef4444"; title = `Wind: Dangerous (${spd} MPS${gst ? `/G${gst} MPS` : ""})`;
+        color = "hsl(var(--wx-red))"; title = `Wind: Dangerous (${spd} MPS${gst ? `/G${gst} MPS` : ""})`;
       } else if (spd >= 6 || gst >= 10) {
-        color = "#f97316"; title = `Wind: Strong (${spd} MPS${gst ? `/G${gst} MPS` : ""})`;
+        color = "hsl(var(--wx-orange))"; title = `Wind: Strong (${spd} MPS${gst ? `/G${gst} MPS` : ""})`;
       }
     } else if (/^(VRB|\d{3})\d{2,3}(G\d{2,3})?KMH$/.test(t)) {
       const spdKMH = parseInt(t.match(/(?:VRB|\d{3})(\d{2,3})/)?.[1] ?? "0");
@@ -409,16 +417,16 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
       const spd = Math.round(spdKMH * 0.5399568);
       const gst = gstKMH ? Math.round(gstKMH * 0.5399568) : 0;
       if (spd >= 15 || gst >= 25) {
-        color = "#ef4444"; title = `Wind: Dangerous (${spdKMH} km/h${gstKMH ? `/G${gstKMH} km/h` : ""})`;
+        color = "hsl(var(--wx-red))"; title = `Wind: Dangerous (${spdKMH} km/h${gstKMH ? `/G${gstKMH} km/h` : ""})`;
       } else if (spd >= 12 || gst >= 20) {
-        color = "#f97316"; title = `Wind: Strong (${spdKMH} km/h${gstKMH ? `/G${gstKMH} km/h` : ""})`;
+        color = "hsl(var(--wx-orange))"; title = `Wind: Strong (${spdKMH} km/h${gstKMH ? `/G${gstKMH} km/h` : ""})`;
       }
     } else if (/^\d{3}V\d{3}$/.test(t)) {
-      color = "#64748b"; title = `Variable wind direction: ${t}`;
+      color = "hsl(var(--wx-slate-dim))"; title = `Variable wind direction: ${t}`;
     } else if (/^R\d{2}[LCR]?\/\d{4}(?:V\d{4})?[UDN]?$/.test(t)) {
-      color = "#64748b"; title = `RVR: ${t}`;
+      color = "hsl(var(--wx-slate-dim))"; title = `RVR: ${t}`;
     } else if (/^(CAVOK|NSC|NCD|SKC|CLR)$/.test(t)) {
-      color = "#64748b"; title = t === "CAVOK" ? "Ceiling And Visibility OK" : "No Significant Clouds";
+      color = "hsl(var(--wx-slate-dim))"; title = t === "CAVOK" ? "Ceiling And Visibility OK" : "No Significant Clouds";
     } else if (/^\d{4}$/.test(t) && !t.includes("/")) {
       const vis = parseInt(t);
       if (vis <= 9999) {
@@ -429,22 +437,22 @@ export function tokenizeRaw(raw: string): DisplayToken[] {
     } else if (/^(BKN|OVC|VV|FEW|SCT)\d{3}CB$/i.test(t)) {
       const digits = t.match(/\d{3}/)?.[0] ?? "000";
       const ft = parseInt(digits) * 100;
-      color = "#d1a054"; title = `Cloud with CB: ${ft}ft`;
+      color = "hsl(var(--wx-amber))"; title = `Cloud with CB: ${ft}ft`;
     } else if (/^(BKN|OVC|VV)\d{3}/.test(t)) {
       const ft = parseInt(t.slice(t.startsWith("VV") ? 2 : 3)) * 100;
       const c = ceilColor(ft);
       if (c) color = c;
       title = `Ceiling: ${ft}ft`;
     } else if (/^(FEW|SCT)\d{3}/.test(t)) {
-      color = "#94a3b8"; title = `Cloud layer: ${parseInt(t.slice(3)) * 100}ft`;
+      color = "hsl(var(--wx-slate))"; title = `Cloud layer: ${parseInt(t.slice(3)) * 100}ft`;
     } else if (/^M?\d{2}\/M?\d{2}$/.test(t)) {
-      color = "#94a3b8"; title = "Temp/Dew";
+      color = "hsl(var(--wx-slate))"; title = "Temp/Dew";
     } else if (/^Q\d{4}$/.test(t) || /^A\d{4}$/.test(t)) {
-      color = "#94a3b8"; title = `QNH: ${t.slice(1)} ${t.startsWith("Q") ? "hPa" : "inHg"}`;
+      color = "hsl(var(--wx-slate))"; title = `QNH: ${t.slice(1)} ${t.startsWith("Q") ? "hPa" : "inHg"}`;
     } else if (t === "NOSIG") {
-      color = "#64748b"; title = "No Significant Change";
+      color = "hsl(var(--wx-slate-dim))"; title = "No Significant Change";
     } else if (/^(RMK|TX|TN)/.test(t)) {
-      color = "#64748b";
+      color = "hsl(var(--wx-slate-dim))";
     }
 
     tokens.push({ text: part, color, bold, title });
