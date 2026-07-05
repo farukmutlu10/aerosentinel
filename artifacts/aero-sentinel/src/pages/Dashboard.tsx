@@ -51,7 +51,7 @@ export function useWatchlistWeather(icaos: string[]) {
     queryKey: WEATHER_KEY(key),
     queryFn: () => fetch(`/api/watchlist/weather?icaos=${key}`).then((r) => r.json()),
     enabled: icaos.length > 0,
-    refetchInterval: 180_000,
+    refetchInterval: 60_000,
     refetchIntervalInBackground: true,
     staleTime: 60_000,
   });
