@@ -22,6 +22,14 @@ let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
 const HEADERS = { "User-Agent": "Mozilla/5.0 AERO-SENTINEL/1.8" };
 const BASE_URL = "https://aviationweather.gov/api/data";
+const MAX_RETRIES = 3;
+const BASE_BACKOFF_MS = 2000; // 2s → 4s → 8s
+const MIN_REQUEST_INTERVAL_MS = 500; // rate-limit guard
+let lastFetchTimestamp = 0;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 function getUtcDateStr(): string {
   return new Date().toISOString().slice(0, 10);
@@ -36,18 +44,82 @@ function checkDailyReset() {
 }
 
 async function fetchJson(url: string): Promise<unknown[]> {
-  try {
-    const res = await fetch(url, { headers: HEADERS });
-    if (!res.ok) {
-      console.error(`[monitor] HTTP ${res.status} for ${url.split('?')[0]}`);
-      return [];
+  const endpoint = url.split('?')[0];
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      // Rate-limit guard: ensure minimum interval between requests
+      const elapsed = Date.now() - lastFetchTimestamp;
+      if (elapsed < MIN_REQUEST_INTERVAL_MS) {
+        await sleep(MIN_REQUEST_INTERVAL_MS - elapsed);
+      }
+      lastFetchTimestamp = Date.now();
+
+      const res = await fetch(url, { headers: HEADERS });
+
+      if (!res.ok) {
+        const preview = (await res.text()).slice(0, 200);
+        console.error(
+          `[monitor] HTTP ${res.status} for ${endpoint} (attempt ${attempt}/${MAX_RETRIES}) body: "${preview}"`
+        );
+        if (attempt < MAX_RETRIES) {
+          const backoff = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
+          console.log(`[monitor] Retrying ${endpoint} in ${backoff}ms...`);
+          await sleep(backoff);
+          continue;
+        }
+        return [];
+      }
+
+      // Check for empty body before attempting JSON parse
+      const text = await res.text();
+      if (!text || text.trim().length === 0) {
+        console.error(
+          `[monitor] Empty response body for ${endpoint} (attempt ${attempt}/${MAX_RETRIES})`
+        );
+        if (attempt < MAX_RETRIES) {
+          const backoff = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
+          console.log(`[monitor] Retrying ${endpoint} in ${backoff}ms (empty body)...`);
+          await sleep(backoff);
+          continue;
+        }
+        return [];
+      }
+
+      const data = JSON.parse(text) as unknown[];
+
+      if (!Array.isArray(data)) {
+        console.error(
+          `[monitor] Unexpected non-array response for ${endpoint} (attempt ${attempt}/${MAX_RETRIES}): "${text.slice(0, 200)}"`
+        );
+        if (attempt < MAX_RETRIES) {
+          const backoff = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
+          console.log(`[monitor] Retrying ${endpoint} in ${backoff}ms (non-array)...`);
+          await sleep(backoff);
+          continue;
+        }
+        return [];
+      }
+
+      if (attempt > 1) {
+        console.log(`[monitor] ✅ ${endpoint} succeeded on attempt ${attempt}/${MAX_RETRIES}`);
+      }
+      return data;
+
+    } catch (err) {
+      const errMsg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      console.error(
+        `[monitor] fetch error for ${endpoint} (attempt ${attempt}/${MAX_RETRIES}): ${errMsg}`
+      );
+      if (attempt < MAX_RETRIES) {
+        const backoff = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
+        console.log(`[monitor] Retrying ${endpoint} in ${backoff}ms...`);
+        await sleep(backoff);
+      }
     }
-    const data = await res.json() as unknown[];
-    return data;
-  } catch (err) {
-    console.error(`[monitor] fetch error for ${url.split('?')[0]}:`, err);
-    return [];
   }
+
+  return [];
 }
 
 async function refreshIcaoCache(): Promise<string[]> {
