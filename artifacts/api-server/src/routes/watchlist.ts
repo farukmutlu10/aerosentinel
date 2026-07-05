@@ -37,7 +37,24 @@ async function generateInitialAlerts(icao: string) {
 
       // When AMD/COR is present, suppress WX_EXTREME, WIND_EXTREME, LIFR
       if (!hasAmdCor) {
-      // TAF-based extreme weather detection
+      // ── Priority-based WX_CRIT suppression: LIFR > WX_EXTREME > WIND_EXTREME ──
+
+      // 1. TAF-based LIFR detection (highest priority)
+      let hasTafLifr = false;
+      if (!rawTaf.includes("CAVOK")) {
+        const visMatch = rawTaf.match(/\b(\d{3}\d{1,2}|VRB\d{2,3})(?:G\d{2,3})?(?:KT|MPS|KMH)\s+(\d{4})\b/);
+        if (visMatch && parseInt(visMatch[2], 10) < 1600 && parseInt(visMatch[2], 10) > 0) hasTafLifr = true;
+        if (!hasTafLifr) {
+          for (const m of rawTaf.matchAll(/\b(BKN|OVC|VV)(\d{3})\b/g)) {
+            if (parseInt(m[2], 10) * 100 < 500) { hasTafLifr = true; break; }
+          }
+        }
+      }
+      if (hasTafLifr) {
+        await db.insert(alertsTable).values({ type: "LIFR" as any, icao, rawText: rawTaf, previousRawText: null });
+        console.log(`[watchlist] ✅ Initial TAF LIFR alert for ${icao}`);
+      } else {
+      // 2. TAF-based extreme weather detection (second priority)
       const TAF_EXTREME_WX_CODES = [
         "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",
         "DS", "-DS", "+DS", "SS", "-SS", "+SS",
@@ -56,9 +73,8 @@ async function generateInitialAlerts(icao: string) {
       if (hasTafWxExtreme) {
         await db.insert(alertsTable).values({ type: "WX_EXTREME" as any, icao, rawText: rawTaf, previousRawText: null });
         console.log(`[watchlist] ✅ Initial TAF WX_EXTREME alert for ${icao}`);
-      }
-
-      // TAF-based extreme wind detection
+      } else {
+      // 3. TAF-based extreme wind detection (lowest priority)
       let hasTafWindExtreme = false;
       for (const m of rawTaf.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/g)) {
         const spd = parseInt(m[1]); const gst = m[2] ? parseInt(m[2]) : 0;
@@ -80,23 +96,8 @@ async function generateInitialAlerts(icao: string) {
         await db.insert(alertsTable).values({ type: "WIND_EXTREME" as any, icao, rawText: rawTaf, previousRawText: null });
         console.log(`[watchlist] ✅ Initial TAF WIND_EXTREME alert for ${icao}`);
       }
-
-      // TAF-based LIFR detection
-      let hasTafLifr = false;
-      if (!rawTaf.includes("CAVOK")) {
-        const visMatch = rawTaf.match(/\b(\d{3}\d{1,2}|VRB\d{2,3})(?:G\d{2,3})?(?:KT|MPS|KMH)\s+(\d{4})\b/);
-        if (visMatch && parseInt(visMatch[2], 10) < 1600 && parseInt(visMatch[2], 10) > 0) hasTafLifr = true;
-        if (!hasTafLifr) {
-          for (const m of rawTaf.matchAll(/\b(BKN|OVC|VV)(\d{3})\b/g)) {
-            if (parseInt(m[2], 10) * 100 < 500) { hasTafLifr = true; break; }
-          }
-        }
-      }
-      if (hasTafLifr) {
-        await db.insert(alertsTable).values({ type: "LIFR" as any, icao, rawText: rawTaf, previousRawText: null });
-        console.log(`[watchlist] ✅ Initial TAF LIFR alert for ${icao}`);
-      }
-
+      } // end WX_EXTREME else
+      } // end LIFR else
       } // end !hasAmdCor
     }
 
@@ -109,7 +110,24 @@ async function generateInitialAlerts(icao: string) {
 
       // When SPECI is present, suppress WX_EXTREME, WIND_EXTREME, LIFR
       if (!hasSpeci) {
-      // Extreme weather codes
+      // ── Priority-based WX_CRIT suppression: LIFR > WX_EXTREME > WIND_EXTREME ──
+
+      // 1. LIFR detection (highest priority)
+      let hasLifr = false;
+      if (!rawMetar.includes("CAVOK")) {
+        const visMatch = rawMetar.match(/\b(\d{3}\d{1,2}|VRB\d{2,3})(?:G\d{2,3})?(?:KT|MPS|KMH)\s+(\d{4})\b/);
+        if (visMatch && parseInt(visMatch[2], 10) < 1600 && parseInt(visMatch[2], 10) > 0) hasLifr = true;
+        if (!hasLifr) {
+          for (const m of rawMetar.matchAll(/\b(BKN|OVC|VV)(\d{3})\b/g)) {
+            if (parseInt(m[2], 10) * 100 < 500) { hasLifr = true; break; }
+          }
+        }
+      }
+      if (hasLifr) {
+        await db.insert(alertsTable).values({ type: "LIFR" as any, icao, rawText: rawMetar, previousRawText: null });
+        console.log(`[watchlist] ✅ Initial LIFR alert for ${icao}`);
+      } else {
+      // 2. Extreme weather codes (second priority)
       const EXTREME_WX_CODES = [
         "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",
         "DS", "-DS", "+DS", "SS", "-SS", "+SS",
@@ -128,9 +146,8 @@ async function generateInitialAlerts(icao: string) {
       if (hasWxExtreme) {
         await db.insert(alertsTable).values({ type: "WX_EXTREME" as any, icao, rawText: rawMetar, previousRawText: null });
         console.log(`[watchlist] ✅ Initial WX_EXTREME alert for ${icao}`);
-      }
-
-      // Extreme wind check
+      } else {
+      // 3. Extreme wind check (lowest priority)
       let hasWindExtreme = false;
       for (const m of rawMetar.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/g)) {
         const spd = parseInt(m[1]); const gst = m[2] ? parseInt(m[2]) : 0;
@@ -152,22 +169,8 @@ async function generateInitialAlerts(icao: string) {
         await db.insert(alertsTable).values({ type: "WIND_EXTREME" as any, icao, rawText: rawMetar, previousRawText: null });
         console.log(`[watchlist] ✅ Initial WIND_EXTREME alert for ${icao}`);
       }
-
-      // LIFR check
-      let hasLifr = false;
-      if (!rawMetar.includes("CAVOK")) {
-        const visMatch = rawMetar.match(/\b(\d{3}\d{1,2}|VRB\d{2,3})(?:G\d{2,3})?(?:KT|MPS|KMH)\s+(\d{4})\b/);
-        if (visMatch && parseInt(visMatch[2], 10) < 1600 && parseInt(visMatch[2], 10) > 0) hasLifr = true;
-        if (!hasLifr) {
-          for (const m of rawMetar.matchAll(/\b(BKN|OVC|VV)(\d{3})\b/g)) {
-            if (parseInt(m[2], 10) * 100 < 500) { hasLifr = true; break; }
-          }
-        }
-      }
-      if (hasLifr) {
-        await db.insert(alertsTable).values({ type: "LIFR" as any, icao, rawText: rawMetar, previousRawText: null });
-        console.log(`[watchlist] ✅ Initial LIFR alert for ${icao}`);
-      }
+      } // end WX_EXTREME else
+      } // end LIFR else
       } // end !hasSpeci
     }
   } catch (err) {

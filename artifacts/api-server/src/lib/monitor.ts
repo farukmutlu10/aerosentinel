@@ -143,7 +143,29 @@ async function scanTaf(ids: string) {
       // When AMD/COR is present, suppress WX_EXTREME, WIND_EXTREME, LIFR
       // since the AMD/COR card already shows the changed TAF text.
       if (!hasAmdCor) {
-      // ── WX_EXTREME detection from TAF ──────────────────────────────────
+      // ── Priority-based WX_CRIT suppression: LIFR > WX_EXTREME > WIND_EXTREME ──
+
+      // 1. LIFR detection from TAF (highest priority)
+      if (hasLifrConditions(rawTaf)) {
+        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
+          .where(and(
+            eq(alertsTable.icao, icao),
+            eq(alertsTable.type, "LIFR"),
+            eq(alertsTable.rawText, rawTaf),
+            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
+          )).limit(1);
+        if (recentDup.length === 0) {
+          try {
+            await db.insert(alertsTable).values({ type: "LIFR", icao, rawText: rawTaf, previousRawText });
+            console.log(`[monitor] ✅ TAF LIFR alert for ${icao}`);
+          } catch (err) {
+            console.error(`[monitor] Failed to insert TAF LIFR alert for ${icao}:`, err);
+          }
+        } else {
+          console.log(`[monitor] ⏭️ Skipping duplicate TAF LIFR for ${icao} (recent alert exists)`);
+        }
+      } else {
+      // 2. WX_EXTREME detection from TAF (second priority)
       const TAF_EXTREME_WX_CODES = [
         "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",
         "DS", "-DS", "+DS", "SS", "-SS", "+SS",
@@ -185,9 +207,8 @@ async function scanTaf(ids: string) {
         } else {
           console.log(`[monitor] ⏭️ Skipping duplicate TAF WX_EXTREME for ${icao} (recent alert exists)`);
         }
-      }
-
-      // ── WIND_EXTREME detection from TAF ────────────────────────────────
+      } else {
+      // 3. WIND_EXTREME detection from TAF (lowest priority)
       let hasTafWindExtreme = false;
       for (const m of rawTaf.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/g)) {
         const spd = parseInt(m[1]);
@@ -228,28 +249,8 @@ async function scanTaf(ids: string) {
           console.log(`[monitor] ⏭️ Skipping duplicate TAF WIND_EXTREME for ${icao} (recent alert exists)`);
         }
       }
-
-      // ── LIFR detection from TAF ────────────────────────────────────────
-      if (hasLifrConditions(rawTaf)) {
-        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
-          .where(and(
-            eq(alertsTable.icao, icao),
-            eq(alertsTable.type, "LIFR"),
-            eq(alertsTable.rawText, rawTaf),
-            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
-          )).limit(1);
-        if (recentDup.length === 0) {
-          try {
-            await db.insert(alertsTable).values({ type: "LIFR", icao, rawText: rawTaf, previousRawText });
-            console.log(`[monitor] ✅ TAF LIFR alert for ${icao}`);
-          } catch (err) {
-            console.error(`[monitor] Failed to insert TAF LIFR alert for ${icao}:`, err);
-          }
-        } else {
-          console.log(`[monitor] ⏭️ Skipping duplicate TAF LIFR for ${icao} (recent alert exists)`);
-        }
-      }
-
+      } // end WX_EXTREME else
+      } // end LIFR else
       } // end !hasAmdCor
     }
   }
@@ -320,7 +321,30 @@ async function scanMetar(ids: string) {
       // When SPECI is present, suppress WX_EXTREME, WIND_EXTREME, LIFR
       // since the SPECI card already shows the special METAR text.
       if (!hasSpeci) {
-      // ── WX_EXTREME detection ──────────────────────────────────────────
+      // ── Priority-based WX_CRIT suppression: LIFR > WX_EXTREME > WIND_EXTREME ──
+
+      // 1. LIFR detection (highest priority)
+      if (hasLifrConditions(rawMetar)) {
+        // Deduplicate: skip if recent alert with same ICAO+type+rawText exists
+        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
+          .where(and(
+            eq(alertsTable.icao, icao),
+            eq(alertsTable.type, "LIFR"),
+            eq(alertsTable.rawText, rawMetar),
+            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
+          )).limit(1);
+        if (recentDup.length === 0) {
+          try {
+            await db.insert(alertsTable).values({ type: "LIFR", icao, rawText: rawMetar, previousRawText });
+            console.log(`[monitor] ✅ LIFR alert for ${icao}`);
+          } catch (err) {
+            console.error(`[monitor] Failed to insert LIFR alert for ${icao}:`, err);
+          }
+        } else {
+          console.log(`[monitor] ⏭️ Skipping duplicate LIFR for ${icao} (recent alert exists)`);
+        }
+      } else {
+      // 2. WX_EXTREME detection (second priority)
       const EXTREME_WX_CODES = [
         "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",
         "DS", "-DS", "+DS", "SS", "-SS", "+SS",
@@ -362,9 +386,8 @@ async function scanMetar(ids: string) {
         } else {
           console.log(`[monitor] ⏭️ Skipping duplicate WX_EXTREME for ${icao} (recent alert exists)`);
         }
-      }
-
-      // ── WIND_EXTREME detection ────────────────────────────────────────
+      } else {
+      // 3. WIND_EXTREME detection (lowest priority)
       let hasWindExtreme = false;
       for (const m of rawMetar.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/g)) {
         const spd = parseInt(m[1]);
@@ -405,28 +428,8 @@ async function scanMetar(ids: string) {
           console.log(`[monitor] ⏭️ Skipping duplicate WIND_EXTREME for ${icao} (recent alert exists)`);
         }
       }
-
-      // ── LIFR detection ─────────────────────────────────────────────────
-      if (hasLifrConditions(rawMetar)) {
-        // Deduplicate: skip if recent alert with same ICAO+type+rawText exists
-        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
-          .where(and(
-            eq(alertsTable.icao, icao),
-            eq(alertsTable.type, "LIFR"),
-            eq(alertsTable.rawText, rawMetar),
-            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
-          )).limit(1);
-        if (recentDup.length === 0) {
-          try {
-            await db.insert(alertsTable).values({ type: "LIFR", icao, rawText: rawMetar, previousRawText });
-            console.log(`[monitor] ✅ LIFR alert for ${icao}`);
-          } catch (err) {
-            console.error(`[monitor] Failed to insert LIFR alert for ${icao}:`, err);
-          }
-        } else {
-          console.log(`[monitor] ⏭️ Skipping duplicate LIFR for ${icao} (recent alert exists)`);
-        }
-      }
+      } // end WX_EXTREME else
+      } // end LIFR else
       } // end !hasSpeci
     }
   }
