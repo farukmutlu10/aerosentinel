@@ -28,12 +28,15 @@ async function generateInitialAlerts(icao: string) {
     const { rawTaf, rawMetar } = await fetchWeatherForIcao(icao, { force: true });
 
     if (rawTaf) {
-      if (rawTaf.includes("COR") || rawTaf.includes("AMD")) {
+      const hasAmdCor = rawTaf.includes("COR") || rawTaf.includes("AMD");
+      if (hasAmdCor) {
         const alertType = rawTaf.includes("COR") ? "TAF_COR" : "TAF_AMD";
         await db.insert(alertsTable).values({ type: alertType as any, icao, rawText: rawTaf, previousRawText: null });
         console.log(`[watchlist] ✅ Initial TAF alert: ${alertType} for ${icao}`);
       }
 
+      // When AMD/COR is present, suppress WX_EXTREME, WIND_EXTREME, LIFR
+      if (!hasAmdCor) {
       // TAF-based extreme weather detection
       const TAF_EXTREME_WX_CODES = [
         "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",
@@ -77,15 +80,35 @@ async function generateInitialAlerts(icao: string) {
         await db.insert(alertsTable).values({ type: "WIND_EXTREME" as any, icao, rawText: rawTaf, previousRawText: null });
         console.log(`[watchlist] ✅ Initial TAF WIND_EXTREME alert for ${icao}`);
       }
+
+      // TAF-based LIFR detection
+      let hasTafLifr = false;
+      if (!rawTaf.includes("CAVOK")) {
+        const visMatch = rawTaf.match(/\b(\d{3}\d{1,2}|VRB\d{2,3})(?:G\d{2,3})?(?:KT|MPS|KMH)\s+(\d{4})\b/);
+        if (visMatch && parseInt(visMatch[2], 10) < 1600 && parseInt(visMatch[2], 10) > 0) hasTafLifr = true;
+        if (!hasTafLifr) {
+          for (const m of rawTaf.matchAll(/\b(BKN|OVC|VV)(\d{3})\b/g)) {
+            if (parseInt(m[2], 10) * 100 < 500) { hasTafLifr = true; break; }
+          }
+        }
+      }
+      if (hasTafLifr) {
+        await db.insert(alertsTable).values({ type: "LIFR" as any, icao, rawText: rawTaf, previousRawText: null });
+        console.log(`[watchlist] ✅ Initial TAF LIFR alert for ${icao}`);
+      }
+
+      } // end !hasAmdCor
     }
 
     if (rawMetar) {
-      // SPECI check
-      if (rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ")) {
+      const hasSpeci = rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ");
+      if (hasSpeci) {
         await db.insert(alertsTable).values({ type: "SPECI" as any, icao, rawText: rawMetar, previousRawText: null });
         console.log(`[watchlist] ✅ Initial SPECI alert for ${icao}`);
       }
 
+      // When SPECI is present, suppress WX_EXTREME, WIND_EXTREME, LIFR
+      if (!hasSpeci) {
       // Extreme weather codes
       const EXTREME_WX_CODES = [
         "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",
@@ -145,6 +168,7 @@ async function generateInitialAlerts(icao: string) {
         await db.insert(alertsTable).values({ type: "LIFR" as any, icao, rawText: rawMetar, previousRawText: null });
         console.log(`[watchlist] ✅ Initial LIFR alert for ${icao}`);
       }
+      } // end !hasSpeci
     }
   } catch (err) {
     console.error(`[watchlist] Failed to generate initial alerts for ${icao}:`, err);

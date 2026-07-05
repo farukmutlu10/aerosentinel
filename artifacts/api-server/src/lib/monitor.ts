@@ -129,7 +129,8 @@ async function scanTaf(ids: string) {
       } catch (err) {
         console.error(`[monitor] Failed to persist TAF cache for ${icao}:`, err);
       }
-      if (rawTaf.includes("COR") || rawTaf.includes("AMD")) {
+      const hasAmdCor = rawTaf.includes("COR") || rawTaf.includes("AMD");
+      if (hasAmdCor) {
         const alertType = rawTaf.includes("COR") ? "TAF_COR" : "TAF_AMD";
         try {
           await db.insert(alertsTable).values({ type: alertType, icao, rawText: rawTaf, previousRawText });
@@ -139,6 +140,9 @@ async function scanTaf(ids: string) {
         }
       }
 
+      // When AMD/COR is present, suppress WX_EXTREME, WIND_EXTREME, LIFR
+      // since the AMD/COR card already shows the changed TAF text.
+      if (!hasAmdCor) {
       // ── WX_EXTREME detection from TAF ──────────────────────────────────
       const TAF_EXTREME_WX_CODES = [
         "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",
@@ -224,6 +228,29 @@ async function scanTaf(ids: string) {
           console.log(`[monitor] ⏭️ Skipping duplicate TAF WIND_EXTREME for ${icao} (recent alert exists)`);
         }
       }
+
+      // ── LIFR detection from TAF ────────────────────────────────────────
+      if (hasLifrConditions(rawTaf)) {
+        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
+          .where(and(
+            eq(alertsTable.icao, icao),
+            eq(alertsTable.type, "LIFR"),
+            eq(alertsTable.rawText, rawTaf),
+            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
+          )).limit(1);
+        if (recentDup.length === 0) {
+          try {
+            await db.insert(alertsTable).values({ type: "LIFR", icao, rawText: rawTaf, previousRawText });
+            console.log(`[monitor] ✅ TAF LIFR alert for ${icao}`);
+          } catch (err) {
+            console.error(`[monitor] Failed to insert TAF LIFR alert for ${icao}:`, err);
+          }
+        } else {
+          console.log(`[monitor] ⏭️ Skipping duplicate TAF LIFR for ${icao} (recent alert exists)`);
+        }
+      }
+
+      } // end !hasAmdCor
     }
   }
   // ── DIAG: Coverage analysis ────────────────────────────────────────────
@@ -280,7 +307,8 @@ async function scanMetar(ids: string) {
       } catch (err) {
         console.error(`[monitor] Failed to persist METAR cache for ${icao}:`, err);
       }
-      if (rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ")) {
+      const hasSpeci = rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ");
+      if (hasSpeci) {
         try {
           await db.insert(alertsTable).values({ type: "SPECI", icao, rawText: rawMetar, previousRawText });
           console.log(`[monitor] ✅ SPECI alert for ${icao}`);
@@ -289,6 +317,9 @@ async function scanMetar(ids: string) {
         }
       }
 
+      // When SPECI is present, suppress WX_EXTREME, WIND_EXTREME, LIFR
+      // since the SPECI card already shows the special METAR text.
+      if (!hasSpeci) {
       // ── WX_EXTREME detection ──────────────────────────────────────────
       const EXTREME_WX_CODES = [
         "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",
@@ -396,6 +427,7 @@ async function scanMetar(ids: string) {
           console.log(`[monitor] ⏭️ Skipping duplicate LIFR for ${icao} (recent alert exists)`);
         }
       }
+      } // end !hasSpeci
     }
   }
   // ── DIAG: Coverage analysis ────────────────────────────────────────────
