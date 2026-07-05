@@ -202,18 +202,33 @@ router.put("/watchlist/sync", async (req, res) => {
   const icaos: string[] = Array.isArray(raw)
     ? raw.map((s: unknown) => String(s).trim().toUpperCase()).filter((s) => s.length >= 2 && s.length <= 6)
     : [];
-  await db.delete(watchlistTable).where(eq(watchlistTable.userId, userId));
-  if (icaos.length > 0) {
-    await db.insert(watchlistTable).values(icaos.map((icao) => ({ icao, userId }))).onConflictDoNothing();
+
+  // Use a transaction to make DELETE + INSERT atomic — prevents GET /alerts
+  // from seeing an empty watchlist between the two operations (race condition fix)
+  if (typeof (db as any).transaction === "function") {
+    await (db as any).transaction(async (tx: any) => {
+      await tx.delete(watchlistTable).where(eq(watchlistTable.userId, userId));
+      if (icaos.length > 0) {
+        await tx.insert(watchlistTable).values(icaos.map((icao) => ({ icao, userId }))).onConflictDoNothing();
+      }
+    });
+  } else {
+    // In-memory fallback: sequential operations (no real concurrency)
+    await db.delete(watchlistTable).where(eq(watchlistTable.userId, userId));
+    if (icaos.length > 0) {
+      await db.insert(watchlistTable).values(icaos.map((icao) => ({ icao, userId }))).onConflictDoNothing();
+    }
   }
+
   // Refresh cache from ALL users' watchlists (not just this user's)
   await refreshIcaoCache();
 
-  // Invalidate alerts cache so GET /alerts picks up the new watchlist immediately
-  // (prevents stale empty-result cache from blocking post-sync queries)
+  // Invalidate ALL alerts caches so GET /alerts picks up the new watchlist immediately.
+  // Clearing the entire map is safer than per-key deletion because the cache key includes
+  // serialized query params that may differ between requests.
   globalThis.__alertsCache?.clear();
 
-  console.log(`[watchlist/sync] userId=${userId.slice(0, 8)}… synced ${icaos.length} ICAOs`);
+  console.log(`[watchlist/sync] userId=${userId.slice(0, 8)}… synced ${icaos.length} ICAOs (cache cleared, tx committed)`);
 
   // ── Inline initial alerts: DB + live detection ──────────────────────
   let initialAlerts: InitialAlert[] = [];

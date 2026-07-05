@@ -291,6 +291,7 @@ export default function Alerts() {
     // Merge API alerts with initial alerts (initial alerts fill the gap before first poll)
     const apiList = allAlerts ?? [];
     let list: typeof apiList;
+    let mergeBranch = "empty";
 
     if (apiList.length > 0) {
       // API data is available — use it as source of truth
@@ -300,12 +301,17 @@ export default function Alerts() {
         .filter((ia) => ia.id < 0 && !apiKeys.has(`${ia.icao}-${ia.type}`))
         .map((ia) => ({ ...ia, id: ia.id, detectedAt: ia.detectedAt }));
       list = [...apiList, ...extraInitials] as typeof apiList;
+      mergeBranch = "api+initials";
     } else if (initialAlerts.length > 0 && initialAlertsReady) {
       // No API data yet — show initial alerts immediately
       list = initialAlerts.map((ia) => ({ ...ia })) as typeof apiList;
+      mergeBranch = "initials-only";
     } else {
       list = apiList;
+      mergeBranch = "api-empty";
     }
+
+    const preFilterCount = list.length;
 
     // Deduplicate: keep only the latest alert per ICAO + type combination
     const seen = new Map<string, number>();
@@ -318,9 +324,19 @@ export default function Alerts() {
       }
       return false;
     });
+    const postDedup = list.length;
     list = list.filter((a) => activeTypesSet.has(a.type));
+    const postType = list.length;
     if (hideAcknowledged) list = list.filter((a) => !isAcked(a));
+    const postAck = list.length;
     list = list.filter((a) => isWatching(a.icao) || a.icao.startsWith("TEST"));
+    const postWatch = list.length;
+
+    console.log(
+      `[ALERTS useMemo] branch=${mergeBranch} apiList=${apiList.length} initialAlerts=${initialAlerts.length} ready=${initialAlertsReady} ` +
+      `→ pre=${preFilterCount} dedup=${postDedup} type=${postType} ack=${postAck} watch=${postWatch} final=${list.length}`
+    );
+
     const sorted = [...list];
     if (sortMode === "newest") sorted.sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime());
     else if (sortMode === "oldest") sorted.sort((a, b) => new Date(a.detectedAt).getTime() - new Date(b.detectedAt).getTime());

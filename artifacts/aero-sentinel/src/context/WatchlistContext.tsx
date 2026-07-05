@@ -47,6 +47,9 @@ export interface InitialAlert {
 
 // On mount: replace backend list with this browser's localStorage list
 // Returns initial alerts from sync response for instant display
+// NOTE: Does NOT dispatch "watchlist-synced" — caller is responsible for dispatching
+// AFTER setting initialAlerts state, to avoid race condition where query invalidation
+// triggers a GET /alerts refetch before initialAlerts are available in React state.
 async function syncToBackend(icaos: string[]): Promise<InitialAlert[]> {
   try {
     console.log(`[WATCHLIST DIAG] syncToBackend called with ${icaos.length} ICAOs`, icaos.length > 0 ? icaos.slice(0, 5).join(",") + "…" : "(empty)");
@@ -59,10 +62,9 @@ async function syncToBackend(icaos: string[]): Promise<InitialAlert[]> {
       body: bodyStr,
     });
     const data = await res.json();
-    console.log(`[WATCHLIST DIAG] server response:`, JSON.stringify(data).slice(0, 200));
-    // Notify other parts of the app (e.g. Alerts page) to refetch alerts
-    window.dispatchEvent(new CustomEvent("watchlist-synced"));
-    return Array.isArray(data?.initialAlerts) ? data.initialAlerts : [];
+    const alerts = Array.isArray(data?.initialAlerts) ? data.initialAlerts : [];
+    console.log(`[WATCHLIST DIAG] server response: ok=${data?.ok} initialAlerts=${alerts.length} icaos=${Array.isArray(data?.icaos) ? data.icaos.length : "?"}`);
+    return alerts;
   } catch (err) {
     console.error("[WATCHLIST DIAG] syncToBackend FAILED:", err);
     // silent — sync is best-effort
@@ -121,6 +123,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     syncTimerRef.current = setTimeout(() => {
       syncToBackend(loadLocal()).then((alerts) => {
         if (alerts.length > 0) setInitialAlerts(alerts);
+        // Dispatch AFTER setting initialAlerts so Alerts.tsx useMemo has data to work with
         window.dispatchEvent(new CustomEvent("watchlist-synced"));
       });
     }, 500);
@@ -129,10 +132,15 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
   // On mount: push this browser's list to backend as source of truth
   useEffect(() => {
     syncToBackend(loadLocal()).then((alerts) => {
+      console.log(`[WATCHLIST] syncToBackend resolved: ${alerts.length} initialAlerts, setting state...`);
       if (alerts.length > 0) {
         setInitialAlerts(alerts);
       }
       setInitialAlertsReady(true);
+      // Dispatch AFTER setting initialAlerts state — ensures Alerts.tsx useMemo
+      // has initialAlerts available when the query invalidation triggers a re-render
+      window.dispatchEvent(new CustomEvent("watchlist-synced"));
+      console.log(`[WATCHLIST] watchlist-synced event dispatched (after state update)`);
     });
   }, []);
 
