@@ -284,9 +284,7 @@ export default function Dashboard() {
       const nowCrit = airportIsCrit(w.rawTaf, w.rawMetar);
       const prevCrit = prev ? airportIsCrit(prev.rawTaf, prev.rawMetar) : false;
 
-      const appStartTime = (window as any).__APP_START_TIME ?? 0;
-      const isWithinSuppressionWindow = Date.now() - appStartTime < 90_000;
-      if (permGranted && nowCrit && !prevCrit && !isWithinSuppressionWindow) {
+      if (permGranted && nowCrit && !prevCrit) {
         const makeRe = (code: string) => new RegExp(`(?:^|\\s)${code.replace(/[+]/g, "\\+")}(?=\\s|$)`);
         const critCodesMetar = [...RED_WX].filter((code) => makeRe(code).test(w.rawMetar ?? ""));
         const critCodesTaf   = [...RED_WX].filter((code) => makeRe(code).test(w.rawTaf   ?? ""));

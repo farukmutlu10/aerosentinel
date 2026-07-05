@@ -19,7 +19,7 @@ const LOG = "[AeroNotif]";
 const log = (...args: unknown[]) => console.log(LOG, new Date().toISOString(), ...args);
 
 // ─── Persisted seen-alert tracker ───────────────────────────────────────────
-const SEEN_KEY = "aero-notif-seen-ids-v2";
+const SEEN_KEY = "aero-notif-seen-ids-v3";
 
 function loadSeenIds(): Set<number> {
   try {
@@ -75,11 +75,11 @@ export function useAlertNotifications() {
   const seenIds = useRef<Set<number>>(loadSeenIds());
   const queryClient = useQueryClient();
 
-  // ─── TIME-BASED SUPPRESSION (bulletproof) ────────────────────────────────
-  // Global timestamp set in main.tsx BEFORE React mounts.
-  // This is immune to SW cache, service worker timing, ref resets, etc.
-  const APP_START_TIME = (window as any).__APP_START_TIME ?? Date.now();
-  const SUPPRESS_MS = 90_000; // 90 seconds — suppress ALL notifications on first load
+  // ─── FIRST-FETCH SUPPRESSION ──────────────────────────────────────────────
+  // On the first successful API response, mark all existing alerts as seen.
+  // This prevents notifications for pre-existing alerts on page load.
+  // After the first fetch, only truly new alerts trigger notifications.
+  const isFirstFetch = useRef(true);
 
   const dismissToast = useCallback((id: string) => {
     setPendingToasts(prev => prev.filter(t => t.id !== id));
@@ -139,21 +139,21 @@ export function useAlertNotifications() {
 
     if (!allAlerts?.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }
 
-    // ─── TIME-BASED SUPPRESSION: Within first 90 seconds, mark ALL as seen ─
-    const elapsed = Date.now() - APP_START_TIME;
-    if (elapsed < SUPPRESS_MS) {
-      const newIds = allAlerts
+    // ─── FIRST-FETCH SUPPRESSION: Mark all existing alerts as seen on first fetch ─
+    if (isFirstFetch.current) {
+      isFirstFetch.current = false;
+      const existingIds = allAlerts
         .map(a => a.id)
         .filter((id): id is number => id != null && !seenIds.current.has(id));
-      if (newIds.length > 0) {
-        for (const id of newIds) seenIds.current.add(id);
+      if (existingIds.length > 0) {
+        for (const id of existingIds) seenIds.current.add(id);
         saveSeenIds(seenIds.current);
       }
-      log(`Time-gate suppression (${Math.round(elapsed / 1000)}s < ${SUPPRESS_MS / 1000}s): ${newIds.length} alerts marked as seen, 0 notifications`);
-      return; // NO notifications during first 90 seconds
+      log(`First-fetch suppression: ${existingIds.length} existing alerts marked as seen, 0 notifications`);
+      return; // No notifications for pre-existing alerts
     }
 
-    // ─── AFTER 90 SECONDS: Normal notification logic ──────────────────────
+    // ─── NORMAL NOTIFICATION LOGIC: Process genuinely new alerts ──────────
     let newAlertCount = 0;
     let skippedCount = 0;
     const hasPermission = typeof Notification !== "undefined" && Notification.permission === "granted";
