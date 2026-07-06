@@ -97,7 +97,7 @@ export function useAlertNotifications() {
   // used to only reach Alerts.tsx's list — this hook never saw them, so
   // adding an airport with an active LIFR/extreme condition produced zero
   // notification until the next periodic scan happened to persist a real row.
-  const { effectiveIcaos, initialAlerts: liveInitialAlerts, initialAlertsReady } = useWatchlist();
+  const { effectiveIcaos, initialAlerts: liveInitialAlerts } = useWatchlist();
   const { isSnoozed } = useAlertSnooze();
   const [pendingToasts, setPendingToasts] = useState<Array<{
     id: string;
@@ -209,29 +209,23 @@ export function useAlertNotifications() {
     }
   }
 
-  // ─── One-time baseline seed for live-detected initial alerts ──────────────
-  // liveInitialAlerts re-scans the ENTIRE current watchlist on every mount,
-  // not just newly-added airports — for an account with an existing sizeable
-  // watchlist, the very first run of this hook's merge (above) would see
-  // dozens of long-standing, never-new conditions all at once and report
-  // them as "new" purely because nothing had ever added them to seenIds
-  // before. Seed them in silently, exactly once ever per browser, so only
-  // genuinely new conditions (including ones on a freshly-added airport)
-  // notify from this point forward.
-  const BASELINE_KEY = "aero-notif-live-baseline-seeded-v1";
-  useEffect(() => {
-    if (!initialAlertsReady) return; // wait for the first sync to actually complete
-    let seeded = false;
-    try { seeded = localStorage.getItem(BASELINE_KEY) === "1"; } catch { /* ignore */ }
-    if (seeded) return;
-
-    if (liveInitialAlerts.length > 0) {
-      for (const alert of liveInitialAlerts) seenIds.current.add(alert.id);
-      saveSeenIds(seenIds.current);
-      log(`Baseline-seeded ${liveInitialAlerts.length} pre-existing live alert(s) — not notifying for these, only for genuinely new ones from here on`);
-    }
-    try { localStorage.setItem(BASELINE_KEY, "1"); } catch { /* ignore */ }
-  }, [initialAlertsReady, liveInitialAlerts]);
+  // ─── One-time baseline seed — covers BOTH allAlerts and liveInitialAlerts ──
+  // Any time seenIds starts empty for this browser (genuinely first-ever
+  // visit, cleared site data, a browser that doesn't persist localStorage
+  // reliably, or simply the first run of this merged pipeline), the very
+  // first batch this effect sees can be the DB's entire since_hours=6
+  // backlog — for a broad watchlist that's easily 50-100 alerts, all
+  // reported as "new" purely because nothing had ever marked them seen,
+  // producing one huge, meaningless "100 New Alerts" notification. The
+  // first successful batch (from either source) is absorbed into seenIds
+  // silently instead of notified; only alerts arriving after that point —
+  // including a freshly-watchlisted airport's live-detected condition —
+  // actually notify. Gated by a persisted flag (not just seenIds.size, so a
+  // browser that wipes storage between sessions doesn't re-flood on every
+  // visit — it flags "already did my one baseline pass" permanently once
+  // that pass has happened, event if seenIds itself later gets cleared).
+  const BASELINE_KEY = "aero-notif-baseline-seeded-v2";
+  const baselineDoneRef = useRef<boolean | null>(null); // null = not checked yet
 
   // ─── Ana bildirim effect'i ─────────────────────────────────────────────────
   useEffect(() => {
@@ -245,6 +239,11 @@ export function useAlertNotifications() {
 
     log(`[NOTIF EFFECT] Fired — allAlerts=${allAlerts?.length ?? "undefined"}, liveInitialAlerts=${liveInitialAlerts.length}, seenIds=${seenIds.current.size}`);
     if (!combinedAlerts.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }
+
+    if (baselineDoneRef.current === null) {
+      try { baselineDoneRef.current = localStorage.getItem(BASELINE_KEY) === "1"; }
+      catch { baselineDoneRef.current = false; }
+    }
 
     // Cookie consent guard — only blocks browser notifications (Notification API).
     // In-app toasts and sounds are core app functionality and work without consent.
@@ -290,6 +289,17 @@ export function useAlertNotifications() {
 
     // Save seenIds whenever anything got newly marked as seen
     if (newAlerts.length > 0) saveSeenIds(seenIds.current);
+
+    // First-ever batch for this browser: seenIds is now updated (so none of
+    // these re-appear as "new" later), but skip notifying for THIS pass —
+    // whatever's already sitting in the last 6h isn't something that "just
+    // happened," it's the pre-existing backlog on a fresh notification state.
+    if (!baselineDoneRef.current) {
+      baselineDoneRef.current = true;
+      try { localStorage.setItem(BASELINE_KEY, "1"); } catch { /* ignore */ }
+      log(`Baseline run — silently seeded ${newAlerts.length} pre-existing alert(s), no notification for this pass`);
+      return;
+    }
 
     // ─── Pass 2: notify ───────────────────────────────────────────────────────
     // A single new alert keeps today's full-detail notification. Two or more
