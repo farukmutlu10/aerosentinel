@@ -17,6 +17,8 @@ import { useWatchlistWeather } from "@/pages/Dashboard";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { AlertBadge } from "@/components/AlertBadge";
 import { IataBadge } from "@/components/IataBadge";
+import { RunwayBadge } from "@/components/RunwayBadge";
+import { WindCalculatorTeaser } from "@/components/WindCalculatorTeaser";
 import { parseMetar, catColor, FlightCategory } from "@/lib/metarParser";
 import { formatDistanceToNow, format } from "date-fns";
 import { useMemo } from "react";
@@ -87,6 +89,8 @@ export default function AirportDetail({ icao }: Props) {
               <h2 className="text-3xl font-bold font-mono text-primary inline-flex items-center gap-2">
                 {icao}
                 <IataBadge icao={icao} size="sm" />
+                <RunwayBadge icao={icao} />
+                <WindCalculatorTeaser icao={icao} />
               </h2>
               {parsedMetar && (
                 <span className="text-sm font-mono font-bold px-2.5 py-1 rounded border"

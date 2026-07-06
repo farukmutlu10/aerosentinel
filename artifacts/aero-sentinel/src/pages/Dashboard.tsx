@@ -13,6 +13,8 @@ import { TafText } from "@/components/TafText";
 import { ColoredRawText } from "@/components/ColoredRawText";
 import { ClockBadge, useSelectedTimezone } from "@/components/ClockDisplay";
 import { IataBadge } from "@/components/IataBadge";
+import { RunwayBadge } from "@/components/RunwayBadge";
+import { WindCalculatorTeaser } from "@/components/WindCalculatorTeaser";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWatchlist } from "@/context/WatchlistContext";
@@ -1067,6 +1069,8 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
           <span className="font-mono font-bold text-xs sm:text-sm tracking-wider inline-flex items-center gap-1.5">
             {icao}
             <IataBadge icao={icao} />
+            <RunwayBadge icao={icao} />
+            <WindCalculatorTeaser icao={icao} />
           </span>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
             {/* Single category badge — worst in BOTH mode */}

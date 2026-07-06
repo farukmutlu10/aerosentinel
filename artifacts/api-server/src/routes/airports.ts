@@ -3,6 +3,7 @@ import { db, alertsTable, watchlistTable } from "@workspace/db";
 import { count, max, eq } from "drizzle-orm";
 import { getAirports, getMonitorState, getCurrentTaf, getCurrentMetar, getAllWeather, fetchWeatherForIcao } from "../lib/monitor.js";
 import { getDeviceId, devOnly } from "../lib/reqContext.js";
+import { getRunways } from "../lib/runways.js";
 
 const router = Router();
 
@@ -65,6 +66,14 @@ router.get("/airports/:icao/metar", async (req, res) => {
   const { rawMetar } = await fetchWeatherForIcao(icao);
   if (!rawMetar) return res.status(404).json({ error: "No METAR data available" });
   return res.json({ icao, rawMetar });
+});
+
+router.get("/airports/:icao/runways", (req, res) => {
+  const icao = req.params.icao?.toUpperCase();
+  if (!icao || !/^[A-Z0-9]{3,5}$/.test(icao)) {
+    return res.status(400).json({ error: "Invalid ICAO code" });
+  }
+  return res.json({ icao, runways: getRunways(icao) });
 });
 
 router.get("/monitor/status", (_req, res) => {

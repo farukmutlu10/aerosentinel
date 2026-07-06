@@ -18,6 +18,8 @@ import { pageMeta, breadcrumbJsonLd, SITE_URL } from "@/lib/page-meta";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertBadge } from "@/components/AlertBadge";
 import { IataBadge } from "@/components/IataBadge";
+import { RunwayBadge } from "@/components/RunwayBadge";
+import { WindCalculatorTeaser } from "@/components/WindCalculatorTeaser";
 import { TafText } from "@/components/TafText";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -648,6 +650,8 @@ export default function Alerts() {
                           {alert.icao}
                           <IataBadge icao={alert.icao} />
                         </Link>
+                        <RunwayBadge icao={alert.icao} />
+                        <WindCalculatorTeaser icao={alert.icao} />
                         <span className="text-[10px] sm:text-xs text-muted-foreground font-mono">{new Date(alert.detectedAt).toLocaleString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }) + " UTC"}</span>
                         <span className="text-[10px] sm:text-xs text-muted-foreground font-mono hidden sm:inline">({formatDistanceToNow(new Date(alert.detectedAt), { addSuffix: true })})</span>
                         {isAcked(alert) && <span className="text-[10px] sm:text-xs bg-muted text-muted-foreground font-mono px-1.5 sm:px-2 py-0.5 rounded">ACK</span>}

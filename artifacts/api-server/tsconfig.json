@@ -5,6 +5,7 @@
     "rootDir": "src",
     "types": ["node"],
     "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
     "noEmit": true
   },
   "include": ["src"],
