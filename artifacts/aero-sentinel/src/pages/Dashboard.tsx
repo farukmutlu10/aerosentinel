@@ -231,6 +231,26 @@ export default function Dashboard() {
   }, [monitor, monitorError]);
   const { data: weatherData, isLoading: weatherLoading, refresh: refreshWeather, forceRefresh: forceRefreshWeather } = useWatchlistWeather(effectiveIcaos);
 
+  // Prefetch runway data for the whole watchlist alongside the weather fetch,
+  // instead of each card's own RunwayBadge/WindCalculatorTeaser starting its
+  // useRunways() fetch only once that card mounts. Same queryKey shape as
+  // useRunways() so it's a cache hit by the time cards render — the badge
+  // used to visibly pop in a beat after the rest of the card because its
+  // fetch couldn't start until the card (gated on weatherData) existed yet.
+  const runwayPrefetchQueryClient = useQueryClient();
+  useEffect(() => {
+    for (const icao of effectiveIcaos) {
+      runwayPrefetchQueryClient.prefetchQuery({
+        queryKey: ["runways", icao],
+        queryFn: () =>
+          fetch(`/api/airports/${icao}/runways`)
+            .then((r) => r.json())
+            .then((data) => data.runways),
+        staleTime: Infinity,
+      });
+    }
+  }, [effectiveIcaos, runwayPrefetchQueryClient]);
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
