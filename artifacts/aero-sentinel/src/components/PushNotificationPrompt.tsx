@@ -19,25 +19,40 @@ export function PushNotificationPrompt() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    // Check cookie consent
-    const raw = localStorage.getItem("aero-cookie-consent");
-    const consent = raw ? JSON.parse(raw) : null;
-    const hasConsent = !!consent;
+    // Check cookie consent — re-run whenever CookieConsent dispatches
+    // "aero-consent-given" (clicking Accept/Reject) so the prompt can appear
+    // right away on first visit, instead of only after a later page reload.
+    let cancelTimer: (() => void) | undefined;
 
-    const shouldShow =
-      isSupported &&
-      !isSubscribed &&
-      permission === "default" &&
-      !dismissed &&
-      hasConsent;
+    const checkAndSchedule = () => {
+      cancelTimer?.();
+      cancelTimer = undefined;
 
-    // Delay showing by 5 seconds so it doesn't compete with other popups
-    if (shouldShow) {
-      const timer = setTimeout(() => setVisible(true), 5000);
-      return () => clearTimeout(timer);
-    } else {
-      setVisible(false);
-    }
+      const raw = localStorage.getItem("aero-cookie-consent");
+      const consent = raw ? JSON.parse(raw) : null;
+      const hasConsent = !!consent;
+
+      const shouldShow =
+        isSupported &&
+        !isSubscribed &&
+        permission === "default" &&
+        !dismissed &&
+        hasConsent;
+
+      if (shouldShow) {
+        const timer = setTimeout(() => setVisible(true), 3000);
+        cancelTimer = () => clearTimeout(timer);
+      } else {
+        setVisible(false);
+      }
+    };
+
+    checkAndSchedule();
+    window.addEventListener("aero-consent-given", checkAndSchedule);
+    return () => {
+      cancelTimer?.();
+      window.removeEventListener("aero-consent-given", checkAndSchedule);
+    };
   }, [isSupported, isSubscribed, permission, dismissed]);
 
   const handleEnable = async () => {

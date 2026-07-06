@@ -17,7 +17,6 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { CookieConsent, getCookiePreferences } from "@/components/CookieConsent";
 import { AdSenseConsent } from "@/components/AdSenseConsent";
 import { BackToTop } from "@/components/BackToTop";
-import { NotificationBanner } from "@/components/NotificationBanner";
 import { PushNotificationPrompt } from "@/components/PushNotificationPrompt";
 
 // ── Route-based code splitting (React.lazy) ──────────────────────────────────
@@ -174,7 +173,6 @@ function AppInner() {
         <SplashScreen />
         <Toaster />
         <CookieConsent />
-        <NotificationBanner />
         <PushNotificationPrompt />
         <AdSenseConsent />
         <BackToTop />
