@@ -152,6 +152,12 @@ function AppInner() {
           onDismiss={dismissToast}
           onAck={(id) => setLocalAcked(prev => prev.includes(id) ? prev : [...prev, id])}
           onViewChanges={(id, type, icao) => {
+            // id === 0: batch-summary toast sentinel — just go to the alerts
+            // list, there's no single alert to open a diff modal for.
+            if (id === 0) {
+              window.location.href = "/alerts";
+              return;
+            }
             if (window.location.pathname.startsWith("/alerts")) {
               // Alerts sayfasındaysak direkt event dispatch et
               window.dispatchEvent(new CustomEvent("open-diff-modal", { detail: { alertId: id, alertType: type, icao } }));

@@ -7,6 +7,7 @@ interface AlertToastItem {
   icao: string;
   alertId: number;
   alertType: string;
+  isSummary?: boolean;
 }
 
 interface Props {
@@ -66,26 +67,28 @@ export function AlertToast({ item, onDismiss, onAck, onViewChanges }: Props) {
         <p className="text-[11px] font-mono font-bold text-white/90 tracking-wide truncate">
           {item.title}
         </p>
-        <p className="text-[10px] font-mono text-white/40 mt-0.5">
-          {item.icao} • {item.alertType.replace("_", " ")}
+        <p className="text-[10px] font-mono text-white/40 mt-0.5 truncate">
+          {item.isSummary ? item.icao : `${item.icao} • ${item.alertType.replace("_", " ")}`}
         </p>
       </div>
 
       {/* Buttons */}
       <div className="flex items-center gap-1.5 flex-shrink-0">
-        <button
-          onClick={handleAck}
-          className="px-2.5 py-1 rounded-md border text-[9px] font-mono font-bold tracking-wider transition-all hover:scale-105"
-          style={{ borderColor: "rgba(52, 211, 153, 0.4)", color: "#34d399", backgroundColor: "rgba(52, 211, 153, 0.08)" }}
-        >
-          ACK
-        </button>
+        {!item.isSummary && (
+          <button
+            onClick={handleAck}
+            className="px-2.5 py-1 rounded-md border text-[9px] font-mono font-bold tracking-wider transition-all hover:scale-105"
+            style={{ borderColor: "rgba(52, 211, 153, 0.4)", color: "#34d399", backgroundColor: "rgba(52, 211, 153, 0.08)" }}
+          >
+            ACK
+          </button>
+        )}
         <button
           onClick={handleViewChanges}
           className="px-2.5 py-1 rounded-md border text-[9px] font-mono font-bold tracking-wider transition-all hover:scale-105"
           style={{ borderColor: "rgba(56, 189, 248, 0.4)", color: "#38bdf8", backgroundColor: "rgba(56, 189, 248, 0.08)" }}
         >
-          VIEW
+          {item.isSummary ? "VIEW ALL" : "VIEW"}
         </button>
       </div>
     </div>

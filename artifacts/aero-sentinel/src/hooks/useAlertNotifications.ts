@@ -69,6 +69,18 @@ async function sendNotification(title: string, options: NotificationOptions): Pr
   return showNativeNotification(title, options);
 }
 
+/** Ortak "N new alerts" özet metni — havalimanı ve tür kırılımıyla. */
+function buildBatchSummary(alerts: Array<{ icao: string; type: string }>): { body: string; icaoCount: number } {
+  const typeCounts: Record<string, number> = {};
+  const icaos = new Set<string>();
+  for (const a of alerts) {
+    typeCounts[a.type] = (typeCounts[a.type] ?? 0) + 1;
+    icaos.add(a.icao);
+  }
+  const parts = Object.entries(typeCounts).map(([type, count]) => `${count} ${TYPE_LABELS[type] ?? type}`);
+  return { body: `${icaos.size} airport(s): ${parts.join(", ")}`, icaoCount: icaos.size };
+}
+
 export function useAlertNotifications() {
   const { play: playAlert } = useAlertSound();
   const { effectiveIcaos } = useWatchlist();
@@ -79,6 +91,7 @@ export function useAlertNotifications() {
     icao: string;
     alertId: number;
     alertType: string;
+    isSummary?: boolean;
   }>>([]);
   const seenIds = useRef<Set<number>>(loadSeenIds());
   const queryClient = useQueryClient();
@@ -86,44 +99,8 @@ export function useAlertNotifications() {
   // Keep ref in sync with latest effectiveIcaos
   effectiveIcaosRef.current = effectiveIcaos;
 
-  // ─── Per-ICAO "tracked since" — replaces the old global isFirstFetch flag ──
-  // A blanket "first fetch after any watchlist change" flag suppressed
-  // notifications for EVERY airport whenever the watchlist changed at all —
-  // including genuinely new alerts for airports that had been watched for a
-  // while. Instead, each ICAO gets its own reference timestamp: airports
-  // present when the hook mounts are tracked from "now" (app load), airports
-  // added later are tracked from the exact moment they're added. An alert
-  // notifies only if its detectedAt is AFTER its ICAO's tracked-since time —
-  // pre-existing conditions on a newly-added airport are still suppressed,
-  // but that suppression no longer bleeds into already-watched airports.
-  const trackedSince = useRef<Map<string, number>>(new Map());
-
   const dismissToast = useCallback((id: string) => {
     setPendingToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
-
-  // Bootstrap: ICAOs already in the watchlist when this hook mounts are
-  // "tracked from app load" — their pre-existing alerts are suppressed once.
-  useEffect(() => {
-    const now = Date.now();
-    for (const icao of effectiveIcaosRef.current) {
-      trackedSince.current.set(icao.toUpperCase(), now);
-    }
-    log(`Bootstrap: tracking ${trackedSince.current.size} ICAO(s) from app load`);
-  }, []);
-
-  // A specific ICAO was just added — track it from this exact moment, so its
-  // pre-existing conditions get suppressed without touching other airports.
-  useEffect(() => {
-    const handleAirportAdded = (e: Event) => {
-      const icao = (e as CustomEvent<string>).detail;
-      if (icao) {
-        trackedSince.current.set(icao.toUpperCase(), Date.now());
-        log(`ICAO tracked from now: ${icao}`);
-      }
-    };
-    window.addEventListener("watchlist-airport-added", handleAirportAdded);
-    return () => window.removeEventListener("watchlist-airport-added", handleAirportAdded);
   }, []);
 
   // ─── Cross-tab localStorage senkronizasyonu ───────────────────────────────
@@ -150,9 +127,7 @@ export function useAlertNotifications() {
 
   // ─── watchlist-synced listener: re-check alerts when watchlist changes ──────
   // When the watchlist syncs to backend, the API may return a different set
-  // of alerts (new ICAOs, removed ICAOs). Invalidate so the next poll reflects
-  // it — per-ICAO tracked-since (above) already handles new-vs-known airports
-  // correctly, so there's no need to reset anything global here.
+  // of alerts (new ICAOs, removed ICAOs). Invalidate so the next poll reflects it.
   useEffect(() => {
     const handleWatchlistSynced = () => {
       log("watchlist-synced: invalidating queries");
@@ -230,18 +205,20 @@ export function useAlertNotifications() {
     const raw = localStorage.getItem('aero-cookie-consent');
     const consent = raw ? JSON.parse(raw) : null;
     const hasCookieConsent = !!consent;
+    const hasPermission = typeof Notification !== "undefined" && Notification.permission === "granted";
 
-    let newAlertCount = 0;
     let skippedWatchlist = 0;
     let skippedSnooze = 0;
     let skippedSeen = 0;
-    let skippedPreExisting = 0;
-    const hasPermission = typeof Notification !== "undefined" && Notification.permission === "granted";
 
     // Use ref to get the latest effectiveIcaos (avoids stale closure issues)
     const currentIcaos = effectiveIcaosRef.current;
     const watchlistSet = new Set(currentIcaos.map(s => s.toUpperCase()));
 
+    // ─── Pass 1: filter down to genuinely new, notify-worthy alerts ──────────
+    // No side effects here yet — we need the full set before deciding whether
+    // to notify individually or collapse into one batch summary.
+    const newAlerts: typeof allAlerts = [];
     for (const alert of allAlerts) {
       // Already seen → skip silently (don't add again)
       if (seenIds.current.has(alert.id)) { skippedSeen++; continue; }
@@ -258,30 +235,33 @@ export function useAlertNotifications() {
         continue;
       }
 
-      // Pre-existing condition on this ICAO (predates when we started tracking
-      // it) — mark seen so it won't be re-evaluated, but don't notify. This is
-      // scoped per-ICAO, so it never suppresses genuinely new alerts on other,
-      // already-watched airports.
-      const trackedFrom = trackedSince.current.get(alert.icao.toUpperCase());
-      const isPreExisting = trackedFrom !== undefined && new Date(alert.detectedAt).getTime() < trackedFrom;
-
+      // Genuinely new to this device — notify (individually or batched below).
+      // This includes alerts already sitting in the last 6h on first load /
+      // right after adding a new airport: with batching in place, "there could
+      // be a lot of these" is no longer a reason to notify silently — a big
+      // first-load batch just collapses into one summary notification instead.
       seenIds.current.add(alert.id);
+      newAlerts.push(alert);
+    }
 
-      if (isPreExisting) {
-        skippedPreExisting++;
-        continue;
-      }
+    // Save seenIds whenever anything got newly marked as seen
+    if (newAlerts.length > 0) saveSeenIds(seenIds.current);
 
-      newAlertCount++;
+    // ─── Pass 2: notify ───────────────────────────────────────────────────────
+    // A single new alert keeps today's full-detail notification. Two or more
+    // arriving in the same poll (e.g. a frontal system triggering SPECI at many
+    // airports at once) collapse into ONE summary notification/toast/sound
+    // instead of firing once per airport.
+    const icon = `${import.meta.env.BASE_URL}alert-icon.png?v=7`;
 
+    if (newAlerts.length === 1) {
+      const alert = newAlerts[0];
       const label = TYPE_LABELS[alert.type] ?? alert.type;
       const title = `AERO-SENTINEL — ${label}`;
       const body = `${alert.icao}: ${alert.rawText.slice(0, 120)}`;
-      const icon = `${import.meta.env.BASE_URL}alert-icon.png?v=7`;
 
       log("🔔 YENİ ALERT BİLDİRİM:", alert.id, alert.type, alert.icao);
 
-      // Browser notification gönder (izin + cookie consent varsa)
       if (hasPermission && hasCookieConsent) {
         sendNotification(title, { body, icon, tag: `aero-alert-${alert.icao}-${alert.id}`, requireInteraction: false }).then((n) => {
           if (n) {
@@ -292,27 +272,50 @@ export function useAlertNotifications() {
         });
       }
 
-      // Her durumda in-app toast göster (izin olmasa bile)
-      const toastId = `toast-${alert.id}-${Date.now()}`;
       setPendingToasts(prev => [...prev, {
-        id: toastId,
-        title: `${TYPE_LABELS[alert.type] ?? alert.type}`,
+        id: `toast-${alert.id}-${Date.now()}`,
+        title: label,
         icao: alert.icao,
         alertId: alert.id,
         alertType: alert.type,
       }]);
 
-      // Ses çal
+      try { playAlert(); } catch { /* ignore */ }
+    } else if (newAlerts.length > 1) {
+      const { body, icaoCount } = buildBatchSummary(newAlerts);
+      const title = `AERO-SENTINEL — ${newAlerts.length} New Alerts`;
+
+      log(`🔔 TOPLU BİLDİRİM: ${newAlerts.length} alert, ${icaoCount} havalimanı — ${body}`);
+
+      if (hasPermission && hasCookieConsent) {
+        sendNotification(title, { body, icon, tag: `aero-alert-batch-${Date.now()}`, requireInteraction: false }).then((n) => {
+          if (n) {
+            const timer = setTimeout(() => n.close(), AUTO_CLOSE_MS);
+            n.onclick = () => { clearTimeout(timer); window.location.href = "/alerts"; n.close(); };
+            n.onclose = () => clearTimeout(timer);
+          }
+        });
+      }
+
+      // alertId: 0 is a sentinel — never a real DB id (serial starts at 1) or a
+      // synthetic live-scan id (stableSyntheticId never produces 0). AlertToast
+      // and App.tsx's onViewChanges use it to render/route the summary case.
+      setPendingToasts(prev => [...prev, {
+        id: `toast-batch-${Date.now()}`,
+        title: `${newAlerts.length} New Alerts`,
+        icao: body,
+        alertId: 0,
+        alertType: "SUMMARY",
+        isSummary: true,
+      }]);
+
       try { playAlert(); } catch { /* ignore */ }
     }
 
-    // Save seenIds whenever anything got newly marked as seen (notified or pre-existing)
-    if (newAlertCount > 0 || skippedPreExisting > 0) saveSeenIds(seenIds.current);
-
-    const totalSkipped = skippedWatchlist + skippedSnooze + skippedSeen + skippedPreExisting;
-    if (totalSkipped > 0) log(`⏭️ ${totalSkipped} atlandı (seen=${skippedSeen} watchlist=${skippedWatchlist} snooze=${skippedSnooze} preExisting=${skippedPreExisting})`);
-    if (newAlertCount === 0) log("Yeni alert yok (tümü seenIds'de veya filtrelenmiş)");
-    else log(`✅ ${newAlertCount} yeni alert için bildirim gönderildi`);
+    const totalSkipped = skippedWatchlist + skippedSnooze + skippedSeen;
+    if (totalSkipped > 0) log(`⏭️ ${totalSkipped} atlandı (seen=${skippedSeen} watchlist=${skippedWatchlist} snooze=${skippedSnooze})`);
+    if (newAlerts.length === 0) log("Yeni alert yok (tümü seenIds'de veya filtrelenmiş)");
+    else log(`✅ ${newAlerts.length} yeni alert için bildirim gönderildi (${newAlerts.length > 1 ? "toplu" : "tekli"})`);
   }, [allAlerts, playAlert, effectiveIcaos, isSnoozed]);
 
   return { forceCheck, pendingToasts, dismissToast };

@@ -169,6 +169,7 @@ async function loadMonitorCache() {
 }
 
 type ConditionAlertType = "LIFR" | "WX_EXTREME" | "WIND_EXTREME";
+type AlertType = "TAF_AMD" | "TAF_COR" | "SPECI" | ConditionAlertType;
 
 /** Priority-based condition detection: LIFR > WX_EXTREME > WIND_EXTREME. */
 function detectConditionType(rawText: string): ConditionAlertType | null {
@@ -178,9 +179,15 @@ function detectConditionType(rawText: string): ConditionAlertType | null {
   return null;
 }
 
-/** Inserts a condition alert (LIFR/WX_EXTREME/WIND_EXTREME) unless a duplicate was already recorded in the last 24h. */
-async function insertConditionAlertIfNew(
-  alertType: ConditionAlertType,
+/**
+ * Inserts an alert unless an identical one (same icao+type+rawText) was
+ * already recorded in the last 24h. Used for EVERY alert type (TAF_AMD/COR,
+ * SPECI, LIFR/WX_EXTREME/WIND_EXTREME) so a race between overlapping scans,
+ * a process restart mid-cycle, or any other double-detection can never
+ * surface the exact same report to the user twice.
+ */
+async function insertAlertIfNew(
+  alertType: AlertType,
   icao: string,
   rawText: string,
   previousRawText: string | null,
@@ -193,17 +200,18 @@ async function insertConditionAlertIfNew(
       sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
     )).limit(1);
   if (recentDup.length > 0) {
-    logger.info({ icao, alertType }, "[monitor] Skipping duplicate condition alert (recent alert exists)");
+    logger.info({ icao, alertType }, "[monitor] Skipping duplicate alert (recent alert exists)");
     return;
   }
   try {
     await db.insert(alertsTable).values({ type: alertType, icao, rawText, previousRawText });
-    logger.info({ icao, alertType }, "[monitor] Condition alert inserted");
+    logger.info({ icao, alertType }, "[monitor] Alert inserted");
     void sendPushForAlert(alertType, icao, rawText, 0);
   } catch (err) {
-    logger.error({ err, icao, alertType }, "[monitor] Failed to insert condition alert");
+    logger.error({ err, icao, alertType }, "[monitor] Failed to insert alert");
   }
 }
+
 
 async function scanTaf(ids: string) {
   if (!ids) return;
@@ -262,14 +270,8 @@ async function scanTaf(ids: string) {
       if (hasAmdCor) {
         tafAmdCorDetected++;
         const alertType = rawTaf.includes("COR") ? "TAF_COR" : "TAF_AMD";
-        try {
-          await db.insert(alertsTable).values({ type: alertType, icao, rawText: rawTaf, previousRawText });
-          tafAlertsInserted++;
-          logger.info(`[monitor] ✅ TAF alert: ${alertType} for ${icao}`);
-          void sendPushForAlert(alertType, icao, rawTaf, 0);
-        } catch (err) {
-          logger.error({ err }, `[monitor] ❌ TAF insert FAILED for ${icao}:`);
-        }
+        await insertAlertIfNew(alertType, icao, rawTaf, previousRawText);
+        tafAlertsInserted++;
       }
 
       // When AMD/COR is present, suppress WX_EXTREME, WIND_EXTREME, LIFR
@@ -277,7 +279,7 @@ async function scanTaf(ids: string) {
       if (!hasAmdCor) {
         const conditionType = detectConditionType(rawTaf);
         if (conditionType) {
-          await insertConditionAlertIfNew(conditionType, icao, rawTaf, previousRawText);
+          await insertAlertIfNew(conditionType, icao, rawTaf, previousRawText);
         }
       }
     } else if (rawTaf) {
@@ -285,6 +287,14 @@ async function scanTaf(ids: string) {
       // A FM period may have become "current" since the last scan even though
       // the full TAF text hasn't changed.  Re-evaluate LIFR / WX_EXTREME /
       // WIND_EXTREME on the active period's weather section + any active TEMPO/BECMG groups.
+      //
+      // Skip entirely when this (unchanged) TAF is itself an AMD/COR — that
+      // report already produced a TAF_AMD/TAF_COR alert when it first arrived,
+      // and per the "one alert per report" rule an AMD/COR must never ALSO
+      // spawn a LIFR/WX_EXTREME/WIND_EXTREME alert for the same underlying text.
+      const hasAmdCor = rawTaf.includes("COR") || rawTaf.includes("AMD") || tafType === "AMD" || tafType === "COR";
+      if (hasAmdCor) continue;
+
       const activePeriod = getActiveTafPeriod(rawTaf);
       const activeTempos = getActiveTempos(rawTaf);
       const tempoSuffix = activeTempos.length > 0
@@ -311,7 +321,7 @@ async function scanTaf(ids: string) {
         const alertType = detectConditionType(combinedText);
         if (alertType) {
           // DB dedup uses combined text (period + TEMPO) as rawText for per-period deduplication
-          await insertConditionAlertIfNew(alertType, icao, combinedText, rawTaf);
+          await insertAlertIfNew(alertType, icao, combinedText, rawTaf);
         }
         tafPeriodLastAlert[icao] = { periodKey, alertType: alertType ?? "NONE" };
       }
@@ -406,14 +416,8 @@ async function scanMetar(ids: string) {
       }
       const hasSpeci = rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ") || metarType === "SPECI";
       if (hasSpeci) {
-        try {
-          await db.insert(alertsTable).values({ type: "SPECI", icao, rawText: rawMetar, previousRawText });
-          metAlertsInserted++;
-          logger.info(`[monitor] ✅ SPECI alert for ${icao}`);
-          void sendPushForAlert("SPECI", icao, rawMetar, 0);
-        } catch (err) {
-          logger.error({ err }, `[monitor] ❌ SPECI insert FAILED for ${icao}:`);
-        }
+        await insertAlertIfNew("SPECI", icao, rawMetar, previousRawText);
+        metAlertsInserted++;
       }
 
       // When SPECI is present, suppress WX_EXTREME, WIND_EXTREME, LIFR
@@ -421,7 +425,7 @@ async function scanMetar(ids: string) {
       if (!hasSpeci) {
         const conditionType = detectConditionType(rawMetar);
         if (conditionType) {
-          await insertConditionAlertIfNew(conditionType, icao, rawMetar, previousRawText);
+          await insertAlertIfNew(conditionType, icao, rawMetar, previousRawText);
         }
       }
     }
@@ -439,28 +443,9 @@ async function scanMetar(ids: string) {
       if (!isSpeci) continue;
       // Skip if this SPECI text matches what's currently cached (already processed)
       if (entryRaw === sonGorulenMetar[icao]) continue;
-      // Deduplicate against DB: skip if a recent alert with same raw text exists
-      const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
-        .where(and(
-          eq(alertsTable.icao, icao),
-          eq(alertsTable.type, "SPECI"),
-          eq(alertsTable.rawText, entryRaw),
-          sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
-        )).limit(1);
-      if (recentDup.length === 0) {
-        try {
-          await db.insert(alertsTable).values({
-            type: "SPECI", icao, rawText: entryRaw,
-            previousRawText: sonGorulenMetar[icao] ?? null,
-          });
-          metSpeciFromHistory++;
-          metAlertsInserted++;
-          logger.info(`[monitor] ✅ SPECI (from history) alert for ${icao}: "${entryRaw.slice(0, 60)}"`);
-          void sendPushForAlert("SPECI", icao, entryRaw, 0);
-        } catch (err) {
-          logger.error({ err }, `[monitor] ❌ SPECI (from history) insert FAILED for ${icao}:`);
-        }
-      }
+      await insertAlertIfNew("SPECI", icao, entryRaw, sonGorulenMetar[icao] ?? null);
+      metSpeciFromHistory++;
+      metAlertsInserted++;
     }
   }
 
