@@ -6,6 +6,7 @@ import {
   AcknowledgeAlertParams,
 } from "@workspace/api-zod";
 import { logger } from "../lib/logger";
+import { getDeviceId, devOnly } from "../lib/reqContext.js";
 
 const router = Router();
 
@@ -33,10 +34,6 @@ function startOfTodayUtc(): Date {
   return d;
 }
 
-function getDeviceId(req: Express.Request): string {
-  return (req.headers["x-device-id"] as string) ?? "legacy";
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/alerts", async (req, res) => {
@@ -52,7 +49,7 @@ router.get("/alerts", async (req, res) => {
   };
   const parsed = ListAlertsQueryParams.safeParse(coerced);
   if (!parsed.success) {
-    console.error(`[GET /alerts] Zod validation FAILED for userId=${userId.slice(0, 8)}…:`, JSON.stringify(parsed.error.issues));
+    logger.error({ issues: parsed.error.issues }, `[GET /alerts] Zod validation FAILED for userId=${userId.slice(0, 8)}…`);
     return res.status(400).json({ error: "Invalid query params" });
   }
 
@@ -62,7 +59,7 @@ router.get("/alerts", async (req, res) => {
   const now = Date.now();
   if (entry && now - entry.ts < RECENT_CACHE_TTL) {
     const cached = entry.data as object[];
-    console.log(`[GET /alerts] CACHE HIT userId=${userId.slice(0, 8)}… count=${Array.isArray(cached) ? cached.length : "?"} age=${Math.round((now - entry.ts) / 1000)}s`);
+    logger.info(`[GET /alerts] CACHE HIT userId=${userId.slice(0, 8)}… count=${Array.isArray(cached) ? cached.length : "?"} age=${Math.round((now - entry.ts) / 1000)}s`);
     return res.json(entry.data);
   }
 
@@ -77,7 +74,7 @@ router.get("/alerts", async (req, res) => {
     .where(eq(watchlistTable.userId, userId));
   const userIcaos = userWatchlist.map((r) => r.icao);
   if (userIcaos.length === 0) {
-    console.log(`[GET /alerts] EMPTY WATCHLIST userId=${userId.slice(0, 8)}… → returning []`);
+    logger.info(`[GET /alerts] EMPTY WATCHLIST userId=${userId.slice(0, 8)}… → returning []`);
     return res.json([]);
   }
   conditions.push(inArray(alertsTable.icao, userIcaos));
@@ -109,7 +106,7 @@ router.get("/alerts", async (req, res) => {
   // ── Cache store ──────────────────────────────────────────────────
   cache.set(cacheKey, { data: alerts, ts: now });
 
-  console.log(`[GET /alerts] userId=${userId.slice(0, 8)}… watchlist=${userIcaos.length} ICAOs since=${sinceHours}h limit=${limit} → ${alerts.length} alerts returned`);
+  logger.info(`[GET /alerts] userId=${userId.slice(0, 8)}… watchlist=${userIcaos.length} ICAOs since=${sinceHours}h limit=${limit} → ${alerts.length} alerts returned`);
   return res.json(alerts);
 });
 
@@ -268,11 +265,19 @@ function invalidateAckCaches() {
   }
 }
 
-router.patch("/alerts/acknowledge-all", async (_req, res) => {
+router.patch("/alerts/acknowledge-all", async (req, res) => {
+  const userId = getDeviceId(req);
+  const userWatchlist = await db
+    .select({ icao: watchlistTable.icao })
+    .from(watchlistTable)
+    .where(eq(watchlistTable.userId, userId));
+  const userIcaos = userWatchlist.map((r) => r.icao);
+  if (userIcaos.length === 0) return res.json({ ok: true });
+
   await db
     .update(alertsTable)
     .set({ acknowledged: true, acknowledgedAt: new Date() })
-    .where(eq(alertsTable.acknowledged, false));
+    .where(and(eq(alertsTable.acknowledged, false), inArray(alertsTable.icao, userIcaos)));
   invalidateAckCaches();
   return res.json({ ok: true });
 });
@@ -281,10 +286,18 @@ router.patch("/alerts/:id/acknowledge", async (req, res) => {
   const parsed = AcknowledgeAlertParams.safeParse(req.params);
   if (!parsed.success) return res.status(400).json({ error: "Invalid id" });
 
+  const userId = getDeviceId(req);
+  const userWatchlist = await db
+    .select({ icao: watchlistTable.icao })
+    .from(watchlistTable)
+    .where(eq(watchlistTable.userId, userId));
+  const userIcaos = userWatchlist.map((r) => r.icao);
+  if (userIcaos.length === 0) return res.status(404).json({ error: "Alert not found" });
+
   const [updated] = await db
     .update(alertsTable)
     .set({ acknowledged: true, acknowledgedAt: new Date() })
-    .where(eq(alertsTable.id, parsed.data.id))
+    .where(and(eq(alertsTable.id, parsed.data.id), inArray(alertsTable.icao, userIcaos)))
     .returning();
 
   if (!updated) return res.status(404).json({ error: "Alert not found" });
@@ -294,6 +307,18 @@ router.patch("/alerts/:id/acknowledge", async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** "TAF ..." vs "METAR .../SPECI ..." — a TAF must never diff against a METAR and vice versa. */
+function reportKind(rawText: string): "TAF" | "METAR" {
+  return /^\s*TAF\b/i.test(rawText) ? "TAF" : "METAR";
+}
+
+/** Embedded DDHHMMZ issuance/observation time as minutes-of-month, for chronological ordering. */
+function reportTimeMinutes(rawText: string): number | null {
+  const m = rawText.match(/\b(\d{2})(\d{2})(\d{2})Z\b/);
+  if (!m) return null;
+  return parseInt(m[1], 10) * 1440 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10);
+}
+
 router.get("/alerts/:id/diff", async (req, res) => {
   const id = Number(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -302,12 +327,23 @@ router.get("/alerts/:id/diff", async (req, res) => {
   if (rows.length === 0) return res.status(404).json({ error: "Alert not found" });
 
   const alert = rows[0];
+  const currentKind = reportKind(alert.rawText);
+  const currentTime = reportTimeMinutes(alert.rawText);
 
-  // If previousRawText is null, try to find the most recent prior alert of same ICAO
-  // (regardless of type) so that e.g. a TAF_AMD correctly diffs against the previous normal TAF
-  let previousText = alert.previousRawText;
+  // A stored previousRawText must be the same report kind (TAF vs METAR/SPECI) —
+  // the period re-eval path can otherwise store text that no longer qualifies.
+  let previousText = alert.previousRawText && reportKind(alert.previousRawText) === currentKind
+    ? alert.previousRawText
+    : null;
+
+  // If previousRawText is null/invalid, find the most recent prior alert of the
+  // same ICAO *and same report kind*. DB insert order (detectedAt) doesn't always
+  // match real-world chronology — retroactive SPECI backfill can insert an older
+  // observation after a newer one already exists — so among same-ICAO/same-kind
+  // candidates, prefer the one whose own embedded issuance time is strictly
+  // earlier than the current report's, rather than trusting detectedAt alone.
   if (!previousText) {
-    const [prevRow] = await db
+    const candidates = await db
       .select({ rawText: alertsTable.rawText })
       .from(alertsTable)
       .where(
@@ -317,11 +353,15 @@ router.get("/alerts/:id/diff", async (req, res) => {
         )
       )
       .orderBy(desc(alertsTable.detectedAt))
-      .limit(1);
+      .limit(20);
 
-    if (prevRow?.rawText) {
-      previousText = prevRow.rawText;
-    }
+    const match = candidates.find((c) => {
+      if (reportKind(c.rawText) !== currentKind) return false;
+      const cTime = reportTimeMinutes(c.rawText);
+      if (currentTime === null || cTime === null) return true;
+      return cTime < currentTime;
+    });
+    if (match) previousText = match.rawText;
   }
 
   // If the previous text is identical to current, treat as no previous data
@@ -342,7 +382,7 @@ router.get("/alerts/:id/diff", async (req, res) => {
 
 // ── Test Alert Endpoints ────────────────────────────────────────────────────
 
-router.post("/alerts/test", async (req, res) => {
+router.post("/alerts/test", devOnly, async (req, res) => {
   const userId = getDeviceId(req);
   // Kullanıcının watchlist'inden rastgele ICAO seç, yoksa UUWW kullan
   const defaultIcaos = ["UUWW", "ULLI", "LTFJ", "EGSS"];
@@ -358,7 +398,7 @@ router.post("/alerts/test", async (req, res) => {
     }
   } catch {}
 
-  const types = ["SPECI", "TAF_AMD", "TAF_COR", "WX_EXTREME", "WIND_EXTREME", "LIFR"];
+  const types = ["SPECI", "TAF_AMD", "TAF_COR", "WX_EXTREME", "WIND_EXTREME", "LIFR"] as const;
   const type = types[Math.floor(Math.random() * types.length)];
   const rawText = `TEST ${type} ${icao} ${new Date().toISOString().slice(0, 10).replace(/-/g, "")} Test alert for notification testing`;
 
@@ -370,7 +410,7 @@ router.post("/alerts/test", async (req, res) => {
   return res.json({ ok: true, type, icao });
 });
 
-router.delete("/alerts/test", async (req, res) => {
+router.delete("/alerts/test", devOnly, async (req, res) => {
   // POST /alerts/test creates alerts with real ICAOs (from watchlist) but
   // rawText always starts with "TEST ". Match on rawText instead of ICAO.
   const deleted = await db

@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api-server",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "artifacts/api-server",
+      "port": 5001
+    },
+    {
+      "name": "aero-sentinel",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "artifacts/aero-sentinel",
+      "port": 5173
+    }
+  ]
+}

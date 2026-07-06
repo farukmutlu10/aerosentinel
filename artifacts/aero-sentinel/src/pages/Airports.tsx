@@ -1,6 +1,5 @@
 import { useRef, useState, useEffect, useMemo, type CSSProperties, type KeyboardEvent, type DragEvent } from "react";
 import { Link } from "wouter";
-import * as XLSX from "xlsx";
 import { NavHeader } from "@/components/NavHeader";
 import { Footer } from "@/components/Footer";
 import { AdSlot } from "@/components/ads/AdSlot";
@@ -165,7 +164,10 @@ function scoreHeaderRow(row: unknown[]): number {
   return score;
 }
 
-function parseExcelFile(file: File): Promise<FlightRow[]> {
+async function parseExcelFile(file: File): Promise<FlightRow[]> {
+  // Dynamically imported so the ~200KB+ xlsx library only loads when a user
+  // actually uploads a file, instead of on every visit to this page.
+  const XLSX = await import("xlsx");
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("File could not be read"));
@@ -276,7 +278,8 @@ async function fetchTafBatch(icaos: string[]): Promise<Record<string, string | n
   );
   for (let bi = 0; bi < batches.length; bi++) {
     const batch = batches[bi];
-    const value = settled[bi].status === "fulfilled" ? settled[bi].value : null;
+    const settledResult = settled[bi];
+    const value = settledResult.status === "fulfilled" ? settledResult.value : null;
     if (Array.isArray(value)) {
       for (const item of value as Array<{ icao: string; rawTaf: string | null }>) {
         results[item.icao] = item.rawTaf ?? null;

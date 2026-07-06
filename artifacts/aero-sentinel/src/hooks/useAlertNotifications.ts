@@ -21,7 +21,9 @@ const TYPE_LABELS: Record<string, string> = {
 
 const AUTO_CLOSE_MS = 30_000;
 const LOG = "[AeroNotif]";
-const log = (...args: unknown[]) => console.log(LOG, new Date().toISOString(), ...args);
+const log = (...args: unknown[]) => {
+  if (import.meta.env.DEV) console.log(LOG, new Date().toISOString(), ...args);
+};
 
 // ─── Persisted seen-alert tracker ───────────────────────────────────────────
 
@@ -84,14 +86,44 @@ export function useAlertNotifications() {
   // Keep ref in sync with latest effectiveIcaos
   effectiveIcaosRef.current = effectiveIcaos;
 
-  // ─── FIRST-FETCH SUPPRESSION ──────────────────────────────────────────────
-  // On the first successful API response, mark all existing alerts as seen.
-  // This prevents notifications for pre-existing alerts on page load.
-  // After the first fetch, only truly new alerts trigger notifications.
-  const isFirstFetch = useRef(true);
+  // ─── Per-ICAO "tracked since" — replaces the old global isFirstFetch flag ──
+  // A blanket "first fetch after any watchlist change" flag suppressed
+  // notifications for EVERY airport whenever the watchlist changed at all —
+  // including genuinely new alerts for airports that had been watched for a
+  // while. Instead, each ICAO gets its own reference timestamp: airports
+  // present when the hook mounts are tracked from "now" (app load), airports
+  // added later are tracked from the exact moment they're added. An alert
+  // notifies only if its detectedAt is AFTER its ICAO's tracked-since time —
+  // pre-existing conditions on a newly-added airport are still suppressed,
+  // but that suppression no longer bleeds into already-watched airports.
+  const trackedSince = useRef<Map<string, number>>(new Map());
 
   const dismissToast = useCallback((id: string) => {
     setPendingToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  // Bootstrap: ICAOs already in the watchlist when this hook mounts are
+  // "tracked from app load" — their pre-existing alerts are suppressed once.
+  useEffect(() => {
+    const now = Date.now();
+    for (const icao of effectiveIcaosRef.current) {
+      trackedSince.current.set(icao.toUpperCase(), now);
+    }
+    log(`Bootstrap: tracking ${trackedSince.current.size} ICAO(s) from app load`);
+  }, []);
+
+  // A specific ICAO was just added — track it from this exact moment, so its
+  // pre-existing conditions get suppressed without touching other airports.
+  useEffect(() => {
+    const handleAirportAdded = (e: Event) => {
+      const icao = (e as CustomEvent<string>).detail;
+      if (icao) {
+        trackedSince.current.set(icao.toUpperCase(), Date.now());
+        log(`ICAO tracked from now: ${icao}`);
+      }
+    };
+    window.addEventListener("watchlist-airport-added", handleAirportAdded);
+    return () => window.removeEventListener("watchlist-airport-added", handleAirportAdded);
   }, []);
 
   // ─── Cross-tab localStorage senkronizasyonu ───────────────────────────────
@@ -117,14 +149,13 @@ export function useAlertNotifications() {
   }, [queryClient]);
 
   // ─── watchlist-synced listener: re-check alerts when watchlist changes ──────
-  // When the watchlist syncs to backend, the API may return different alerts.
-  // Invalidate the query so the next poll returns fresh data filtered by the
-  // correct watchlist. Also reset isFirstFetch so the new data set is properly
-  // suppressed (all existing alerts marked as seen).
+  // When the watchlist syncs to backend, the API may return a different set
+  // of alerts (new ICAOs, removed ICAOs). Invalidate so the next poll reflects
+  // it — per-ICAO tracked-since (above) already handles new-vs-known airports
+  // correctly, so there's no need to reset anything global here.
   useEffect(() => {
     const handleWatchlistSynced = () => {
-      log("watchlist-synced: resetting isFirstFetch and invalidating queries");
-      isFirstFetch.current = true;
+      log("watchlist-synced: invalidating queries");
       queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
     };
     window.addEventListener("watchlist-synced", handleWatchlistSynced);
@@ -149,59 +180,62 @@ export function useAlertNotifications() {
   }, [queryClient]);
 
   // ─── Polling — useListAlerts ile (Alerts sayfasıyla aynı API) ──────────────
-  const { data: allAlerts, error: recentError, isLoading } = useListAlerts(
+  // refetchIntervalInBackground MUTLAKA true olmalı: kullanıcı sekmeyi arka
+  // planda/ikinci monitörde açık tutuyorsa (dispatcher/pilot kullanım senaryosu),
+  // visibilitychange handler'ı SADECE sekmeye geri dönüldüğünde yakalar — sekme
+  // arka planda kaldığı sürece hiç invalidate etmez. Chrome yine de arka plan
+  // timer'larını ~60sn'ye throttle eder ama bu, "sekme odakta değilken hiç
+  // güncellenmiyor" durumundan çok daha iyidir.
+  const { data: allAlerts, error: recentError, isLoading, fetchStatus, status } = useListAlerts(
     { limit: 100, since_hours: 6 } as any,
     { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), staleTime: 0, refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, refetchOnReconnect: true, refetchOnMount: true, retry: 3 } }
   );
 
+  // ─── DIAGNOSTIC refs: track allAlerts reference between renders ───────────
+  const prevAlertsRef = useRef<typeof allAlerts>(undefined);
+  const pollCountRef = useRef(0);
+
   useEffect(() => { if (recentError) log("⚠️ API HATASI:", recentError.message || recentError); }, [recentError]);
+
+  // ─── DIAGNOSTIC: Track allAlerts reference changes ─────────────────────────
+  // This block runs on every render (not inside useEffect) so we can detect
+  // whether React Query structural sharing keeps the same reference between polls.
+  {
+    const prevLen = prevAlertsRef.current?.length;
+    const newLen = allAlerts?.length;
+    const prevFirstId = prevAlertsRef.current?.[0]?.id;
+    const newFirstId = allAlerts?.[0]?.id;
+    const refChanged = prevAlertsRef.current !== allAlerts;
+
+    if (refChanged) {
+      pollCountRef.current++;
+      log(`[POLL #${pollCountRef.current}] REF CHANGED — prev: len=${prevLen} firstId=${prevFirstId}, new: len=${newLen} firstId=${newFirstId}, seenIds=${seenIds.current.size}, isLoading=${isLoading}, fetchStatus=${fetchStatus}, status=${status}`);
+      prevAlertsRef.current = allAlerts;
+    } else if (allAlerts !== undefined) {
+      // Log periodically even when ref hasn't changed, so we know the hook is alive
+      pollCountRef.current++;
+      if (pollCountRef.current % 5 === 0) {
+        log(`[POLL #${pollCountRef.current}] SAME REF — len=${newLen} firstId=${newFirstId}, seenIds=${seenIds.current.size}, isLoading=${isLoading}, fetchStatus=${fetchStatus}, status=${status}`);
+      }
+    }
+  }
 
   // ─── Ana bildirim effect'i ─────────────────────────────────────────────────
   useEffect(() => {
+    log(`[NOTIF EFFECT] Fired — allAlerts=${allAlerts?.length ?? "undefined"}, seenIds=${seenIds.current.size}`);
+    if (!allAlerts?.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }
+
     // Cookie consent guard — only blocks browser notifications (Notification API).
     // In-app toasts and sounds are core app functionality and work without consent.
     const raw = localStorage.getItem('aero-cookie-consent');
     const consent = raw ? JSON.parse(raw) : null;
     const hasCookieConsent = !!consent;
 
-    // ─── FIRST-FETCH SUPPRESSION ──────────────────────────────────────────────
-    // On the first successful API response (allAlerts is defined, not undefined),
-    // mark all existing alerts as seen. This prevents notifications for
-    // pre-existing alerts on page load.
-    // IMPORTANT: Only clear isFirstFetch when allAlerts is DEFINED (not loading).
-    // Previously it was cleared on undefined (loading state), which meant the
-    // actual first data arrival bypassed suppression.
-    if (isFirstFetch.current) {
-      // Wait for actual data — don't clear the flag on loading state (undefined)
-      if (allAlerts === undefined) {
-        log("First-fetch: still loading (allAlerts=undefined), waiting...");
-        return;
-      }
-      isFirstFetch.current = false;
-
-      if (!allAlerts.length) {
-        log("First-fetch: empty data set, 0 existing alerts to suppress");
-        return;
-      }
-
-      const existingIds = allAlerts
-        .map(a => a.id)
-        .filter((id): id is number => id != null && !seenIds.current.has(id));
-      if (existingIds.length > 0) {
-        for (const id of existingIds) seenIds.current.add(id);
-        saveSeenIds(seenIds.current);
-      }
-      log(`First-fetch suppression: ${existingIds.length} existing alerts marked as seen, 0 notifications`);
-      return; // No notifications for pre-existing alerts
-    }
-
-    if (!allAlerts?.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }
-
-    // ─── NORMAL NOTIFICATION LOGIC: Process genuinely new alerts ──────────
     let newAlertCount = 0;
     let skippedWatchlist = 0;
     let skippedSnooze = 0;
     let skippedSeen = 0;
+    let skippedPreExisting = 0;
     const hasPermission = typeof Notification !== "undefined" && Notification.permission === "granted";
 
     // Use ref to get the latest effectiveIcaos (avoids stale closure issues)
@@ -224,8 +258,20 @@ export function useAlertNotifications() {
         continue;
       }
 
-      // ─── Genuinely new alert → mark as seen and notify ──────────────────
+      // Pre-existing condition on this ICAO (predates when we started tracking
+      // it) — mark seen so it won't be re-evaluated, but don't notify. This is
+      // scoped per-ICAO, so it never suppresses genuinely new alerts on other,
+      // already-watched airports.
+      const trackedFrom = trackedSince.current.get(alert.icao.toUpperCase());
+      const isPreExisting = trackedFrom !== undefined && new Date(alert.detectedAt).getTime() < trackedFrom;
+
       seenIds.current.add(alert.id);
+
+      if (isPreExisting) {
+        skippedPreExisting++;
+        continue;
+      }
+
       newAlertCount++;
 
       const label = TYPE_LABELS[alert.type] ?? alert.type;
@@ -260,25 +306,14 @@ export function useAlertNotifications() {
       try { playAlert(); } catch { /* ignore */ }
     }
 
-    // Only save seenIds when new alerts were actually processed (not skipped)
-    if (newAlertCount > 0) saveSeenIds(seenIds.current);
+    // Save seenIds whenever anything got newly marked as seen (notified or pre-existing)
+    if (newAlertCount > 0 || skippedPreExisting > 0) saveSeenIds(seenIds.current);
 
-    const totalSkipped = skippedWatchlist + skippedSnooze + skippedSeen;
-    if (totalSkipped > 0) log(`⏭️ ${totalSkipped} atlandı (seen=${skippedSeen} watchlist=${skippedWatchlist} snooze=${skippedSnooze})`);
+    const totalSkipped = skippedWatchlist + skippedSnooze + skippedSeen + skippedPreExisting;
+    if (totalSkipped > 0) log(`⏭️ ${totalSkipped} atlandı (seen=${skippedSeen} watchlist=${skippedWatchlist} snooze=${skippedSnooze} preExisting=${skippedPreExisting})`);
     if (newAlertCount === 0) log("Yeni alert yok (tümü seenIds'de veya filtrelenmiş)");
     else log(`✅ ${newAlertCount} yeni alert için bildirim gönderildi`);
   }, [allAlerts, playAlert, effectiveIcaos, isSnoozed]);
-
-  // ─── Periodic backend refresh trigger ───────────────────────────────────
-  // Calls /api/alerts/summary?refresh=1 every 2 minutes to trigger the backend
-  // to scan for new weather data and create alert records.
-  useEffect(() => {
-    const REFRESH_INTERVAL = 120_000; // 2 minutes
-    const intervalId = setInterval(() => {
-      fetch("/api/alerts/summary?refresh=1").catch(() => {});
-    }, REFRESH_INTERVAL);
-    return () => clearInterval(intervalId);
-  }, []);
 
   return { forceCheck, pendingToasts, dismissToast };
 }

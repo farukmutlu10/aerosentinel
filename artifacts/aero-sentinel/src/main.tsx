@@ -7,28 +7,25 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import { setBaseUrl } from "@workspace/api-client-react";
-
-// Generate or retrieve a persistent device ID for this browser
-function getOrCreateDeviceId(): string {
-  let id = localStorage.getItem("aero-device-id");
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem("aero-device-id", id);
-  }
-  return id;
-}
+import { getDeviceId } from "@/lib/deviceId";
 
 // Production'da API isteklerini Railway'e yönlendir
 if (import.meta.env.PROD) {
-  // Determine API base URL based on hostname
-  const isProduction = window.location.hostname === 'aerosentinel.app' ||
-                       window.location.hostname === 'www.aerosentinel.app';
+  // Determine API base URL based on hostname.
+  // Must stay in sync with the backend's production CORS allowlist (app.ts) —
+  // aerosentinel.pages.dev and production.aerosentinel.pages.dev are treated
+  // as production there, so they must resolve to the production API here too.
+  const hostname = window.location.hostname;
+  const isProduction = hostname === 'aerosentinel.app' ||
+                       hostname === 'www.aerosentinel.app' ||
+                       hostname === 'aerosentinel.pages.dev' ||
+                       hostname === 'production.aerosentinel.pages.dev';
   const API_BASE = isProduction
     ? "https://workspaceapi-server-production-b312.up.railway.app"
     : "https://api-server-preview-preview.up.railway.app";
   setBaseUrl(API_BASE);
 
-  const deviceId = getOrCreateDeviceId();
+  const deviceId = getDeviceId();
 
   // Doğrudan fetch() çağrılarını da yönlendir (Dashboard.tsx, Airports.tsx vb.)
   const origFetch = window.fetch;

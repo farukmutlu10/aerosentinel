@@ -38,9 +38,9 @@ app.use(cors({
     // Origin may be undefined for non-browser requests (curl, healthchecks, server-to-server)
     if (!origin) return callback(null, true);
     const isAllowed = allowedOrigins.some((o) => {
-      if (o.includes("*")) {
-        const pattern = o.replace("*.", "");
-        return origin === pattern || origin.endsWith(pattern.replace("https://", "https://*."));
+      if (o.startsWith("https://*.")) {
+        const suffix = o.slice("https://*.".length); // "aerosentinel.pages.dev"
+        return origin === `https://${suffix}` || origin.endsWith(`.${suffix}`);
       }
       return origin === o;
     });
@@ -55,6 +55,25 @@ app.use(cors({
 if (process.env.NODE_ENV === "production") {
   app.use(helmet({
     crossOriginResourcePolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: [
+          "'self'",
+          "https://www.googletagmanager.com",
+          "https://pagead2.googlesyndication.com",
+          "https://www.google-analytics.com",
+        ],
+        connectSrc: [
+          "'self'",
+          "https://www.google-analytics.com",
+          "https://pagead2.googlesyndication.com",
+        ],
+        frameSrc: ["'self'", "https://googleads.g.doubleclick.net"],
+        imgSrc: ["'self'", "data:", "https:"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+      },
+    },
   }));
 }
 

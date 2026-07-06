@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+out-tsc/
+*.tsbuildinfo
+
+# Generated code (regenerated from OpenAPI spec)
+#lib/api-client-react/src/generated/
+#lib/api-zod/src/generated/
+
+# Environment files (contain secrets)
+.env
+.env.local
+.env.production
+
+# Lock files
+pnpm-lock.yaml
+
+# IDE / Editor
+.vscode/
+.idea/
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Replit artifacts
+.cache/
+.local/
+.replit-artifact/
+
+# Attached assets (HTML mockups, font archives, design files)
+attached_assets/
+
+# Wrangler
+.wrangler/
+
+# Build scripts output
+scripts/dist/
+
+# Brand kit (binary assets)
+brand-kit/icons/
+brand-kit/fonts/
+
+# Public static assets (binary — not useful for code context)
+artifacts/aero-sentinel/public/*.png
+artifacts/aero-sentinel/public/*.jpg
+artifacts/aero-sentinel/public/*.woff2
+artifacts/aero-sentinel/public/*.ttf
+artifacts/aero-sentinel/public/*.xml
+artifacts/aero-sentinel/public/fonts/
+
+# Lighthouse reports
+artifacts/aero-sentinel/lighthouse-*.json
+artifacts/aero-sentinel/lighthouse-*.html
+
+# Mockup sandbox
+artifacts/mockup-sandbox/
+
+# Plans (Turkish planning docs — optional context)
+# plans/

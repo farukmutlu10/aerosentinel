@@ -1,15 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-
-// ── Helper: get device ID (same pattern as main.tsx / custom-fetch.ts) ───────
-function getDeviceId(): string {
-  if (typeof localStorage === "undefined") return "legacy";
-  let id = localStorage.getItem("aero-device-id");
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem("aero-device-id", id);
-  }
-  return id;
-}
+import { getDeviceId } from "@/lib/deviceId";
 
 // ── URL-safe Base64 → Uint8Array conversion for applicationServerKey ─────────
 function urlBase64ToUint8Array(base64String: string): Uint8Array {

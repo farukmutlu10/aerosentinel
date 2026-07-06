@@ -2,11 +2,27 @@ import { Router } from "express";
 import { db, pushSubscriptionsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getVapidPublicKey } from "../lib/push.js";
+import { getDeviceId } from "../lib/reqContext.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
-function getDeviceId(req: Express.Request): string {
-  return (req.headers["x-device-id"] as string) ?? "legacy";
+// ── Only accept subscriptions targeting known push services (SSRF guard) ────
+const ALLOWED_PUSH_HOSTS = [
+  "fcm.googleapis.com",
+  "updates.push.services.mozilla.com",
+  "web.push.apple.com",
+  "notify.windows.com",
+];
+
+function isAllowedPushEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol !== "https:") return false;
+    return ALLOWED_PUSH_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
 }
 
 // ── GET /push/vapid-key — returns the VAPID public key for the frontend ──────
@@ -25,6 +41,10 @@ router.post("/push/subscribe", async (req, res) => {
     return res.status(400).json({ error: "Missing endpoint or keys" });
   }
 
+  if (!isAllowedPushEndpoint(endpoint)) {
+    return res.status(400).json({ error: "Unrecognized push service endpoint" });
+  }
+
   try {
     await (db as any)
       .insert(pushSubscriptionsTable)
@@ -39,10 +59,10 @@ router.post("/push/subscribe", async (req, res) => {
         set: { p256dh: keys.p256dh, auth: keys.auth, userId },
       });
 
-    console.log(`[push] Subscription saved: userId=${userId.slice(0, 8)}… endpoint=${endpoint.slice(0, 60)}…`);
+    logger.info(`[push] Subscription saved: userId=${userId.slice(0, 8)}… endpoint=${endpoint.slice(0, 60)}…`);
     return res.json({ ok: true });
   } catch (err) {
-    console.error("[push] Failed to save subscription:", err);
+    logger.error({ err }, "[push] Failed to save subscription:");
     return res.status(500).json({ error: "Failed to save subscription" });
   }
 });
@@ -60,10 +80,10 @@ router.delete("/push/unsubscribe", async (req, res) => {
       .delete(pushSubscriptionsTable)
       .where(eq(pushSubscriptionsTable.endpoint, endpoint));
 
-    console.log(`[push] Subscription removed: endpoint=${endpoint.slice(0, 60)}…`);
+    logger.info(`[push] Subscription removed: endpoint=${endpoint.slice(0, 60)}…`);
     return res.json({ ok: true });
   } catch (err) {
-    console.error("[push] Failed to remove subscription:", err);
+    logger.error({ err }, "[push] Failed to remove subscription:");
     return res.status(500).json({ error: "Failed to remove subscription" });
   }
 });

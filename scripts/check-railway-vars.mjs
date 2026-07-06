@@ -1,5 +1,9 @@
 const API_URL = 'https://backboard.railway.app/graphql/v2';
-const TOKEN = 'a5fd363a-cd15-4a9d-8ec3-c3085c63a85a';
+const TOKEN = process.env.RAILWAY_TOKEN;
+if (!TOKEN) {
+  console.error('RAILWAY_TOKEN env var is required (e.g. export RAILWAY_TOKEN=... before running this script)');
+  process.exit(1);
+}
 const PROJECT_ID = 'ee91a8a4-b9a9-46d3-9e6c-93723ecaab38';
 const PROD_ENV = '6359edf1-820c-41c7-8a50-9e8ed3acf083';
 const PREVIEW_ENV = 'f815f912-a927-473d-aeb8-cf918b85fe4b';

@@ -47,13 +47,17 @@ let memNextId = { wl: 1, alert: 1, pushSub: 1 };
  * Creates a lightweight thenable query-builder surrogate for the in-memory
  * fallback.  It mimics a tiny subset of Drizzle's chainable API.
  */
-function memQuery<T>(result: T[] = []) {
+function memQuery<T>(result: T[] = [], table?: any) {
   const q = Promise.resolve(result) as any;
-  q.where = () => memQuery(result);
-  q.orderBy = () => memQuery(result);
-  q.groupBy = () => memQuery(result);
-  q.limit = (n: number) => memQuery(result.slice(0, n));
-  q.offset = (n: number) => memQuery(result.slice(n));
+  q.where = (condition?: any) => {
+    if (!condition || !table) return memQuery(result, table);
+    const constraints = collectConstraints(condition);
+    return memQuery(result.filter((row) => rowMatchesConstraints(row, constraints, table)), table);
+  };
+  q.orderBy = () => memQuery(result, table);
+  q.groupBy = () => memQuery(result, table);
+  q.limit = (n: number) => memQuery(result.slice(0, n), table);
+  q.offset = (n: number) => memQuery(result.slice(n), table);
   return q;
 }
 
@@ -63,21 +67,92 @@ function tableName(table: any): string {
   return table?.[Symbol.for("drizzle:Name")] ?? table?._?.name ?? table?._?.tableName ?? "";
 }
 
+interface LeafConstraint { column: string; op: string; value: unknown }
+
 /**
- * Try to extract the comparison value from a Drizzle `eq()` expression.
- * Walks `queryChunks` looking for `Param` wrapper objects that have a
- * `.value` property but no `.name` (which would indicate a Column).
+ * Recursively flattens a Drizzle condition (eq/inArray/like/gte/and/...) into
+ * a list of (dbColumnName, operator, value) leaf constraints, by walking the
+ * internal `queryChunks` SQL AST. Sub-conditions nested via `and()`/`or()`
+ * (themselves SQL objects with their own `queryChunks`) are recursed into.
+ * Leaves that can't be confidently interpreted (e.g. raw `sql\`...\`` template
+ * fragments like "NOW() - INTERVAL '24 hours'") are simply skipped — callers
+ * treat unparsed constraints as non-restrictive rather than guessing wrong.
  */
-function extractEqValue(cond: any): any {
-  try {
-    const chunks: any[] = cond?.queryChunks ?? [];
-    for (const chunk of chunks) {
-      if (chunk && typeof chunk === "object" && "value" in chunk && !("name" in chunk)) {
-        return chunk.value;
+function collectConstraints(cond: any, out: LeafConstraint[] = []): LeafConstraint[] {
+  const chunks: any[] = cond?.queryChunks ?? [];
+  let column: string | undefined;
+  let op = "=";
+  let value: unknown;
+  let hasValue = false;
+
+  for (const chunk of chunks) {
+    if (chunk == null) continue;
+
+    if (typeof chunk === "string") {
+      value = chunk; hasValue = true; // like() pattern is a raw string chunk
+    } else if (Array.isArray(chunk)) {
+      // inArray() value list — each element may itself be a Param wrapper
+      // (Drizzle wraps individual elements, e.g. for a single-item array).
+      value = chunk.map((el) =>
+        el && typeof el === "object" && "encoder" in el && "value" in el ? (el as any).value : el,
+      );
+      hasValue = true;
+    } else if (typeof chunk === "object") {
+      if (Array.isArray(chunk.queryChunks)) {
+        collectConstraints(chunk, out); // nested and()/or() — recurse
+      } else if (typeof chunk.name === "string" && "columnType" in chunk) {
+        column = chunk.name; // Column reference (DB column name, e.g. "user_id")
+      } else if (Array.isArray(chunk.value) && typeof chunk.value[0] === "string") {
+        const opStr = chunk.value[0].trim().toLowerCase();
+        if (opStr) op = opStr; // operator StringChunk: " = ", " in ", " like ", " >= ", ...
+      } else if ("encoder" in chunk && "value" in chunk) {
+        value = chunk.value; hasValue = true; // Param wrapper (eq/gte/... scalar value)
       }
     }
-  } catch { /* ignore */ }
+  }
+
+  if (column && hasValue) out.push({ column, op, value });
+  return out;
+}
+
+/** Reverse-lookup: find the JS/TS property key on `table` whose column `.name` matches `dbName`. */
+function jsKeyForColumn(table: any, dbName: string): string | undefined {
+  for (const [key, col] of Object.entries(table ?? {})) {
+    if (col && typeof col === "object" && (col as any).name === dbName) return key;
+  }
   return undefined;
+}
+
+function toComparable(v: unknown): number | string {
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === "string") {
+    const parsed = Date.parse(v);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return v as number | string;
+}
+
+/** Evaluates a flattened constraint list (AND semantics) against a single in-memory row. */
+function rowMatchesConstraints(row: any, constraints: LeafConstraint[], table: any): boolean {
+  return constraints.every(({ column, op, value }) => {
+    const jsKey = jsKeyForColumn(table, column);
+    if (!jsKey) return true; // unknown column — don't restrict
+    const rowVal = row[jsKey];
+    switch (op) {
+      case "=": return toComparable(rowVal) === toComparable(value);
+      case "<>": return toComparable(rowVal) !== toComparable(value);
+      case "in": return Array.isArray(value) && value.some((v) => toComparable(v) === toComparable(rowVal));
+      case "like": {
+        const pattern = String(value).replace(/%/g, "").trim();
+        return String(rowVal ?? "").includes(pattern);
+      }
+      case ">=": return toComparable(rowVal) >= toComparable(value);
+      case ">": return toComparable(rowVal) > toComparable(value);
+      case "<=": return toComparable(rowVal) <= toComparable(value);
+      case "<": return toComparable(rowVal) < toComparable(value);
+      default: return true; // unrecognized operator (e.g. raw sql`` fragment) — don't restrict
+    }
+  });
 }
 
 function memDb() {
@@ -85,11 +160,11 @@ function memDb() {
     select: () => ({
       from: (table: any) => {
         const t = tableName(table);
-        if (t === "monitor_cache")      return memQuery([...memStore.monitorCache]);
-        if (t === "watchlist")          return memQuery([...memStore.watchlist]);
-        if (t === "alerts")             return memQuery([...memStore.alerts]);
-        if (t === "push_subscriptions") return memQuery([...memStore.pushSubscriptions]);
-        return memQuery([]);
+        if (t === "monitor_cache")      return memQuery([...memStore.monitorCache], table);
+        if (t === "watchlist")          return memQuery([...memStore.watchlist], table);
+        if (t === "alerts")             return memQuery([...memStore.alerts], table);
+        if (t === "push_subscriptions") return memQuery([...memStore.pushSubscriptions], table);
+        return memQuery([], table);
       },
     }),
     insert: (table: any) => ({
@@ -218,30 +293,15 @@ function memDb() {
       set: (values: any) => ({
         where: (condition: any) => {
           const t = tableName(table);
-          if (t === "alerts" && values.acknowledged === true) {
-            // Try to detect id-based filter vs column-based filter
-            const condVal = extractEqValue(condition);
-            let updated: MemAlertEntry[] = [];
-
-            if (typeof condVal === "number") {
-              // Single alert by id: eq(alertsTable.id, id)
-              const alert = memStore.alerts.find((a) => a.id === condVal);
-              if (alert) {
-                alert.acknowledged = true;
-                alert.acknowledgedAt = values.acknowledgedAt ?? new Date();
-                updated = [alert];
-              }
-            } else {
-              // Acknowledge all unacknowledged: eq(alertsTable.acknowledged, false)
-              for (const alert of memStore.alerts) {
-                if (!alert.acknowledged) {
-                  alert.acknowledged = true;
-                  alert.acknowledgedAt = values.acknowledgedAt ?? new Date();
-                  updated.push(alert);
-                }
+          if (t === "alerts") {
+            const constraints = collectConstraints(condition);
+            const updated: MemAlertEntry[] = [];
+            for (const alert of memStore.alerts) {
+              if (rowMatchesConstraints(alert, constraints, table)) {
+                Object.assign(alert, values);
+                updated.push(alert);
               }
             }
-
             return {
               returning: () => Promise.resolve(updated),
               then: (resolve: any, reject: any) => Promise.resolve(updated).then(resolve, reject),
@@ -256,37 +316,23 @@ function memDb() {
     }),
     delete: (table: any) => {
       const t = tableName(table);
+      const storeKey: keyof typeof memStore | undefined =
+        t === "alerts" ? "alerts"
+        : t === "watchlist" ? "watchlist"
+        : t === "push_subscriptions" ? "pushSubscriptions"
+        : t === "monitor_cache" ? "monitorCache"
+        : undefined;
       const fn: any = () => {
-        if (t === "alerts") { memStore.alerts = []; }
-        else if (t === "watchlist") { memStore.watchlist = []; }
-        else if (t === "push_subscriptions") { memStore.pushSubscriptions = []; }
+        if (storeKey) (memStore as any)[storeKey] = [];
         else { memStore.watchlist = []; memStore.alerts = []; memStore.monitorCache = []; memStore.pushSubscriptions = []; }
         return Promise.resolve();
       };
       fn.where = (condition: any) => {
-        if (t === "alerts" && condition) {
-          // Try to extract a "like" or "includes" pattern from the condition
-          const condStr = String(condition);
-          const likeMatch = condStr.match(/%(\w+)%/);
-          if (likeMatch) {
-            const pattern = likeMatch[1];
-            memStore.alerts = memStore.alerts.filter((a) => !a.rawText.includes(pattern));
-          } else {
-            // Try to extract eq value for type/icao based filtering
-            const condVal = extractEqValue(condition);
-            if (condVal !== undefined) {
-              memStore.alerts = memStore.alerts.filter((a) => a.type !== condVal && a.icao !== condVal);
-            }
-          }
-        } else if (t === "watchlist") {
-          memStore.watchlist = [];
-        } else if (t === "push_subscriptions") {
-          const condVal = extractEqValue(condition);
-          if (condVal !== undefined) {
-            memStore.pushSubscriptions = memStore.pushSubscriptions.filter((s) => s.endpoint !== condVal && s.userId !== condVal);
-          } else {
-            memStore.pushSubscriptions = [];
-          }
+        if (storeKey) {
+          const constraints = condition ? collectConstraints(condition) : [];
+          (memStore as any)[storeKey] = (memStore as any)[storeKey].filter(
+            (row: any) => !rowMatchesConstraints(row, constraints, table),
+          );
         }
         return Promise.resolve();
       };
@@ -356,7 +402,12 @@ function resolveDatabaseUrl(): string | undefined {
   return undefined;
 }
 
-let db: ReturnType<typeof drizzle> | ReturnType<typeof memDb>;
+// Typed as the real Drizzle client everywhere — every call site in this codebase
+// is written against the full Drizzle query-builder API. The in-memory fallback
+// (memDb()) only duck-types the subset actually used at runtime; it is cast below
+// since matching Drizzle's full generic surface would add complexity with no
+// runtime benefit (that fallback is dev-only, see warning at its call site).
+let db: ReturnType<typeof drizzle>;
 let pool: pg.Pool | null = null;
 
 const resolvedDbUrl = resolveDatabaseUrl();
@@ -373,7 +424,7 @@ if (resolvedDbUrl) {
     String(resolvedDbUrl).replace(/\/\/.*@/, "//***@"),
   );
 } else {
-  db = memDb();
+  db = memDb() as unknown as ReturnType<typeof drizzle>;
   pool = null;
   console.error(
     "[db] ❌ DATABASE_URL not set — using in-memory fallback.\n" +
@@ -385,3 +436,4 @@ if (resolvedDbUrl) {
 
 export { db, pool, memStore };
 export * from "./schema";
+export * from "./migrations.js";

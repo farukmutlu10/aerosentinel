@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { HealthCheckResponse } from "@workspace/api-zod";
 import { getMonitorState, getAirports, getCurrentTaf, getCurrentMetar } from "../lib/monitor.js";
+import { devOnly } from "../lib/reqContext.js";
 
 const router: IRouter = Router();
 
@@ -10,7 +11,7 @@ router.get("/healthz", (_req, res) => {
 });
 
 // ── Diagnostic endpoint: monitor state + cache info ──
-router.get("/monitor/debug", async (_req, res) => {
+router.get("/monitor/debug", devOnly, async (_req, res) => {
   const state = getMonitorState();
   const airports = getAirports();
   

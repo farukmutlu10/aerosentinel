@@ -1,6 +1,7 @@
 import webPush from "web-push";
 import { db, pushSubscriptionsTable, watchlistTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
+import { logger } from "./logger.js";
 
 // ── VAPID configuration ──────────────────────────────────────────────────────
 const VAPID_PUBLIC_KEY  = process.env.VAPID_PUBLIC_KEY  ?? "";
@@ -11,12 +12,12 @@ let vapidConfigured = false;
 
 export function configureVapid(): boolean {
   if (!VAPID_SUBJECT || !VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-    console.warn("[push] VAPID keys not configured — push notifications disabled");
+    logger.warn("[push] VAPID keys not configured — push notifications disabled");
     return false;
   }
   (webPush as any).setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
   vapidConfigured = true;
-  console.log("[push] ✅ VAPID keys configured");
+  logger.info("[push] ✅ VAPID keys configured");
   return true;
 }
 
@@ -92,12 +93,12 @@ export async function sendPushForAlert(
           const statusCode = err?.statusCode;
           // 410 Gone or 404 — subscription expired/invalid, remove it
           if (statusCode === 410 || statusCode === 404) {
-            console.log(`[push] Removing expired subscription: ${sub.endpoint.slice(0, 60)}…`);
+            logger.info(`[push] Removing expired subscription: ${sub.endpoint.slice(0, 60)}…`);
             await (db as any)
               .delete(pushSubscriptionsTable)
               .where(eq(pushSubscriptionsTable.endpoint, sub.endpoint));
           } else {
-            console.error(`[push] Failed to send to ${sub.endpoint.slice(0, 60)}…:`, err.message);
+            logger.error({ err }, `[push] Failed to send to ${sub.endpoint.slice(0, 60)}…`);
           }
           return { success: false, endpoint: sub.endpoint };
         }
@@ -110,9 +111,9 @@ export async function sendPushForAlert(
     const failed = results.length - succeeded;
 
     if (succeeded > 0 || failed > 0) {
-      console.log(`[push] Alert ${alertId} (${alertType} ${icao}): sent=${succeeded} failed=${failed}`);
+      logger.info(`[push] Alert ${alertId} (${alertType} ${icao}): sent=${succeeded} failed=${failed}`);
     }
   } catch (err) {
-    console.error("[push] Error sending push notifications:", err);
+    logger.error({ err }, "[push] Error sending push notifications:");
   }
 }

@@ -1,13 +1,17 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 
-// ── Global error handlers — prevent container restart on unhandled errors ──
+// ── Global error handlers — log then exit so Railway's restartPolicy
+// (ON_FAILURE, see railway.json) can recover into a clean process state.
+// Swallowing these unconditionally risks continuing with corrupted state.
 process.on("unhandledRejection", (reason, promise) => {
-  logger.error({ reason, promise }, "[process] Unhandled promise rejection — NOT crashing");
+  logger.error({ reason, promise }, "[process] Unhandled promise rejection — exiting");
+  process.exit(1);
 });
 
 process.on("uncaughtException", (err) => {
-  logger.error({ err }, "[process] Uncaught exception — NOT crashing");
+  logger.error({ err }, "[process] Uncaught exception — exiting");
+  process.exit(1);
 });
 
 const rawPort = process.env["PORT"];

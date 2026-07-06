@@ -21,7 +21,9 @@ RUN pnpm install --frozen-lockfile
 # Kaynak kodları kopyala
 COPY . .
 
-# Build (typecheck'i atla, sadece esbuild ile API server'ı build et)
+# Typecheck (shared libs + api-server) — tip hataları burada yakalanır, sonra esbuild ile build edilir
+RUN pnpm run typecheck:libs
+RUN pnpm --filter "@workspace/api-server" run typecheck
 RUN pnpm -r --filter "@workspace/api-server" run build
 
 # ── Production image ──────────────────────────────────────────

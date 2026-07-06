@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-RAILWAY_TOKEN="5nnUaTtJxxf7opzisl_xnmx1y3QaIVX8ZXPNIlBpteS"
+: "${RAILWAY_TOKEN:?RAILWAY_TOKEN env var is required (e.g. export RAILWAY_TOKEN=... before running this script)}"
 PROJECT_ID="ee91a8a4-b9a9-46d3-9e6c-93723ecaab38"
 ENVIRONMENT_ID="f815f912-a927-473d-aeb8-cf918b85fe4b"
 

@@ -1,7 +1,8 @@
 import { db, alertsTable, watchlistTable, monitorCacheTable } from "@workspace/db";
 import { eq, and, sql, gte } from "drizzle-orm";
 import { sendPushForAlert } from "./push.js";
-import { hasLifrConditions, getActiveTafPeriod, getActiveTempos } from "./conditions.js";
+import { hasLifrConditions, hasWxExtreme, hasWindExtreme, getActiveTafPeriod, getActiveTempos } from "./conditions.js";
+import { logger } from "./logger.js";
 export { hasLifrConditions, getActiveTafPeriod, getActiveTempos };
 
 let cachedIcaos: string[] = [];
@@ -62,12 +63,12 @@ async function fetchJson(url: string): Promise<unknown[]> {
 
       if (!res.ok) {
         const preview = (await res.text()).slice(0, 200);
-        console.error(
+        logger.error(
           `[monitor] HTTP ${res.status} for ${endpoint} (attempt ${attempt}/${MAX_RETRIES}) body: "${preview}"`
         );
         if (attempt < MAX_RETRIES) {
           const backoff = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
-          console.log(`[monitor] Retrying ${endpoint} in ${backoff}ms...`);
+          logger.info(`[monitor] Retrying ${endpoint} in ${backoff}ms...`);
           await sleep(backoff);
           continue;
         }
@@ -77,12 +78,12 @@ async function fetchJson(url: string): Promise<unknown[]> {
       // Check for empty body before attempting JSON parse
       const text = await res.text();
       if (!text || text.trim().length === 0) {
-        console.error(
+        logger.error(
           `[monitor] Empty response body for ${endpoint} (attempt ${attempt}/${MAX_RETRIES})`
         );
         if (attempt < MAX_RETRIES) {
           const backoff = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
-          console.log(`[monitor] Retrying ${endpoint} in ${backoff}ms (empty body)...`);
+          logger.info(`[monitor] Retrying ${endpoint} in ${backoff}ms (empty body)...`);
           await sleep(backoff);
           continue;
         }
@@ -92,12 +93,12 @@ async function fetchJson(url: string): Promise<unknown[]> {
       const data = JSON.parse(text) as unknown[];
 
       if (!Array.isArray(data)) {
-        console.error(
+        logger.error(
           `[monitor] Unexpected non-array response for ${endpoint} (attempt ${attempt}/${MAX_RETRIES}): "${text.slice(0, 200)}"`
         );
         if (attempt < MAX_RETRIES) {
           const backoff = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
-          console.log(`[monitor] Retrying ${endpoint} in ${backoff}ms (non-array)...`);
+          logger.info(`[monitor] Retrying ${endpoint} in ${backoff}ms (non-array)...`);
           await sleep(backoff);
           continue;
         }
@@ -105,18 +106,18 @@ async function fetchJson(url: string): Promise<unknown[]> {
       }
 
       if (attempt > 1) {
-        console.log(`[monitor] ✅ ${endpoint} succeeded on attempt ${attempt}/${MAX_RETRIES}`);
+        logger.info(`[monitor] ✅ ${endpoint} succeeded on attempt ${attempt}/${MAX_RETRIES}`);
       }
       return data;
 
     } catch (err) {
       const errMsg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-      console.error(
+      logger.error(
         `[monitor] fetch error for ${endpoint} (attempt ${attempt}/${MAX_RETRIES}): ${errMsg}`
       );
       if (attempt < MAX_RETRIES) {
         const backoff = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
-        console.log(`[monitor] Retrying ${endpoint} in ${backoff}ms...`);
+        logger.info(`[monitor] Retrying ${endpoint} in ${backoff}ms...`);
         await sleep(backoff);
       }
     }
@@ -161,9 +162,46 @@ async function loadMonitorCache() {
         sonGorulenMetar[row.icao] = row.rawText;
       }
     }
-    console.log(`[monitor] Loaded cache: ${rows.length} entries from database`);
+    logger.info(`[monitor] Loaded cache: ${rows.length} entries from database`);
   } catch (err) {
-    console.error("[monitor] Failed to load cache from database:", err);
+    logger.error({ err }, "[monitor] Failed to load cache from database:");
+  }
+}
+
+type ConditionAlertType = "LIFR" | "WX_EXTREME" | "WIND_EXTREME";
+
+/** Priority-based condition detection: LIFR > WX_EXTREME > WIND_EXTREME. */
+function detectConditionType(rawText: string): ConditionAlertType | null {
+  if (hasLifrConditions(rawText)) return "LIFR";
+  if (hasWxExtreme(rawText)) return "WX_EXTREME";
+  if (hasWindExtreme(rawText)) return "WIND_EXTREME";
+  return null;
+}
+
+/** Inserts a condition alert (LIFR/WX_EXTREME/WIND_EXTREME) unless a duplicate was already recorded in the last 24h. */
+async function insertConditionAlertIfNew(
+  alertType: ConditionAlertType,
+  icao: string,
+  rawText: string,
+  previousRawText: string | null,
+): Promise<void> {
+  const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
+    .where(and(
+      eq(alertsTable.icao, icao),
+      eq(alertsTable.type, alertType),
+      eq(alertsTable.rawText, rawText),
+      sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
+    )).limit(1);
+  if (recentDup.length > 0) {
+    logger.info({ icao, alertType }, "[monitor] Skipping duplicate condition alert (recent alert exists)");
+    return;
+  }
+  try {
+    await db.insert(alertsTable).values({ type: alertType, icao, rawText, previousRawText });
+    logger.info({ icao, alertType }, "[monitor] Condition alert inserted");
+    void sendPushForAlert(alertType, icao, rawText, 0);
+  } catch (err) {
+    logger.error({ err, icao, alertType }, "[monitor] Failed to insert condition alert");
   }
 }
 
@@ -207,7 +245,7 @@ async function scanTaf(ids: string) {
       const cachedLen = previousRawText?.length ?? -1;
       const newLen = rawTaf.length;
       const tafPrefix = rawTaf.substring(0, 50);
-      console.log(`[monitor] 🔄 TAF CHANGE: ${icao} | cached=${cachedLen} new=${newLen} | "${tafPrefix}" | prior=${prior} tafType="${tafType}" firstScan=${isFirstScan}`);
+      logger.info(`[monitor] 🔄 TAF CHANGE: ${icao} | cached=${cachedLen} new=${newLen} | "${tafPrefix}" | prior=${prior} tafType="${tafType}" firstScan=${isFirstScan}`);
       sonGorulenTaf[icao] = rawTaf;
       // Persist to database
       try {
@@ -218,7 +256,7 @@ async function scanTaf(ids: string) {
             set: { rawText: rawTaf, updatedAt: new Date() },
           });
       } catch (err) {
-        console.error(`[monitor] Failed to persist TAF cache for ${icao}:`, err);
+        logger.error({ err }, `[monitor] Failed to persist TAF cache for ${icao}:`);
       }
       const hasAmdCor = rawTaf.includes("COR") || rawTaf.includes("AMD") || tafType === "AMD" || tafType === "COR";
       if (hasAmdCor) {
@@ -227,128 +265,21 @@ async function scanTaf(ids: string) {
         try {
           await db.insert(alertsTable).values({ type: alertType, icao, rawText: rawTaf, previousRawText });
           tafAlertsInserted++;
-          console.log(`[monitor] ✅ TAF alert: ${alertType} for ${icao}`);
+          logger.info(`[monitor] ✅ TAF alert: ${alertType} for ${icao}`);
           void sendPushForAlert(alertType, icao, rawTaf, 0);
         } catch (err) {
-          console.error(`[monitor] ❌ TAF insert FAILED for ${icao}:`, err);
+          logger.error({ err }, `[monitor] ❌ TAF insert FAILED for ${icao}:`);
         }
       }
 
       // When AMD/COR is present, suppress WX_EXTREME, WIND_EXTREME, LIFR
       // since the AMD/COR card already shows the changed TAF text.
       if (!hasAmdCor) {
-      // ── Priority-based WX_CRIT suppression: LIFR > WX_EXTREME > WIND_EXTREME ──
-
-      // 1. LIFR detection from TAF (highest priority)
-      if (hasLifrConditions(rawTaf)) {
-        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
-          .where(and(
-            eq(alertsTable.icao, icao),
-            eq(alertsTable.type, "LIFR"),
-            eq(alertsTable.rawText, rawTaf),
-            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
-          )).limit(1);
-        if (recentDup.length === 0) {
-          try {
-            await db.insert(alertsTable).values({ type: "LIFR", icao, rawText: rawTaf, previousRawText });
-            console.log(`[monitor] ✅ TAF LIFR alert for ${icao}`);
-            void sendPushForAlert("LIFR", icao, rawTaf, 0);
-          } catch (err) {
-            console.error(`[monitor] Failed to insert TAF LIFR alert for ${icao}:`, err);
-          }
-        } else {
-          console.log(`[monitor] ⏭️ Skipping duplicate TAF LIFR for ${icao} (recent alert exists)`);
-        }
-      } else {
-      // 2. WX_EXTREME detection from TAF (second priority)
-      const TAF_EXTREME_WX_CODES = [
-        "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",
-        "DS", "-DS", "+DS", "SS", "-SS", "+SS",
-        "-SN", "SN", "+SN", "-SHSN", "SHSN", "+SHSN",
-        "TSSN", "+TSSN", "TSGR", "TSPL",
-        "-FZRA", "FZRA", "+FZRA",
-        "FZDZ", "-FZDZ", "+FZDZ",
-        "FZFG", "FZSN",
-        "BLSN", "+BLSN", "-BLSN", "DRSN",
-        "-RASN", "RASN", "+RASN",
-        "SHGR", "SHGS",
-        "IC", "PL", "GR", "GS", "VA", "FC", "SQ", "SG",
-      ];
-
-      let hasTafWxExtreme = false;
-      for (const code of TAF_EXTREME_WX_CODES) {
-        const escaped = code.replace(/[+]/g, "\\+");
-        if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(rawTaf)) {
-          hasTafWxExtreme = true;
-          break;
+        const conditionType = detectConditionType(rawTaf);
+        if (conditionType) {
+          await insertConditionAlertIfNew(conditionType, icao, rawTaf, previousRawText);
         }
       }
-      if (hasTafWxExtreme) {
-        // Deduplicate: skip if recent alert with same ICAO+type+rawText exists
-        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
-          .where(and(
-            eq(alertsTable.icao, icao),
-            eq(alertsTable.type, "WX_EXTREME"),
-            eq(alertsTable.rawText, rawTaf),
-            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
-          )).limit(1);
-        if (recentDup.length === 0) {
-          try {
-            await db.insert(alertsTable).values({ type: "WX_EXTREME", icao, rawText: rawTaf, previousRawText });
-            console.log(`[monitor] ✅ TAF WX_EXTREME alert for ${icao}`);
-            void sendPushForAlert("WX_EXTREME", icao, rawTaf, 0);
-          } catch (err) {
-            console.error(`[monitor] Failed to insert TAF WX_EXTREME alert for ${icao}:`, err);
-          }
-        } else {
-          console.log(`[monitor] ⏭️ Skipping duplicate TAF WX_EXTREME for ${icao} (recent alert exists)`);
-        }
-      } else {
-      // 3. WIND_EXTREME detection from TAF (lowest priority)
-      let hasTafWindExtreme = false;
-      for (const m of rawTaf.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/g)) {
-        const spd = parseInt(m[1]);
-        const gst = m[2] ? parseInt(m[2]) : 0;
-        if (spd >= 25 || gst >= 29) { hasTafWindExtreme = true; break; }
-      }
-      if (!hasTafWindExtreme) {
-        for (const m of rawTaf.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?MPS\b/g)) {
-          const spd = parseInt(m[1]);
-          const gst = m[2] ? parseInt(m[2]) : 0;
-          if (spd >= 13 || gst >= 15) { hasTafWindExtreme = true; break; }
-        }
-      }
-      if (!hasTafWindExtreme) {
-        for (const m of rawTaf.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KMH\b/g)) {
-          const spd = Math.round(parseInt(m[1]) * 0.5399568);
-          const gst = m[2] ? Math.round(parseInt(m[2]) * 0.5399568) : 0;
-          if (spd >= 25 || gst >= 29) { hasTafWindExtreme = true; break; }
-        }
-      }
-      if (hasTafWindExtreme) {
-        // Deduplicate: skip if recent alert with same ICAO+type+rawText exists
-        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
-          .where(and(
-            eq(alertsTable.icao, icao),
-            eq(alertsTable.type, "WIND_EXTREME"),
-            eq(alertsTable.rawText, rawTaf),
-            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
-          )).limit(1);
-        if (recentDup.length === 0) {
-          try {
-            await db.insert(alertsTable).values({ type: "WIND_EXTREME", icao, rawText: rawTaf, previousRawText });
-            console.log(`[monitor] ✅ TAF WIND_EXTREME alert for ${icao}`);
-            void sendPushForAlert("WIND_EXTREME", icao, rawTaf, 0);
-          } catch (err) {
-            console.error(`[monitor] Failed to insert TAF WIND_EXTREME alert for ${icao}:`, err);
-          }
-        } else {
-          console.log(`[monitor] ⏭️ Skipping duplicate TAF WIND_EXTREME for ${icao} (recent alert exists)`);
-        }
-      }
-      } // end WX_EXTREME else
-      } // end LIFR else
-      } // end !hasAmdCor
     } else if (rawTaf) {
       // ── B2 fix: TAF text unchanged — re-evaluate active period + TEMPO conditions ──
       // A FM period may have become "current" since the last scan even though
@@ -365,85 +296,22 @@ async function scanTaf(ids: string) {
       // Only re-evaluate when the active period or TEMPO composition has changed
       if (!lastAlert || lastAlert.periodKey !== periodKey) {
         const periodText = activePeriod?.text ?? rawTaf;
-        // Merge: base/FM period text + active TEMPO/BECMG weather
-        const combinedText = activeTempos.length > 0
-          ? periodText + " " + activeTempos.join(" ")
+        // Merge: base/FM period text + active TEMPO/BECMG weather — but only
+        // append TEMPO/BECMG text not already present in periodText. When there's
+        // no FM group, periodText falls back to the entire raw TAF, which already
+        // contains every TEMPO/BECMG line; appending activeTempos unconditionally
+        // duplicated that text (e.g. "...OVC002 0300 −RA FG OVC003" repeating a
+        // group verbatim) and made an unchanged TAF look like a new report.
+        const newTempos = activeTempos.filter((t) => !periodText.includes(t));
+        const combinedText = newTempos.length > 0
+          ? periodText + " " + newTempos.join(" ")
           : periodText;
-        let alertType: "LIFR" | "WX_EXTREME" | "WIND_EXTREME" | null = null;
 
-        // ── Priority-based: LIFR > WX_EXTREME > WIND_EXTREME ──
-
-        // 1. LIFR (check combined text so TEMPO visibility is detected)
-        if (hasLifrConditions(combinedText)) {
-          alertType = "LIFR";
-        } else {
-        // 2. WX_EXTREME
-        const _PERIOD_EXTREME_WX_CODES = [
-          "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",
-          "DS", "-DS", "+DS", "SS", "-SS", "+SS",
-          "-SN", "SN", "+SN", "-SHSN", "SHSN", "+SHSN",
-          "TSSN", "+TSSN", "TSGR", "TSPL",
-          "-FZRA", "FZRA", "+FZRA",
-          "FZDZ", "-FZDZ", "+FZDZ",
-          "FZFG", "FZSN",
-          "BLSN", "+BLSN", "-BLSN", "DRSN",
-          "-RASN", "RASN", "+RASN",
-          "SHGR", "SHGS",
-          "IC", "PL", "GR", "GS", "VA", "FC", "SQ", "SG",
-        ];
-        let _periodWxExtreme = false;
-        for (const code of _PERIOD_EXTREME_WX_CODES) {
-          const escaped = code.replace(/[+]/g, "\\+");
-          if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(combinedText)) {
-            _periodWxExtreme = true; break;
-          }
-        }
-        if (_periodWxExtreme) {
-          alertType = "WX_EXTREME";
-        } else {
-        // 3. WIND_EXTREME
-        let _periodWindExtreme = false;
-        for (const m of combinedText.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/g)) {
-          const spd = parseInt(m[1]); const gst = m[2] ? parseInt(m[2]) : 0;
-          if (spd >= 25 || gst >= 29) { _periodWindExtreme = true; break; }
-        }
-        if (!_periodWindExtreme) {
-          for (const m of combinedText.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?MPS\b/g)) {
-            const spd = parseInt(m[1]); const gst = m[2] ? parseInt(m[2]) : 0;
-            if (spd >= 13 || gst >= 15) { _periodWindExtreme = true; break; }
-          }
-        }
-        if (!_periodWindExtreme) {
-          for (const m of combinedText.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KMH\b/g)) {
-            const spd = Math.round(parseInt(m[1]) * 0.5399568);
-            const gst = m[2] ? Math.round(parseInt(m[2]) * 0.5399568) : 0;
-            if (spd >= 25 || gst >= 29) { _periodWindExtreme = true; break; }
-          }
-        }
-        if (_periodWindExtreme) alertType = "WIND_EXTREME";
-        } // end WX_EXTREME else
-        } // end LIFR else
-
+        // Check combined text (period + TEMPO) so TEMPO visibility/wind is detected
+        const alertType = detectConditionType(combinedText);
         if (alertType) {
-          // DB dedup: use combined text (period + TEMPO) as rawText for per-period deduplication
-          const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
-            .where(and(
-              eq(alertsTable.icao, icao),
-              eq(alertsTable.type, alertType),
-              eq(alertsTable.rawText, combinedText),
-              sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
-            )).limit(1);
-          if (recentDup.length === 0) {
-            try {
-              await db.insert(alertsTable).values({ type: alertType, icao, rawText: combinedText, previousRawText: rawTaf });
-              console.log(`[monitor] ✅ TAF ${alertType} (period re-eval) for ${icao} [${periodKey}]`);
-              void sendPushForAlert(alertType, icao, combinedText, 0);
-            } catch (err) {
-              console.error(`[monitor] Failed to insert TAF ${alertType} for ${icao}:`, err);
-            }
-          } else {
-            console.log(`[monitor] ⏭️ Skipping duplicate TAF ${alertType} for ${icao} [${periodKey}] (recent alert exists)`);
-          }
+          // DB dedup uses combined text (period + TEMPO) as rawText for per-period deduplication
+          await insertConditionAlertIfNew(alertType, icao, combinedText, rawTaf);
         }
         tafPeriodLastAlert[icao] = { periodKey, alertType: alertType ?? "NONE" };
       }
@@ -453,9 +321,9 @@ async function scanTaf(ids: string) {
   const returnedSet = new Set(returnedIcaos);
   const missingAirports = [...watchlistSet].filter(icao => !returnedSet.has(icao));
   if (missingAirports.length > 0) {
-    console.log(`[monitor] ⚠️ DIAG: ${missingAirports.length} airports MISSING from TAF API response! Examples: ${missingAirports.slice(0, 10).join(", ")}`);
+    logger.info(`[monitor] ⚠️ DIAG: ${missingAirports.length} airports MISSING from TAF API response! Examples: ${missingAirports.slice(0, 10).join(", ")}`);
   }
-  console.log(`[monitor] TAF scan SUMMARY: ${allData.length} entries for ${requestedCount} airports | rawTAF: ${tafEntriesWithRaw}✓ ${tafEntriesWithoutRaw}✗ | changes: ${tafChangesDetected} | amdCor: ${tafAmdCorDetected} | inserted: ${tafAlertsInserted} | missing: ${missingAirports.length}`);
+  logger.info(`[monitor] TAF scan SUMMARY: ${allData.length} entries for ${requestedCount} airports | rawTAF: ${tafEntriesWithRaw}✓ ${tafEntriesWithoutRaw}✗ | changes: ${tafChangesDetected} | amdCor: ${tafAmdCorDetected} | inserted: ${tafAlertsInserted} | missing: ${missingAirports.length}`);
 }
 
 async function scanMetar(ids: string) {
@@ -514,7 +382,7 @@ async function scanMetar(ids: string) {
 
     // ── DIAG: Log SPECI-related entries for key airports ─────────────────
     if (icao === "UAUU" || icao === "ULLI") {
-      console.log(`[monitor] 🔍 DIAG METAR ${icao}: metarType="${metarType}" rawOb_start="${rawMetar.slice(0, 60)}" isSpeci=${rawMetar.startsWith("SPECI")} changed=${sonGorulenMetar[icao] !== rawMetar} cached="${(sonGorulenMetar[icao] ?? "(none)").slice(0, 60)}"`);
+      logger.info(`[monitor] 🔍 DIAG METAR ${icao}: metarType="${metarType}" rawOb_start="${rawMetar.slice(0, 60)}" isSpeci=${rawMetar.startsWith("SPECI")} changed=${sonGorulenMetar[icao] !== rawMetar} cached="${(sonGorulenMetar[icao] ?? "(none)").slice(0, 60)}"`);
     }
 
     if (sonGorulenMetar[icao] !== rawMetar) {
@@ -523,7 +391,7 @@ async function scanMetar(ids: string) {
       const cachedLen = previousRawText?.length ?? -1;
       const newLen = rawMetar.length;
       const metarPrefix = rawMetar.substring(0, 50);
-      console.log(`[monitor] 🔄 METAR CHANGE: ${icao} | cached=${cachedLen} new=${newLen} | "${metarPrefix}" | metarType="${metarType}"`);
+      logger.info(`[monitor] 🔄 METAR CHANGE: ${icao} | cached=${cachedLen} new=${newLen} | "${metarPrefix}" | metarType="${metarType}"`);
       sonGorulenMetar[icao] = rawMetar;
       // Persist to database
       try {
@@ -534,136 +402,28 @@ async function scanMetar(ids: string) {
             set: { rawText: rawMetar, updatedAt: new Date() },
           });
       } catch (err) {
-        console.error(`[monitor] Failed to persist METAR cache for ${icao}:`, err);
+        logger.error({ err }, `[monitor] Failed to persist METAR cache for ${icao}:`);
       }
       const hasSpeci = rawMetar.startsWith("SPECI") || rawMetar.includes(" SPECI ") || metarType === "SPECI";
       if (hasSpeci) {
         try {
           await db.insert(alertsTable).values({ type: "SPECI", icao, rawText: rawMetar, previousRawText });
           metAlertsInserted++;
-          console.log(`[monitor] ✅ SPECI alert for ${icao}`);
+          logger.info(`[monitor] ✅ SPECI alert for ${icao}`);
           void sendPushForAlert("SPECI", icao, rawMetar, 0);
         } catch (err) {
-          console.error(`[monitor] ❌ SPECI insert FAILED for ${icao}:`, err);
+          logger.error({ err }, `[monitor] ❌ SPECI insert FAILED for ${icao}:`);
         }
       }
 
       // When SPECI is present, suppress WX_EXTREME, WIND_EXTREME, LIFR
       // since the SPECI card already shows the special METAR text.
       if (!hasSpeci) {
-      // ── Priority-based WX_CRIT suppression: LIFR > WX_EXTREME > WIND_EXTREME ──
-
-      // 1. LIFR detection (highest priority)
-      if (hasLifrConditions(rawMetar)) {
-        // Deduplicate: skip if recent alert with same ICAO+type+rawText exists
-        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
-          .where(and(
-            eq(alertsTable.icao, icao),
-            eq(alertsTable.type, "LIFR"),
-            eq(alertsTable.rawText, rawMetar),
-            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
-          )).limit(1);
-        if (recentDup.length === 0) {
-          try {
-            await db.insert(alertsTable).values({ type: "LIFR", icao, rawText: rawMetar, previousRawText });
-            console.log(`[monitor] ✅ LIFR alert for ${icao}`);
-            void sendPushForAlert("LIFR", icao, rawMetar, 0);
-          } catch (err) {
-            console.error(`[monitor] Failed to insert LIFR alert for ${icao}:`, err);
-          }
-        } else {
-          console.log(`[monitor] ⏭️ Skipping duplicate LIFR for ${icao} (recent alert exists)`);
-        }
-      } else {
-      // 2. WX_EXTREME detection (second priority)
-      const EXTREME_WX_CODES = [
-        "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",
-        "DS", "-DS", "+DS", "SS", "-SS", "+SS",
-        "-SN", "SN", "+SN", "-SHSN", "SHSN", "+SHSN",
-        "TSSN", "+TSSN", "TSGR", "TSPL",
-        "-FZRA", "FZRA", "+FZRA",
-        "FZDZ", "-FZDZ", "+FZDZ",
-        "FZFG", "FZSN",
-        "BLSN", "+BLSN", "-BLSN", "DRSN",
-        "-RASN", "RASN", "+RASN",
-        "SHGR", "SHGS",
-        "IC", "PL", "GR", "GS", "VA", "FC", "SQ", "SG",
-      ];
-
-      let hasWxExtreme = false;
-      for (const code of EXTREME_WX_CODES) {
-        const escaped = code.replace(/[+]/g, "\\+");
-        if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(rawMetar)) {
-          hasWxExtreme = true;
-          break;
+        const conditionType = detectConditionType(rawMetar);
+        if (conditionType) {
+          await insertConditionAlertIfNew(conditionType, icao, rawMetar, previousRawText);
         }
       }
-      if (hasWxExtreme) {
-        // Deduplicate: skip if recent alert with same ICAO+type+rawText exists
-        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
-          .where(and(
-            eq(alertsTable.icao, icao),
-            eq(alertsTable.type, "WX_EXTREME"),
-            eq(alertsTable.rawText, rawMetar),
-            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
-          )).limit(1);
-        if (recentDup.length === 0) {
-          try {
-            await db.insert(alertsTable).values({ type: "WX_EXTREME", icao, rawText: rawMetar, previousRawText });
-            console.log(`[monitor] ✅ WX_EXTREME alert for ${icao}`);
-            void sendPushForAlert("WX_EXTREME", icao, rawMetar, 0);
-          } catch (err) {
-            console.error(`[monitor] Failed to insert WX_EXTREME alert for ${icao}:`, err);
-          }
-        } else {
-          console.log(`[monitor] ⏭️ Skipping duplicate WX_EXTREME for ${icao} (recent alert exists)`);
-        }
-      } else {
-      // 3. WIND_EXTREME detection (lowest priority)
-      let hasWindExtreme = false;
-      for (const m of rawMetar.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/g)) {
-        const spd = parseInt(m[1]);
-        const gst = m[2] ? parseInt(m[2]) : 0;
-        if (spd >= 25 || gst >= 29) { hasWindExtreme = true; break; }
-      }
-      if (!hasWindExtreme) {
-        for (const m of rawMetar.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?MPS\b/g)) {
-          const spd = parseInt(m[1]);
-          const gst = m[2] ? parseInt(m[2]) : 0;
-          if (spd >= 13 || gst >= 15) { hasWindExtreme = true; break; }
-        }
-      }
-      if (!hasWindExtreme) {
-        for (const m of rawMetar.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KMH\b/g)) {
-          const spd = Math.round(parseInt(m[1]) * 0.5399568);
-          const gst = m[2] ? Math.round(parseInt(m[2]) * 0.5399568) : 0;
-          if (spd >= 25 || gst >= 29) { hasWindExtreme = true; break; }
-        }
-      }
-      if (hasWindExtreme) {
-        // Deduplicate: skip if recent alert with same ICAO+type+rawText exists
-        const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
-          .where(and(
-            eq(alertsTable.icao, icao),
-            eq(alertsTable.type, "WIND_EXTREME"),
-            eq(alertsTable.rawText, rawMetar),
-            sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
-          )).limit(1);
-        if (recentDup.length === 0) {
-          try {
-            await db.insert(alertsTable).values({ type: "WIND_EXTREME", icao, rawText: rawMetar, previousRawText });
-            console.log(`[monitor] ✅ WIND_EXTREME alert for ${icao}`);
-            void sendPushForAlert("WIND_EXTREME", icao, rawMetar, 0);
-          } catch (err) {
-            console.error(`[monitor] Failed to insert WIND_EXTREME alert for ${icao}:`, err);
-          }
-        } else {
-          console.log(`[monitor] ⏭️ Skipping duplicate WIND_EXTREME for ${icao} (recent alert exists)`);
-        }
-      }
-      } // end WX_EXTREME else
-      } // end LIFR else
-      } // end !hasSpeci
     }
   }
 
@@ -695,10 +455,10 @@ async function scanMetar(ids: string) {
           });
           metSpeciFromHistory++;
           metAlertsInserted++;
-          console.log(`[monitor] ✅ SPECI (from history) alert for ${icao}: "${entryRaw.slice(0, 60)}"`);
+          logger.info(`[monitor] ✅ SPECI (from history) alert for ${icao}: "${entryRaw.slice(0, 60)}"`);
           void sendPushForAlert("SPECI", icao, entryRaw, 0);
         } catch (err) {
-          console.error(`[monitor] ❌ SPECI (from history) insert FAILED for ${icao}:`, err);
+          logger.error({ err }, `[monitor] ❌ SPECI (from history) insert FAILED for ${icao}:`);
         }
       }
     }
@@ -708,12 +468,12 @@ async function scanMetar(ids: string) {
   const returnedSet = new Set(returnedIcaos);
   const missingAirports = [...watchlistSet].filter(icao => !returnedSet.has(icao));
   if (missingAirports.length > 0) {
-    console.log(`[monitor] ⚠️ DIAG: ${missingAirports.length} airports MISSING from METAR API response! Examples: ${missingAirports.slice(0, 10).join(", ")}`);
+    logger.info(`[monitor] ⚠️ DIAG: ${missingAirports.length} airports MISSING from METAR API response! Examples: ${missingAirports.slice(0, 10).join(", ")}`);
     if (missingAirports.includes("UAUU")) {
-      console.log(`[monitor] 🚨 DIAG: UAUU is MISSING from METAR API response!`);
+      logger.info(`[monitor] 🚨 DIAG: UAUU is MISSING from METAR API response!`);
     }
   }
-  console.log(`[monitor] METAR scan SUMMARY: ${allData.length} raw → ${latestMetarData.length} unique for ${requestedCount} airports | rawOb: ${metEntriesWithRaw}✓ ${metEntriesWithoutRaw}✗ | changes: ${metChangesDetected} | alerts: ${metAlertsInserted} | speciFromHistory: ${metSpeciFromHistory} | missing: ${missingAirports.length}`);
+  logger.info(`[monitor] METAR scan SUMMARY: ${allData.length} raw → ${latestMetarData.length} unique for ${requestedCount} airports | rawOb: ${metEntriesWithRaw}✓ ${metEntriesWithoutRaw}✗ | changes: ${metChangesDetected} | alerts: ${metAlertsInserted} | speciFromHistory: ${metSpeciFromHistory} | missing: ${missingAirports.length}`);
 }
 
 // ── TAF active-period parsing (for B2 fix) ──────────────────────────────────
@@ -721,60 +481,68 @@ async function scanMetar(ids: string) {
 /** Tracks which TAF period was last alerted per ICAO to avoid re-alerting */
 const tafPeriodLastAlert: Record<string, { periodKey: string; alertType: string }> = {};
 
+let isScanning = false;
+
 async function sentinelRadar() {
+  if (isScanning) {
+    logger.warn("[monitor] Previous scan still running — skipping this cycle to avoid overlap");
+    return;
+  }
+  isScanning = true;
   try {
     checkDailyReset();
     const icaos = await refreshIcaoCache();
     const ids = icaos.join(",");
     const urlLen = ids.length;
-    console.log(`[monitor] 🔍 DIAG: Scanning ${icaos.length} airports, ids string length: ${urlLen} chars`);
+    logger.info(`[monitor] 🔍 DIAG: Scanning ${icaos.length} airports, ids string length: ${urlLen} chars`);
     // Log a few sample ICAOs to verify watchlist content
     const sampleIcaos = icaos.slice(0, 5).join(", ") + (icaos.length > 5 ? ` ... (total ${icaos.length})` : "");
-    console.log(`[monitor] 🔍 DIAG: Sample ICAOs: ${sampleIcaos}`);
+    logger.info(`[monitor] 🔍 DIAG: Sample ICAOs: ${sampleIcaos}`);
     // Check if key airports are in the list
     const hasUAUU = icaos.includes("UAUU");
     const hasULLI = icaos.includes("ULLI");
-    console.log(`[monitor] 🔍 DIAG: UAUU in watchlist: ${hasUAUU}, ULLI in watchlist: ${hasULLI}`);
+    logger.info(`[monitor] 🔍 DIAG: UAUU in watchlist: ${hasUAUU}, ULLI in watchlist: ${hasULLI}`);
     await Promise.all([scanTaf(ids), scanMetar(ids)]);
   } catch (err) {
-    console.error("Scan error:", err);
+    logger.error({ err }, "Scan error:");
   } finally {
     scanCount++;
     scanCountToday++;
     lastScan = new Date();
+    isScanning = false;
   }
 }
 
 export function startMonitor() {
   if (running) return;
   running = true;
-  console.log("[monitor] startMonitor() called — running=true");
+  logger.info("[monitor] startMonitor() called — running=true");
   void (async () => {
     try {
-      console.log("[monitor] IIFE: starting seedIfEmpty()");
+      logger.info("[monitor] IIFE: starting seedIfEmpty()");
       await seedIfEmpty();
-      console.log(`[monitor] IIFE: seedIfEmpty() done — ${cachedIcaos.length} ICAOs`);
+      logger.info(`[monitor] IIFE: seedIfEmpty() done — ${cachedIcaos.length} ICAOs`);
     } catch (err) {
-      console.error("[monitor] ❌ IIFE: seedIfEmpty() FAILED:", err);
+      logger.error({ err }, "[monitor] ❌ IIFE: seedIfEmpty() FAILED:");
       // Don't return — try to continue with whatever cachedIcaos we have
     }
     try {
-      console.log("[monitor] IIFE: starting loadMonitorCache()");
+      logger.info("[monitor] IIFE: starting loadMonitorCache()");
       await loadMonitorCache();
-      console.log("[monitor] IIFE: loadMonitorCache() done");
+      logger.info("[monitor] IIFE: loadMonitorCache() done");
     } catch (err) {
-      console.error("[monitor] ❌ IIFE: loadMonitorCache() FAILED:", err);
+      logger.error({ err }, "[monitor] ❌ IIFE: loadMonitorCache() FAILED:");
     }
     try {
-      console.log(`AERO-SENTINEL monitor started — watching ${cachedIcaos.length} airports`);
+      logger.info(`AERO-SENTINEL monitor started — watching ${cachedIcaos.length} airports`);
       await sentinelRadar();
     } catch (err) {
-      console.error("[monitor] ❌ IIFE: first sentinelRadar() FAILED:", err);
+      logger.error({ err }, "[monitor] ❌ IIFE: first sentinelRadar() FAILED:");
     }
     intervalHandle = setInterval(sentinelRadar, 60_000);
-    console.log("[monitor] ✅ setInterval armed — monitor is fully operational");
+    logger.info("[monitor] ✅ setInterval armed — monitor is fully operational");
   })().catch((err) => {
-    console.error("[monitor] ❌ IIFE: UNHANDLED top-level rejection:", err);
+    logger.error({ err }, "[monitor] ❌ IIFE: UNHANDLED top-level rejection:");
     // Don't crash — keep running=true so status endpoint doesn't show "stopped"
   });
 }

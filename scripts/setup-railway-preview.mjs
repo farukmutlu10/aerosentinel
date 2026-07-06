@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 import https from 'https';
 
-const TOKEN = '5nnUaTtJxxf7opzisl_xnmx1y3QaIVX8ZXPNIlBpteS';
+const TOKEN = process.env.RAILWAY_TOKEN;
+if (!TOKEN) {
+  console.error('RAILWAY_TOKEN env var is required (e.g. export RAILWAY_TOKEN=... before running this script)');
+  process.exit(1);
+}
 const PROJECT_ID = 'ee91a8a4-b9a9-46d3-9e6c-93723ecaab38';
 const ENVIRONMENT_ID = 'f815f912-a927-473d-aeb8-cf918b85fe4b';
 const POSTGRES_SERVICE_ID = 'b2e99533-073b-41c9-92f3-2fe8fff79190';
