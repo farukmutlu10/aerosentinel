@@ -616,6 +616,83 @@ export async function fetchWeatherForIcao(
   }
 }
 
+/**
+ * Batched version of fetchWeatherForIcao — used by /watchlist/weather so that
+ * pasting a large batch of never-before-seen ICAOs doesn't serialize into
+ * one aviationweather.gov round trip per airport per report type. fetchJson()
+ * shares a single global rate limiter (MIN_REQUEST_INTERVAL_MS) across the
+ * whole process, so N airports needing a live fetch used to mean 2N
+ * individually-throttled requests (~500ms apart) before this existed. Batching
+ * mirrors what the periodic monitor scan already does for scanTaf/scanMetar:
+ * up to 50 ICAOs per request, so N airports collapse into ceil(N/50)*2 calls.
+ */
+export async function fetchWeatherForIcaos(
+  icaos: string[],
+  { force = false }: { force?: boolean } = {},
+): Promise<Record<string, { rawTaf: string | null; rawMetar: string | null }>> {
+  const result: Record<string, { rawTaf: string | null; rawMetar: string | null }> = {};
+  const needsFetch: string[] = [];
+
+  for (const icao of icaos) {
+    if (!force) {
+      const ts = sonGorulenTs[icao] ?? 0;
+      const isFresh = Date.now() - ts < WEATHER_CACHE_MAX_AGE;
+      if (isFresh && sonGorulenTaf[icao] !== undefined && sonGorulenMetar[icao] !== undefined) {
+        result[icao] = { rawTaf: sonGorulenTaf[icao] ?? null, rawMetar: sonGorulenMetar[icao] ?? null };
+        continue;
+      }
+      const dcEntry = displayCache[icao];
+      if (dcEntry && Date.now() - dcEntry.ts < DISPLAY_CACHE_MAX_AGE
+          && (dcEntry.rawTaf !== null || dcEntry.rawMetar !== null)) {
+        result[icao] = { rawTaf: dcEntry.rawTaf, rawMetar: dcEntry.rawMetar };
+        continue;
+      }
+    }
+    needsFetch.push(icao);
+  }
+
+  if (needsFetch.length === 0) return result;
+
+  const BATCH_SIZE = 50;
+  const batches: string[][] = [];
+  for (let i = 0; i < needsFetch.length; i += BATCH_SIZE) {
+    batches.push(needsFetch.slice(i, i + BATCH_SIZE));
+  }
+
+  const tafByIcao: Record<string, string> = {};
+  const metarByIcao: Record<string, string> = {};
+
+  // Batches themselves still run through fetchJson's shared rate limiter
+  // sequentially (by design, to be polite to aviationweather.gov), but that's
+  // now ceil(N/50)*2 throttled calls instead of N*2.
+  for (const batch of batches) {
+    const ids = batch.join(",");
+    try {
+      const [tafData, metarData] = await Promise.all([
+        fetchJson(`${BASE_URL}/taf?ids=${ids}&format=json`),
+        fetchJson(`${BASE_URL}/metar?ids=${ids}&format=json`),
+      ]);
+      for (const entry of tafData as Array<{ icaoId?: string; rawTAF?: string }>) {
+        if (entry.icaoId && entry.rawTAF) tafByIcao[entry.icaoId] = entry.rawTAF;
+      }
+      for (const entry of metarData as Array<{ icaoId?: string; rawOb?: string }>) {
+        if (entry.icaoId && entry.rawOb) metarByIcao[entry.icaoId] = entry.rawOb;
+      }
+    } catch (err) {
+      logger.error({ err }, "[monitor] fetchWeatherForIcaos batch failed:");
+    }
+  }
+
+  for (const icao of needsFetch) {
+    const rawTaf = tafByIcao[icao] ?? null;
+    const rawMetar = metarByIcao[icao] ?? null;
+    displayCache[icao] = { rawTaf, rawMetar, ts: Date.now() };
+    result[icao] = { rawTaf, rawMetar };
+  }
+
+  return result;
+}
+
 /** Clear the display cache for a specific ICAO (or all if no arg) */
 export function clearDisplayCache(icao?: string) {
   if (icao) {

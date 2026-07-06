@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, watchlistTable, alertsTable } from "@workspace/db";
 import { eq, and, inArray, sql, desc } from "drizzle-orm";
-import { updateCachedIcaos, getAirports, clearDisplayCache, refreshIcaoCache, fetchWeatherForIcao } from "../lib/monitor.js";
+import { updateCachedIcaos, getAirports, clearDisplayCache, refreshIcaoCache, fetchWeatherForIcaos } from "../lib/monitor.js";
 import { hasLifrConditions, hasWxExtreme, hasWindExtreme } from "../lib/conditions.js";
 import { getDeviceId } from "../lib/reqContext.js";
 import { logger } from "../lib/logger.js";
@@ -331,12 +331,8 @@ router.get("/watchlist/weather", async (req, res) => {
     for (const icao of list) clearDisplayCache(icao);
   }
 
-  const results = await Promise.all(
-    list.map(async (icao) => ({
-      icao,
-      ...(await fetchWeatherForIcao(icao, { force })),
-    }))
-  );
+  const weatherByIcao = await fetchWeatherForIcaos(list, { force });
+  const results = list.map((icao) => ({ icao, ...weatherByIcao[icao] }));
   return res.json(results);
 });
 
