@@ -47,6 +47,42 @@ function checkDailyReset() {
   }
 }
 
+/**
+ * Single-attempt, no-backoff fetch for interactive (user-facing) requests.
+ * fetchJson()'s 3-retry/2s-4s-8s-backoff behavior exists for the unattended
+ * background scan, where nobody's watching and patience costs nothing — for
+ * a request the user is staring at a loading skeleton for, the same policy
+ * meant a single aviationweather.gov 429 could stall a watchlist-add for up
+ * to ~14s. This still respects the shared MIN_REQUEST_INTERVAL_MS rate-limit
+ * guard (so it doesn't hammer aviationweather.gov concurrently with the
+ * periodic scan), it just doesn't retry on failure — the next 60s poll will
+ * pick up any airport that came back empty.
+ */
+async function fetchJsonFast(url: string, timeoutMs = 8_000): Promise<unknown[]> {
+  const endpoint = url.split('?')[0];
+  try {
+    const elapsed = Date.now() - lastFetchTimestamp;
+    if (elapsed < MIN_REQUEST_INTERVAL_MS) {
+      await sleep(MIN_REQUEST_INTERVAL_MS - elapsed);
+    }
+    lastFetchTimestamp = Date.now();
+
+    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) {
+      logger.error(`[monitor] fetchJsonFast: HTTP ${res.status} for ${endpoint} — not retrying`);
+      return [];
+    }
+    const text = await res.text();
+    if (!text || text.trim().length === 0) return [];
+    const data = JSON.parse(text) as unknown[];
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    const errMsg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    logger.error(`[monitor] fetchJsonFast: fetch error for ${endpoint}: ${errMsg}`);
+    return [];
+  }
+}
+
 async function fetchJson(url: string): Promise<unknown[]> {
   const endpoint = url.split('?')[0];
 
@@ -594,11 +630,12 @@ export async function fetchWeatherForIcao(
     }
   }
 
-  // Cache is stale, bypassed, or this airport hasn't been scanned yet — fetch live
+  // Cache is stale, bypassed, or this airport hasn't been scanned yet — fetch live.
+  // Fast path (no retry/backoff): this is a user-facing request, not the scan.
   try {
     const [tafData, metarData] = await Promise.all([
-      fetchJson(`${BASE_URL}/taf?ids=${icao}&format=json`),
-      fetchJson(`${BASE_URL}/metar?ids=${icao}&format=json`),
+      fetchJsonFast(`${BASE_URL}/taf?ids=${icao}&format=json`),
+      fetchJsonFast(`${BASE_URL}/metar?ids=${icao}&format=json`),
     ]);
     const tafEntry = (tafData as Array<{ rawTAF?: string; tafType?: string }>)[0];
     const metarEntry = (metarData as Array<{ rawOb?: string; metarType?: string }>)[0];
@@ -662,15 +699,16 @@ export async function fetchWeatherForIcaos(
   const tafByIcao: Record<string, string> = {};
   const metarByIcao: Record<string, string> = {};
 
-  // Batches themselves still run through fetchJson's shared rate limiter
+  // Batches themselves still run through fetchJsonFast's shared rate limiter
   // sequentially (by design, to be polite to aviationweather.gov), but that's
-  // now ceil(N/50)*2 throttled calls instead of N*2.
+  // now ceil(N/50)*2 throttled calls instead of N*2. Uses the no-retry fast
+  // path — this is a user-facing request, not the background scan.
   for (const batch of batches) {
     const ids = batch.join(",");
     try {
       const [tafData, metarData] = await Promise.all([
-        fetchJson(`${BASE_URL}/taf?ids=${ids}&format=json`),
-        fetchJson(`${BASE_URL}/metar?ids=${ids}&format=json`),
+        fetchJsonFast(`${BASE_URL}/taf?ids=${ids}&format=json`),
+        fetchJsonFast(`${BASE_URL}/metar?ids=${ids}&format=json`),
       ]);
       for (const entry of tafData as Array<{ icaoId?: string; rawTAF?: string }>) {
         if (entry.icaoId && entry.rawTAF) tafByIcao[entry.icaoId] = entry.rawTAF;

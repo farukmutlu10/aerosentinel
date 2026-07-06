@@ -1094,21 +1094,21 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
           </div>
         </div>
 
+        {/* METAR section — shown above TAF in BOTH mode */}
+        {(view === "METAR" || view === "BOTH") && (
+          <div className="px-3 py-2.5">
+            {rawMetar ? <div><ColoredRawText raw={rawMetar} /></div> : <p className="text-xs font-mono text-muted-foreground italic">Awaiting METAR...</p>}
+          </div>
+        )}
+
         {/* TAF section */}
         {(view === "TAF" || view === "BOTH") && (
-          <div className="px-3 py-2.5">
+          <div className={`px-3 py-2.5 ${view === "BOTH" ? "border-t border-border/60 bg-background/30" : ""}`}>
             {rawTaf ? (
               <div className="sm:max-h-36 overflow-hidden sm:overflow-y-auto"><TafText raw={rawTaf} /></div>
             ) : (
               <p className="text-xs font-mono text-muted-foreground italic">Awaiting TAF data...</p>
             )}
-          </div>
-        )}
-
-        {/* METAR section */}
-        {(view === "METAR" || view === "BOTH") && (
-          <div className={`px-3 py-2.5 ${view === "BOTH" ? "border-t border-border/60 bg-background/30" : ""}`}>
-            {rawMetar ? <div><ColoredRawText raw={rawMetar} /></div> : <p className="text-xs font-mono text-muted-foreground italic">Awaiting METAR...</p>}
           </div>
         )}
       </div>
