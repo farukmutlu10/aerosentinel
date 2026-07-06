@@ -644,7 +644,7 @@ export default function Alerts() {
                 <div className="flex items-start justify-between gap-2 sm:gap-4">
                   <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
                     <div className="flex-shrink-0 pt-0.5"><AlertBadge type={alert.type as AlertType} /></div>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 @container">
                       <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2 flex-wrap">
                         <Link href={`/airports/${alert.icao}`} className="font-mono font-bold text-xs sm:text-sm hover:underline inline-flex items-center gap-1">
                           {alert.icao}

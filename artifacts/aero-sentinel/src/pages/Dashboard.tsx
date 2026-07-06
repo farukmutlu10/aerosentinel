@@ -1031,9 +1031,7 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
   const critMetar = rawMetar ? hasCritWx(rawMetar) : false;
   // CRIT badge also includes extreme wind
   const critAny = airportIsCrit(rawTaf, rawMetar);
-
-  const bothWorst = worstOf(tafCat, metarCat);
-  const bothWorstColor = catColor(bothWorst);
+  const isCrit = critTaf || critMetar || critAny;
 
   const borderStyle: React.CSSProperties = {};
   if (showLeftStrip) { borderStyle.borderLeftWidth = "3px"; borderStyle.borderLeftColor = tafColor; }
@@ -1050,66 +1048,47 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
     lineHeight: 1,
     userSelect: "none",
   };
+  // The category word (VFR/MVFR/IFR/LIFR) needs to stand out from the plain
+  // "TAF"/"METAR" label sharing the same strip — same size as the prefix,
+  // just bolder and at full opacity (the prefix is dimmed).
+  const stripCategoryStyle: React.CSSProperties = {
+    fontWeight: 900,
+    opacity: 1,
+  };
 
   return (
     <Link href={`/airports/${icao}`}
       className="block bg-card border border-border rounded-lg overflow-hidden hover:border-foreground/20 transition-colors cursor-pointer flex"
       style={borderStyle}>
 
-      {/* Left strip — TAF */}
+      {/* Left strip — TAF (+ its own category, once data exists) */}
       {showLeftStrip && (
         <div className="flex-shrink-0 w-[26px] flex items-center justify-center" style={{ backgroundColor: `${tafColor}12` }}>
-          <span style={{ ...stripTextStyle, color: tafColor, opacity: 0.9 }}>TAF</span>
+          <span style={{ ...stripTextStyle, color: tafColor }}>
+            {rawTaf
+              ? <><span style={{ opacity: 0.65 }}>TAF </span><span style={{ ...stripCategoryStyle, color: tafColor }}>{tafCat}</span></>
+              : <span style={{ opacity: 0.9 }}>TAF</span>}
+          </span>
         </div>
       )}
 
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 @container">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/60">
-          <span className="font-mono font-bold text-xs sm:text-sm tracking-wider inline-flex items-center gap-1.5">
+          <span className="font-mono font-bold text-xs sm:text-sm tracking-wider inline-flex items-center gap-1.5 min-w-0">
             {icao}
             <IataBadge icao={icao} />
             <RunwayBadge icao={icao} />
             <WindCalculatorTeaser icao={icao} />
           </span>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
-            {/* Single category badge — worst in BOTH mode */}
-            {view === "TAF" && rawTaf && tafWorst && (
-              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
-                style={{ color: catColor(tafCat), borderColor: catColor(tafCat, 0.38), backgroundColor: catColor(tafCat, 0.09) }}>
-                {tafCat}
-              </span>
-            )}
-            {view === "METAR" && rawMetar && (
-              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
-                style={{ color: catColor(metarCat), borderColor: catColor(metarCat, 0.38), backgroundColor: catColor(metarCat, 0.09) }}>
-                {metarCat}
-              </span>
-            )}
-            {view === "BOTH" && (rawTaf || rawMetar) && (
-              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
-                style={{ color: catColor(bothWorst), borderColor: catColor(bothWorst, 0.38), backgroundColor: catColor(bothWorst, 0.09) }}>
-                {bothWorst}
-              </span>
-            )}
             {!rawMetar && !rawTaf && (
               <span className="text-xs font-mono text-muted-foreground">NO DATA</span>
             )}
-            {/* CRIT badges (wx codes) */}
-            {critTaf && (
+            {/* CRIT badge (wx codes and/or extreme wind) — category itself now lives on the TAF/METAR strips */}
+            {isCrit && (
               <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border text-red-400 border-red-400/50 bg-red-400/10">
-                CRIT TAF
-              </span>
-            )}
-            {critMetar && (
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border text-red-400 border-red-400/50 bg-red-400/10">
-                CRIT METAR
-              </span>
-            )}
-            {/* Extreme wind included in CRIT, badge only when no wx-code CRIT */}
-            {!critTaf && !critMetar && critAny && (
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border text-red-400 border-red-400/50 bg-red-400/10">
-                CRIT WIND
+                CRIT
               </span>
             )}
           </div>
@@ -1134,10 +1113,14 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
         )}
       </div>
 
-      {/* Right strip — METAR */}
+      {/* Right strip — METAR (+ its own category, once data exists) */}
       {showRightStrip && (
         <div className="flex-shrink-0 w-[26px] flex items-center justify-center" style={{ backgroundColor: `${metarBorderColor}12` }}>
-          <span style={{ ...stripTextStyle, color: metarBorderColor, opacity: 0.9 }}>METAR</span>
+          <span style={{ ...stripTextStyle, color: metarBorderColor }}>
+            {rawMetar
+              ? <><span style={{ opacity: 0.65 }}>METAR </span><span style={{ ...stripCategoryStyle, color: metarBorderColor }}>{metarCat}</span></>
+              : <span style={{ opacity: 0.9 }}>METAR</span>}
+          </span>
         </div>
       )}
     </Link>
