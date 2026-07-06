@@ -31,6 +31,26 @@ import { formatDistanceToNow, format } from "date-fns";
 type AlertType = "TAF_AMD" | "TAF_COR" | "SPECI" | "WX_EXTREME" | "WIND_EXTREME" | "LIFR";
 type SortMode = "newest" | "oldest" | "icao-az";
 
+// ─── Last-known alerts cache — avoids an empty/skeleton flash on reload ─────
+// A hard refresh has no React Query cache to fall back on, so the list (and
+// the Skeleton gating on isLoading) would show nothing for as long as
+// /api/alerts takes to resolve — on a broad watchlist that's a visible gap
+// users read as "my alerts disappeared." Persisting the last successful
+// response and handing it back as placeholderData shows it immediately while
+// a real (staleTime: 0) refetch still happens in the background.
+const ALERTS_CACHE_KEY = "aero-alerts-last-known-v1";
+function loadCachedAlerts(): unknown[] | undefined {
+  try {
+    const raw = localStorage.getItem(ALERTS_CACHE_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : undefined;
+  } catch { return undefined; }
+}
+function saveCachedAlerts(alerts: unknown[]) {
+  try { localStorage.setItem(ALERTS_CACHE_KEY, JSON.stringify(alerts.slice(0, 100))); } catch { /* ignore */ }
+}
+
 const ALL_ALERT_TYPES: AlertType[] = ["TAF_AMD", "TAF_COR", "SPECI", "WX_EXTREME", "WIND_EXTREME", "LIFR"];
 
 // ── Display types: 3 crit wx types merged into single "CRIT_WX" ─────────────
@@ -261,8 +281,13 @@ export default function Alerts() {
 
   const { data: allAlerts, isLoading } = useListAlerts(
     { limit: 100, since_hours: 6 } as any,
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), staleTime: 0, refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true } }
+    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), staleTime: 0, refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, placeholderData: loadCachedAlerts() as any } }
   );
+
+  // Keep the last-known list around for the next hard reload's placeholderData
+  useEffect(() => {
+    if (allAlerts && allAlerts.length > 0) saveCachedAlerts(allAlerts);
+  }, [allAlerts]);
 
   // Invalidate alerts when watchlist syncs or an airport is added
   useEffect(() => {
