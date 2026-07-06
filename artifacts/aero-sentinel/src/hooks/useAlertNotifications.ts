@@ -97,7 +97,7 @@ export function useAlertNotifications() {
   // used to only reach Alerts.tsx's list — this hook never saw them, so
   // adding an airport with an active LIFR/extreme condition produced zero
   // notification until the next periodic scan happened to persist a real row.
-  const { effectiveIcaos, initialAlerts: liveInitialAlerts } = useWatchlist();
+  const { effectiveIcaos, initialAlerts: liveInitialAlerts, initialAlertsReady } = useWatchlist();
   const { isSnoozed } = useAlertSnooze();
   const [pendingToasts, setPendingToasts] = useState<Array<{
     id: string;
@@ -208,6 +208,30 @@ export function useAlertNotifications() {
       }
     }
   }
+
+  // ─── One-time baseline seed for live-detected initial alerts ──────────────
+  // liveInitialAlerts re-scans the ENTIRE current watchlist on every mount,
+  // not just newly-added airports — for an account with an existing sizeable
+  // watchlist, the very first run of this hook's merge (above) would see
+  // dozens of long-standing, never-new conditions all at once and report
+  // them as "new" purely because nothing had ever added them to seenIds
+  // before. Seed them in silently, exactly once ever per browser, so only
+  // genuinely new conditions (including ones on a freshly-added airport)
+  // notify from this point forward.
+  const BASELINE_KEY = "aero-notif-live-baseline-seeded-v1";
+  useEffect(() => {
+    if (!initialAlertsReady) return; // wait for the first sync to actually complete
+    let seeded = false;
+    try { seeded = localStorage.getItem(BASELINE_KEY) === "1"; } catch { /* ignore */ }
+    if (seeded) return;
+
+    if (liveInitialAlerts.length > 0) {
+      for (const alert of liveInitialAlerts) seenIds.current.add(alert.id);
+      saveSeenIds(seenIds.current);
+      log(`Baseline-seeded ${liveInitialAlerts.length} pre-existing live alert(s) — not notifying for these, only for genuinely new ones from here on`);
+    }
+    try { localStorage.setItem(BASELINE_KEY, "1"); } catch { /* ignore */ }
+  }, [initialAlertsReady, liveInitialAlerts]);
 
   // ─── Ana bildirim effect'i ─────────────────────────────────────────────────
   useEffect(() => {
