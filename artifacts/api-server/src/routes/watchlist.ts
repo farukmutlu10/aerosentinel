@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, watchlistTable, alertsTable } from "@workspace/db";
 import { eq, and, inArray, sql, desc } from "drizzle-orm";
 import { updateCachedIcaos, getAirports, clearDisplayCache, refreshIcaoCache, fetchWeatherForIcao } from "../lib/monitor.js";
+import { hasLifrConditions } from "../lib/conditions.js";
 
 // Access the alerts cache declared in alerts.ts (global)
 declare global {
@@ -65,14 +66,7 @@ async function fetchJsonFast(url: string): Promise<unknown[]> {
 }
 
 // ── Detect alerts from live TAF/METAR (no DB writes, no monitor state) ─────
-function hasLifrConditions(raw: string): boolean {
-  if (raw.includes("CAVOK")) return false;
-  const visMatch = raw.match(/\b(\d{3}\d{1,2}|VRB\d{2,3})(?:G\d{2,3})?(?:KT|MPS|KMH)\s+(\d{4})\b/);
-  if (visMatch) { const vis = parseInt(visMatch[2], 10); if (vis < 1600 && vis > 0) return true; }
-  const ceilMatches = [...raw.matchAll(/\b(BKN|OVC|VV)(\d{3})\b/g)];
-  for (const m of ceilMatches) { if (parseInt(m[2], 10) * 100 < 500) return true; }
-  return false;
-}
+// Uses the token-based hasLifrConditions from monitor.ts (B3 fix)
 
 const EXTREME_WX_CODES = [
   "+TS", "+TSRA", "+SH", "+SHRA", "+RA", "+DZ",

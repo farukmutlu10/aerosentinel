@@ -1,6 +1,8 @@
 import { db, alertsTable, watchlistTable, monitorCacheTable } from "@workspace/db";
 import { eq, and, sql, gte } from "drizzle-orm";
 import { sendPushForAlert } from "./push.js";
+import { hasLifrConditions, getActiveTafPeriod, getActiveTempos } from "./conditions.js";
+export { hasLifrConditions, getActiveTafPeriod, getActiveTempos };
 
 let cachedIcaos: string[] = [];
 
@@ -348,23 +350,31 @@ async function scanTaf(ids: string) {
       } // end LIFR else
       } // end !hasAmdCor
     } else if (rawTaf) {
-      // ── B2 fix: TAF text unchanged — re-evaluate active period conditions ──
+      // ── B2 fix: TAF text unchanged — re-evaluate active period + TEMPO conditions ──
       // A FM period may have become "current" since the last scan even though
       // the full TAF text hasn't changed.  Re-evaluate LIFR / WX_EXTREME /
-      // WIND_EXTREME on the active period's weather section.
+      // WIND_EXTREME on the active period's weather section + any active TEMPO/BECMG groups.
       const activePeriod = getActiveTafPeriod(rawTaf);
-      const periodKey = activePeriod?.key ?? "BASE";
+      const activeTempos = getActiveTempos(rawTaf);
+      const tempoSuffix = activeTempos.length > 0
+        ? `+TEMPO[${activeTempos.join("|").slice(0, 60)}]`
+        : "";
+      const periodKey = (activePeriod?.key ?? "BASE") + tempoSuffix;
       const lastAlert = tafPeriodLastAlert[icao];
 
-      // Only re-evaluate when the active period has changed
+      // Only re-evaluate when the active period or TEMPO composition has changed
       if (!lastAlert || lastAlert.periodKey !== periodKey) {
         const periodText = activePeriod?.text ?? rawTaf;
+        // Merge: base/FM period text + active TEMPO/BECMG weather
+        const combinedText = activeTempos.length > 0
+          ? periodText + " " + activeTempos.join(" ")
+          : periodText;
         let alertType: "LIFR" | "WX_EXTREME" | "WIND_EXTREME" | null = null;
 
         // ── Priority-based: LIFR > WX_EXTREME > WIND_EXTREME ──
 
-        // 1. LIFR
-        if (hasLifrConditions(periodText)) {
+        // 1. LIFR (check combined text so TEMPO visibility is detected)
+        if (hasLifrConditions(combinedText)) {
           alertType = "LIFR";
         } else {
         // 2. WX_EXTREME
@@ -384,7 +394,7 @@ async function scanTaf(ids: string) {
         let _periodWxExtreme = false;
         for (const code of _PERIOD_EXTREME_WX_CODES) {
           const escaped = code.replace(/[+]/g, "\\+");
-          if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(periodText)) {
+          if (new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`).test(combinedText)) {
             _periodWxExtreme = true; break;
           }
         }
@@ -393,18 +403,18 @@ async function scanTaf(ids: string) {
         } else {
         // 3. WIND_EXTREME
         let _periodWindExtreme = false;
-        for (const m of periodText.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/g)) {
+        for (const m of combinedText.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/g)) {
           const spd = parseInt(m[1]); const gst = m[2] ? parseInt(m[2]) : 0;
           if (spd >= 25 || gst >= 29) { _periodWindExtreme = true; break; }
         }
         if (!_periodWindExtreme) {
-          for (const m of periodText.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?MPS\b/g)) {
+          for (const m of combinedText.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?MPS\b/g)) {
             const spd = parseInt(m[1]); const gst = m[2] ? parseInt(m[2]) : 0;
             if (spd >= 13 || gst >= 15) { _periodWindExtreme = true; break; }
           }
         }
         if (!_periodWindExtreme) {
-          for (const m of periodText.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KMH\b/g)) {
+          for (const m of combinedText.matchAll(/\b(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KMH\b/g)) {
             const spd = Math.round(parseInt(m[1]) * 0.5399568);
             const gst = m[2] ? Math.round(parseInt(m[2]) * 0.5399568) : 0;
             if (spd >= 25 || gst >= 29) { _periodWindExtreme = true; break; }
@@ -415,19 +425,19 @@ async function scanTaf(ids: string) {
         } // end LIFR else
 
         if (alertType) {
-          // DB dedup: use period text as rawText for per-period deduplication
+          // DB dedup: use combined text (period + TEMPO) as rawText for per-period deduplication
           const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
             .where(and(
               eq(alertsTable.icao, icao),
               eq(alertsTable.type, alertType),
-              eq(alertsTable.rawText, periodText),
+              eq(alertsTable.rawText, combinedText),
               sql`${alertsTable.detectedAt} > NOW() - INTERVAL '24 hours'`,
             )).limit(1);
           if (recentDup.length === 0) {
             try {
-              await db.insert(alertsTable).values({ type: alertType, icao, rawText: periodText, previousRawText: rawTaf });
+              await db.insert(alertsTable).values({ type: alertType, icao, rawText: combinedText, previousRawText: rawTaf });
               console.log(`[monitor] ✅ TAF ${alertType} (period re-eval) for ${icao} [${periodKey}]`);
-              void sendPushForAlert(alertType, icao, periodText, 0);
+              void sendPushForAlert(alertType, icao, combinedText, 0);
             } catch (err) {
               console.error(`[monitor] Failed to insert TAF ${alertType} for ${icao}:`, err);
             }
@@ -706,94 +716,10 @@ async function scanMetar(ids: string) {
   console.log(`[monitor] METAR scan SUMMARY: ${allData.length} raw → ${latestMetarData.length} unique for ${requestedCount} airports | rawOb: ${metEntriesWithRaw}✓ ${metEntriesWithoutRaw}✗ | changes: ${metChangesDetected} | alerts: ${metAlertsInserted} | speciFromHistory: ${metSpeciFromHistory} | missing: ${missingAirports.length}`);
 }
 
-function hasLifrConditions(rawMetar: string): boolean {
-  // CAVOK means good conditions, not LIFR
-  if (rawMetar.includes("CAVOK")) return false;
-
-  // Token-based visibility parsing — robust against variable wind direction groups
-  // that break the old wind+visibility adjacency regex (e.g., "18008G15KT 150V210 0800").
-  const tokens = rawMetar.split(/\s+/);
-  let visMeters: number | null = null;
-  let foundWind = false;
-
-  for (let i = 0; i < tokens.length; i++) {
-    // Match wind group: dddss[Ggg](KT|MPS|KMH) or VRBss[Ggg](KT|MPS|KMH)
-    if (/^(?:\d{3}|VRB)\d{2,3}(?:G\d{2,3})?(?:KT|MPS|KMH)$/.test(tokens[i])) {
-      foundWind = true;
-      continue;
-    }
-    if (foundWind) {
-      // Skip optional variable wind direction group (dddVddd)
-      if (/^\d{3}V\d{3}$/.test(tokens[i])) continue;
-      // Next token should be visibility
-      if (/^\d{4}$/.test(tokens[i])) {
-        visMeters = parseInt(tokens[i], 10);
-      }
-      break;
-    }
-  }
-
-  if (visMeters !== null && visMeters < 1600 && visMeters > 0) return true;
-
-  // Parse ceiling: lowest BKN, OVC, or VV layer
-  const ceilMatches = [...rawMetar.matchAll(/\b(BKN|OVC|VV)(\d{3})\b/g)];
-  for (const m of ceilMatches) {
-    const heightFt = parseInt(m[2], 10) * 100;
-    if (heightFt < 500) return true;
-  }
-
-  return false;
-}
-
 // ── TAF active-period parsing (for B2 fix) ──────────────────────────────────
 
 /** Tracks which TAF period was last alerted per ICAO to avoid re-alerting */
 const tafPeriodLastAlert: Record<string, { periodKey: string; alertType: string }> = {};
-
-/**
- * Parse the TAF text and return the currently active time segment.
- * Returns the FM segment whose start time ≤ now, or the base section if
- * no FM has started yet.  Returns null when the TAF has no FM groups
- * (entire TAF is base conditions — handled by text-change detection).
- */
-function getActiveTafPeriod(rawTaf: string): { key: string; text: string } | null {
-  const now = new Date();
-  const nowDay = now.getUTCDate();
-  const nowHHMM = now.getUTCHours() * 60 + now.getUTCMinutes();
-
-  const fmMatches = [...rawTaf.matchAll(/\bFM(\d{2})(\d{2})(\d{2})\b/g)];
-  if (fmMatches.length === 0) {
-    // No FM groups — base conditions only; text-change detection handles this
-    return null;
-  }
-
-  // Find the most recent FM that has already started
-  let activeIdx = -1; // -1 = base (before any FM)
-  for (let i = 0; i < fmMatches.length; i++) {
-    const fmDay = parseInt(fmMatches[i][1], 10);
-    const fmHHMM = parseInt(fmMatches[i][2], 10) * 60 + parseInt(fmMatches[i][3], 10);
-    // TAFs span <30 h so a simple day comparison suffices
-    if (fmDay < nowDay || (fmDay === nowDay && fmHHMM <= nowHHMM)) {
-      activeIdx = i;
-    }
-  }
-
-  if (activeIdx === -1) {
-    // Before any FM — base section (text before first FM)
-    const baseEnd = fmMatches[0].index!;
-    const baseText = rawTaf.substring(0, baseEnd).trim();
-    return { key: "BASE", text: baseText || rawTaf };
-  }
-
-  // Extract text from active FM marker to next FM (or end of TAF)
-  const fm = fmMatches[activeIdx];
-  const startIdx = fm.index! + fm[0].length;
-  const endIdx = activeIdx + 1 < fmMatches.length
-    ? fmMatches[activeIdx + 1].index!
-    : rawTaf.length;
-  const segmentText = rawTaf.substring(startIdx, endIdx).trim();
-  return { key: fm[0], text: segmentText || rawTaf };
-}
 
 async function sentinelRadar() {
   try {

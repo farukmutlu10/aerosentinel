@@ -9,14 +9,15 @@ const VAPID_SUBJECT     = process.env.VAPID_SUBJECT     ?? "mailto:admin@aerosen
 
 let vapidConfigured = false;
 
-export function configureVapid() {
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-    console.warn("[push] ⚠️ VAPID keys not configured — push notifications disabled");
-    return;
+export function configureVapid(): boolean {
+  if (!VAPID_SUBJECT || !VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    console.warn("[push] VAPID keys not configured — push notifications disabled");
+    return false;
   }
   (webPush as any).setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
   vapidConfigured = true;
   console.log("[push] ✅ VAPID keys configured");
+  return true;
 }
 
 export function getVapidPublicKey(): string {
