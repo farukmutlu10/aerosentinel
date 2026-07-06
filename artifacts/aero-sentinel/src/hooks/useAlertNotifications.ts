@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAlertSound } from "@/hooks/useAlertSound";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { useAlertSnooze } from "@/hooks/useAlertSnooze";
+import { getCookiePreferences } from "@/components/CookieConsent";
 
 // ─── V4 key: bump when seenIds persistence logic changes ─────────────────────
 // V3→V4: Fixed over-persistence bug where watchlist-filtered alerts were added
@@ -24,6 +25,14 @@ const LOG = "[AeroNotif]";
 const log = (...args: unknown[]) => {
   if (import.meta.env.DEV) console.log(LOG, new Date().toISOString(), ...args);
 };
+// Errors on this path fail silently by design (a broken notification must
+// never crash the app), which also means production gave us zero signal when
+// something did break here. Unlike log(), these always print — a warning in
+// the console costs nothing, but it previously would have been the only way
+// to notice CookieConsent's stored value being unparseable and quietly
+// killing every notification in prod (getCookiePreferences() itself already
+// guards its JSON.parse, so this is now just a diagnostics hook, not a fix).
+const logError = (...args: unknown[]) => console.error(LOG, new Date().toISOString(), ...args);
 
 // ─── Persisted seen-alert tracker ───────────────────────────────────────────
 
@@ -83,7 +92,12 @@ function buildBatchSummary(alerts: Array<{ icao: string; type: string }>): { bod
 
 export function useAlertNotifications() {
   const { play: playAlert } = useAlertSound();
-  const { effectiveIcaos } = useWatchlist();
+  // liveInitialAlerts: /watchlist/sync's instant, not-yet-persisted detections
+  // (synthetic negative ids) for airports just added to the watchlist. These
+  // used to only reach Alerts.tsx's list — this hook never saw them, so
+  // adding an airport with an active LIFR/extreme condition produced zero
+  // notification until the next periodic scan happened to persist a real row.
+  const { effectiveIcaos, initialAlerts: liveInitialAlerts } = useWatchlist();
   const { isSnoozed } = useAlertSnooze();
   const [pendingToasts, setPendingToasts] = useState<Array<{
     id: string;
@@ -197,14 +211,20 @@ export function useAlertNotifications() {
 
   // ─── Ana bildirim effect'i ─────────────────────────────────────────────────
   useEffect(() => {
-    log(`[NOTIF EFFECT] Fired — allAlerts=${allAlerts?.length ?? "undefined"}, seenIds=${seenIds.current.size}`);
-    if (!allAlerts?.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }
+    // Combine the polled DB alerts with /watchlist/sync's instant live
+    // detections (synthetic negative ids for airports not yet scanned) —
+    // same seenIds set, so if the same condition later gets a real DB row
+    // and reappears via allAlerts, it just looks like a second alert rather
+    // than silently being dropped either way.
+    const combinedAlerts: Array<{ id: number; type: string; icao: string; rawText: string }> =
+      [...(allAlerts ?? []), ...liveInitialAlerts];
+
+    log(`[NOTIF EFFECT] Fired — allAlerts=${allAlerts?.length ?? "undefined"}, liveInitialAlerts=${liveInitialAlerts.length}, seenIds=${seenIds.current.size}`);
+    if (!combinedAlerts.length) { log("⚠️ alerts verisi boş — bildirim tetiklenemez"); return; }
 
     // Cookie consent guard — only blocks browser notifications (Notification API).
     // In-app toasts and sounds are core app functionality and work without consent.
-    const raw = localStorage.getItem('aero-cookie-consent');
-    const consent = raw ? JSON.parse(raw) : null;
-    const hasCookieConsent = !!consent;
+    const consentGiven = getCookiePreferences() !== null;
     const hasPermission = typeof Notification !== "undefined" && Notification.permission === "granted";
 
     let skippedWatchlist = 0;
@@ -218,8 +238,8 @@ export function useAlertNotifications() {
     // ─── Pass 1: filter down to genuinely new, notify-worthy alerts ──────────
     // No side effects here yet — we need the full set before deciding whether
     // to notify individually or collapse into one batch summary.
-    const newAlerts: typeof allAlerts = [];
-    for (const alert of allAlerts) {
+    const newAlerts: typeof combinedAlerts = [];
+    for (const alert of combinedAlerts) {
       // Already seen → skip silently (don't add again)
       if (seenIds.current.has(alert.id)) { skippedSeen++; continue; }
 
@@ -262,7 +282,7 @@ export function useAlertNotifications() {
 
       log("🔔 YENİ ALERT BİLDİRİM:", alert.id, alert.type, alert.icao);
 
-      if (hasPermission && hasCookieConsent) {
+      if (hasPermission && consentGiven) {
         sendNotification(title, { body, icon, tag: `aero-alert-${alert.icao}-${alert.id}`, requireInteraction: false }).then((n) => {
           if (n) {
             const timer = setTimeout(() => n.close(), AUTO_CLOSE_MS);
@@ -287,7 +307,7 @@ export function useAlertNotifications() {
 
       log(`🔔 TOPLU BİLDİRİM: ${newAlerts.length} alert, ${icaoCount} havalimanı — ${body}`);
 
-      if (hasPermission && hasCookieConsent) {
+      if (hasPermission && consentGiven) {
         sendNotification(title, { body, icon, tag: `aero-alert-batch-${Date.now()}`, requireInteraction: false }).then((n) => {
           if (n) {
             const timer = setTimeout(() => n.close(), AUTO_CLOSE_MS);
@@ -316,7 +336,7 @@ export function useAlertNotifications() {
     if (totalSkipped > 0) log(`⏭️ ${totalSkipped} atlandı (seen=${skippedSeen} watchlist=${skippedWatchlist} snooze=${skippedSnooze})`);
     if (newAlerts.length === 0) log("Yeni alert yok (tümü seenIds'de veya filtrelenmiş)");
     else log(`✅ ${newAlerts.length} yeni alert için bildirim gönderildi (${newAlerts.length > 1 ? "toplu" : "tekli"})`);
-  }, [allAlerts, playAlert, effectiveIcaos, isSnoozed]);
+  }, [allAlerts, liveInitialAlerts, playAlert, effectiveIcaos, isSnoozed]);
 
   return { forceCheck, pendingToasts, dismissToast };
 }

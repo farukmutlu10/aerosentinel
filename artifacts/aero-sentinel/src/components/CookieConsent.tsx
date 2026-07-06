@@ -89,14 +89,14 @@ export function CookieConsent() {
       initGA();
     }
     setVisible(false);
-    // NotificationBanner'a haber ver
+    // PushNotificationPrompt'a haber ver
     window.dispatchEvent(new Event('aero-consent-given'));
   };
 
   const handleAcceptAll = () => {
     const allAccepted: CookiePreferences = { necessary: true, analytics: true, marketing: true };
     persistAndClose(allAccepted);
-    // Notification.requestPermission() removed — NotificationBanner handles this now
+    // Notification.requestPermission() happens via PushNotificationPrompt, not here
   };
 
   const handleRejectAll = () => {
@@ -104,13 +104,13 @@ export function CookieConsent() {
     localStorage.setItem(COOKIE_KEY, JSON.stringify(allRejected));
     rejectAllConsent();
     setVisible(false);
-    // NotificationBanner'a haber ver
+    // PushNotificationPrompt'a haber ver
     window.dispatchEvent(new Event('aero-consent-given'));
   };
 
   const handleSavePreferences = () => {
     persistAndClose(preferences);
-    // Notification.requestPermission() removed — NotificationBanner handles this now
+    // Notification.requestPermission() happens via PushNotificationPrompt, not here
   };
 
   const toggleAnalytics = () => {

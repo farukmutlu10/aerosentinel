@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Bell, BellOff, X } from "lucide-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import { getCookiePreferences } from "@/components/CookieConsent";
 
 const DISMISSED_KEY = "aero-push-prompt-dismissed";
 
@@ -28,9 +29,7 @@ export function PushNotificationPrompt() {
       cancelTimer?.();
       cancelTimer = undefined;
 
-      const raw = localStorage.getItem("aero-cookie-consent");
-      const consent = raw ? JSON.parse(raw) : null;
-      const hasConsent = !!consent;
+      const hasConsent = getCookiePreferences() !== null;
 
       const shouldShow =
         isSupported &&
