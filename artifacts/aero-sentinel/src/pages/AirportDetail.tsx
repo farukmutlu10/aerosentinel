@@ -81,12 +81,12 @@ export default function AirportDetail({ icao }: Props) {
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 pt-8 pb-24 sm:pb-8 space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <Link href="/airports" className="text-xs text-muted-foreground hover:text-foreground font-mono transition-colors">
-              &larr; AIRPORTS
+          <div className="@container min-w-0">
+            <Link href="/" className="text-xs text-muted-foreground hover:text-foreground font-mono transition-colors">
+              &larr; MONITOR
             </Link>
             <div className="flex items-center gap-3 mt-2">
-              <h2 className="text-3xl font-bold font-mono text-primary inline-flex items-center gap-2">
+              <h2 className="text-3xl font-bold font-mono text-primary inline-flex items-center gap-2 min-w-0">
                 {icao}
                 <IataBadge icao={icao} size="sm" />
                 <RunwayBadge icao={icao} />

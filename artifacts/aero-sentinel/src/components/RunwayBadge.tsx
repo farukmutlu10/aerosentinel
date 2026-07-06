@@ -32,7 +32,17 @@ export function RunwayBadge({ icao }: RunwayBadgeProps) {
 
   if (!runways || runways.length === 0) return null;
 
-  const summary = runways.map((r) => r.designator).join(" · ");
+  // Never cut a designator in half when space is tight — show a whole number
+  // of them plus a "+N" for the rest, and step that count up at wider
+  // breakpoints instead of CSS-truncating the joined string mid-character.
+  const buildSummary = (count: number) => {
+    const shown = runways.slice(0, count).map((r) => r.designator).join(" · ");
+    const hidden = runways.length - count;
+    return hidden > 0 ? `${shown} +${hidden}` : shown;
+  };
+  const summaryNarrow = buildSummary(2);
+  const summaryMedium = buildSummary(3);
+  const summaryFull = runways.map((r) => r.designator).join(" · ");
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -49,10 +59,19 @@ export function RunwayBadge({ icao }: RunwayBadgeProps) {
         <button
           type="button"
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((o) => !o); }}
-          className="inline-flex items-center font-mono text-[10px] leading-none px-1.5 py-[3px] tracking-wide rounded border border-sky-500/30 bg-sky-500/10 text-sky-400/90 hover:bg-sky-500/20 transition-colors"
-          title="Runway details"
+          className="inline-flex items-center whitespace-nowrap font-mono text-[10px] leading-none px-1.5 py-[3px] tracking-wide rounded border border-sky-500/30 bg-sky-500/10 text-sky-400/90 hover:bg-sky-500/20 transition-colors"
+          title={`Runway details: ${summaryFull}`}
         >
-          {summary}
+          {/*
+            Whole designators only — never cut one in half. Sized off the
+            nearest @container (the card's own width), not the viewport:
+            cards can sit in a multi-column grid on wide screens, where
+            viewport breakpoints would wrongly assume there's more room
+            than an individual card actually has.
+          */}
+          <span className="@min-[420px]:hidden">{summaryNarrow}</span>
+          <span className="hidden @min-[420px]:inline @min-[640px]:hidden">{summaryMedium}</span>
+          <span className="hidden @min-[640px]:inline">{summaryFull}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent
