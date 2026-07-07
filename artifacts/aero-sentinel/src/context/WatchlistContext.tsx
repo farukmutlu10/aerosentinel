@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { normalizeIcao } from "@/lib/icaoUtils";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 const DEFAULT_ICAO = "LTFH";
 const LS_KEY = "aero-sentinel-watchlist";
@@ -58,7 +59,11 @@ async function syncToBackend(icaos: string[]): Promise<InitialAlert[]> {
   console.log(`[WATCHLIST DIAG] request body (${bodyStr.length} bytes):`, bodyStr.slice(0, 200));
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const res = await fetch("/api/watchlist/sync", {
+      // fetchWithTimeout: a request stalled indefinitely by a backgrounded
+      // tab would otherwise hang this whole retry loop forever, since
+      // neither `then` nor `catch` ever fires on a promise that never
+      // settles — initialAlertsReady would then never become true.
+      const res = await fetchWithTimeout("/api/watchlist/sync", {
         method: "PUT",
         headers,
         body: bodyStr,
@@ -90,7 +95,7 @@ async function syncToBackend(icaos: string[]): Promise<InitialAlert[]> {
 }
 
 function apiAdd(icao: string) {
-  void fetch("/api/watchlist", {
+  void fetchWithTimeout("/api/watchlist", {
     method: "POST",
     headers,
     body: JSON.stringify({ icao }),
@@ -98,14 +103,14 @@ function apiAdd(icao: string) {
 }
 
 function apiRemove(icao: string) {
-  void fetch(`/api/watchlist/${icao}`, {
+  void fetchWithTimeout(`/api/watchlist/${icao}`, {
     method: "DELETE",
     headers,
   }).catch(() => {});
 }
 
 function apiClear() {
-  void fetch("/api/watchlist", {
+  void fetchWithTimeout("/api/watchlist", {
     method: "DELETE",
     headers,
   }).catch(() => {});

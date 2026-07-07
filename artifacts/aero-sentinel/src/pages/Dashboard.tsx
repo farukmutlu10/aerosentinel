@@ -18,6 +18,7 @@ import { WindCalculatorTeaser } from "@/components/WindCalculatorTeaser";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWatchlist } from "@/context/WatchlistContext";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { useThemeContext } from "@/App";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { normalizeIcao } from "@/lib/icaoUtils";
@@ -52,7 +53,12 @@ const WEATHER_KEY = (key: string) => ["watchlist", "weather", key];
 // crashed the whole page (visible ErrorBoundary "Something went wrong") the
 // moment the rate limit was hit, e.g. right after pasting a large watchlist.
 async function fetchWeatherJson(url: string): Promise<WeatherItem[]> {
-  const res = await fetch(url);
+  // fetchWithTimeout, not plain fetch: a request that stalls indefinitely
+  // (browser silently drops a backgrounded tab's connection) would otherwise
+  // permanently block this refetchInterval — React Query dedupes by query
+  // key, so every future 60s tick just waits on the same hung promise until
+  // a full page reload. See fetchWithTimeout.ts for the full story.
+  const res = await fetchWithTimeout(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   return Array.isArray(data) ? data : [];
@@ -267,7 +273,7 @@ export default function Dashboard() {
       (icao) => runwayPrefetchQueryClient.getQueryData(["runways", icao]) === undefined,
     );
     if (missing.length === 0) return;
-    fetch(`/api/airports/runways?icaos=${missing.join(",")}`)
+    fetchWithTimeout(`/api/airports/runways?icaos=${missing.join(",")}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data: { runways?: Record<string, unknown[]> }) => {
         for (const icao of missing) {

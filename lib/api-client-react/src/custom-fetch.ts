@@ -332,6 +332,35 @@ function getDeviceId(): string {
   return id;
 }
 
+// A backgrounded browser tab can leave an in-flight fetch's underlying
+// connection stalled indefinitely — it never resolves, never rejects, no
+// error, nothing. Without a timeout, that single hung request permanently
+// blocks the query it belongs to: TanStack Query dedupes concurrent fetches
+// per query key, so refetchInterval ticks and even explicit
+// invalidateQueries() calls do nothing while the original promise is still
+// "in flight" — only a full page reload (which throws away the JS context
+// and the zombie promise with it) unsticks it. Reported symptom this fixes:
+// a long-running session's alert polling silently stops (foreground or
+// background) until the user manually reloads the page, at which point a
+// backlog of alerts arrives all at once.
+const DEFAULT_TIMEOUT_MS = 20_000;
+
+function withTimeout(existingSignal: AbortSignal | undefined, timeoutMs: number): { signal: AbortSignal | undefined; cleanup: () => void } {
+  if (typeof AbortController === "undefined") return { signal: existingSignal, cleanup: () => {} };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(typeof DOMException !== "undefined" ? new DOMException("Request timed out", "TimeoutError") : new Error("Request timed out"));
+  }, timeoutMs);
+
+  if (existingSignal) {
+    if (existingSignal.aborted) controller.abort(existingSignal.reason);
+    else existingSignal.addEventListener("abort", () => controller.abort(existingSignal.reason), { once: true });
+  }
+
+  return { signal: controller.signal, cleanup: () => clearTimeout(timer) };
+}
+
 export async function customFetch<T = unknown>(
   input: RequestInfo | URL,
   options: CustomFetchOptions = {},
@@ -374,12 +403,17 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  const { signal, cleanup } = withTimeout(init.signal ?? undefined, DEFAULT_TIMEOUT_MS);
+  try {
+    const response = await fetch(input, { ...init, method, headers, signal });
 
-  if (!response.ok) {
-    const errorData = await parseErrorBody(response, method);
-    throw new ApiError(response, errorData, requestInfo);
+    if (!response.ok) {
+      const errorData = await parseErrorBody(response, method);
+      throw new ApiError(response, errorData, requestInfo);
+    }
+
+    return (await parseSuccessBody(response, responseType, requestInfo)) as T;
+  } finally {
+    cleanup();
   }
-
-  return (await parseSuccessBody(response, responseType, requestInfo)) as T;
 }
