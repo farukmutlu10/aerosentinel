@@ -6,37 +6,17 @@ import { useCallback, useEffect } from "react";
 
 let audioCtx: AudioContext | null = null;
 let _audioUnlocked = false;
+// Tarayıcı autoplay politikası yüzünden context suspended kaldığı için bir beep
+// çalınamadıysa, bir sonraki user gesture'da (unlock) tekrar denenmesi için
+// kuyruğa alınır — aksi halde o alert için sessizce hiç ses çıkmaz ve hiçbir
+// hata da görünmez.
+let _pendingBeep = false;
 
 function getCtx(): AudioContext {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
   }
   return audioCtx;
-}
-
-// ─── AudioContext unlock — sayfa yüklendiğinde hemen çağrılır ────────────────
-function setupAudioUnlock() {
-  if (_audioUnlocked || typeof window === "undefined") return;
-  _audioUnlocked = true;
-
-  const unlock = () => {
-    try {
-      const ctx = getCtx();
-      if (ctx.state === "suspended") {
-        ctx.resume().catch(() => {});
-      }
-    } catch { /* ignore */ }
-    // Tüm event listener'ları tek seferde kaldır
-    window.removeEventListener("click", unlock);
-    window.removeEventListener("keydown", unlock);
-    window.removeEventListener("touchstart", unlock);
-    window.removeEventListener("pointerdown", unlock);
-  };
-
-  window.addEventListener("click", unlock, { once: true });
-  window.addEventListener("keydown", unlock, { once: true });
-  window.addEventListener("touchstart", unlock, { once: true });
-  window.addEventListener("pointerdown", unlock, { once: true });
 }
 
 function playTone(freq: number, duration: number, startTime: number, volume = 0.25, type: OscillatorType = "sine") {
@@ -53,31 +33,74 @@ function playTone(freq: number, duration: number, startTime: number, volume = 0.
   osc.stop(startTime + duration);
 }
 
+function emitTones(ctx: AudioContext) {
+  const t = ctx.currentTime;
+  playTone(1200, 0.15, t, 0.25, "sine");
+  playTone(900, 0.12, t + 0.08, 0.2, "sine");
+  playTone(600, 0.2, t + 0.15, 0.25, "sine");
+}
+
+// ─── AudioContext unlock — sayfa yüklendiğinde hemen çağrılır ────────────────
+function setupAudioUnlock() {
+  if (_audioUnlocked || typeof window === "undefined") return;
+  _audioUnlocked = true;
+
+  const unlock = () => {
+    try {
+      const ctx = getCtx();
+      if (ctx.state === "suspended") {
+        ctx.resume()
+          .then(() => {
+            if (_pendingBeep && ctx.state === "running") {
+              _pendingBeep = false;
+              emitTones(ctx);
+            }
+          })
+          .catch((err) => console.warn("[AeroSound] unlock resume başarısız:", err));
+      }
+    } catch (err) {
+      console.warn("[AeroSound] unlock hatası:", err);
+    }
+    // Tüm event listener'ları tek seferde kaldır
+    window.removeEventListener("click", unlock);
+    window.removeEventListener("keydown", unlock);
+    window.removeEventListener("touchstart", unlock);
+    window.removeEventListener("pointerdown", unlock);
+  };
+
+  window.addEventListener("click", unlock, { once: true });
+  window.addEventListener("keydown", unlock, { once: true });
+  window.addEventListener("touchstart", unlock, { once: true });
+  window.addEventListener("pointerdown", unlock, { once: true });
+}
+
 // ─── Public: beep çal ───────────────────────────────────────────────────────
 export function playAlertSound() {
   try {
     const ctx = getCtx();
-    // AudioContext suspended ise resume et (notification geldiğinde bile çalışsın)
-    if (ctx.state === "suspended") {
-      ctx.resume().then(() => {
-        // Resume başarılı olduktan sonra sesi çal
-        const t = ctx.currentTime;
-        playTone(1200, 0.15, t, 0.25, "sine");
-        playTone(900, 0.12, t + 0.08, 0.2, "sine");
-        playTone(600, 0.2, t + 0.15, 0.25, "sine");
-      }).catch(() => {
-        // Resume başarısız olursa yine de dene
-        const t = ctx.currentTime;
-        playTone(1200, 0.15, t, 0.25, "sine");
-        playTone(900, 0.12, t + 0.08, 0.2, "sine");
-        playTone(600, 0.2, t + 0.15, 0.25, "sine");
-      });
+    if (ctx.state === "running") {
+      emitTones(ctx);
       return;
     }
-    const t = ctx.currentTime;
-    playTone(1200, 0.15, t, 0.25, "sine");
-    playTone(900, 0.12, t + 0.08, 0.2, "sine");
-    playTone(600, 0.2, t + 0.15, 0.25, "sine");
+    // Suspended (veya closed) — resume dene, ama SADECE gerçekten "running"
+    // durumuna geçtiyse ses çal. Önceki kod resume().catch() içinde bile
+    // tonu çalmayı deniyordu; suspended context'te oscillator/gain node'ları
+    // schedule edilir ama hiçbir ses üretilmez — sessiz başarısızlık, hiç
+    // log da yok. Şimdi başarısız/hâlâ-suspended durumunda beep bir sonraki
+    // user gesture'a kadar kuyruğa alınıyor ve durum açıkça loglanıyor.
+    ctx.resume()
+      .then(() => {
+        if (ctx.state === "running") {
+          emitTones(ctx);
+        } else {
+          _pendingBeep = true;
+          console.warn(`[AeroSound] resume sonrası context hâlâ '${ctx.state}' — beep kuyruğa alındı, bir sonraki kullanıcı etkileşiminde çalınacak`);
+        }
+      })
+      .catch((err) => {
+        _pendingBeep = true;
+        console.warn("[AeroSound] resume başarısız (muhtemelen autoplay politikası) — beep kuyruğa alındı:", err);
+      });
   } catch (err) {
     console.warn("[AeroSound] beep hatası:", err);
   }
