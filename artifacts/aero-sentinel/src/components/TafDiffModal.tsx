@@ -26,6 +26,15 @@ export function TafDiffModal({ open, onClose, alertId, alertType, icao }: TafDif
     setError(null);
     setDiff(null);
 
+    // Live-detected alerts carry a negative synthetic id (they aren't persisted
+    // in the DB yet), so /alerts/:id/diff would 404. Skip the request and show a
+    // clear message instead of surfacing a network error to the user.
+    if (alertId < 0) {
+      setError("Change details are available once this alert is saved (usually within a minute).");
+      setLoading(false);
+      return;
+    }
+
     fetch(`/api/alerts/${alertId}/diff`)
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, pushSubscriptionsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 import { getVapidPublicKey } from "../lib/push.js";
 import { getDeviceId } from "../lib/reqContext.js";
 import { logger } from "../lib/logger.js";
@@ -59,7 +59,23 @@ router.post("/push/subscribe", async (req, res) => {
         set: { p256dh: keys.p256dh, auth: keys.auth, userId },
       });
 
-    logger.info(`[push] Subscription saved: userId=${userId.slice(0, 8)}… endpoint=${endpoint.slice(0, 60)}…`);
+    // ── Prune stale endpoints for this device ────────────────────────────────
+    // In this app's identity model a deviceId maps to exactly one browser, which
+    // holds exactly one active push subscription per origin. A browser can hand
+    // us a NEW endpoint (subscription rotation after a service-worker update, or
+    // a re-enable) without the old row ever being deleted — leaving two live
+    // rows for one device. Since sendPushForAlert() fans out to EVERY row, that
+    // device then receives the exact same notification twice. Any endpoint for
+    // this userId other than the one just registered is therefore stale → drop
+    // it so each real device gets exactly one push.
+    await (db as any)
+      .delete(pushSubscriptionsTable)
+      .where(and(
+        eq(pushSubscriptionsTable.userId, userId),
+        ne(pushSubscriptionsTable.endpoint, endpoint),
+      ));
+
+    logger.info(`[push] Subscription saved: userId=${userId.slice(0, 8)}… endpoint=${endpoint.slice(0, 60)}… (stale endpoints for device pruned)`);
     return res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "[push] Failed to save subscription:");

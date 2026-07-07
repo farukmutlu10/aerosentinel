@@ -71,6 +71,21 @@ export async function sendPushForAlert(
 
     if (subscriptions.length === 0) return;
 
+    // ── One push per device ──────────────────────────────────────────────────
+    // A single device (userId) should have exactly one live subscription, but
+    // stale rows can accumulate when a browser rotates its endpoint without the
+    // old row being deleted (see the prune in routes/push.ts). Fanning out to
+    // every row makes that device receive the same notification twice. Collapse
+    // to the newest subscription (highest id) per userId so each device is
+    // notified once, regardless of leftover rows. (routes/push.ts prunes these
+    // on the next subscribe; this guarantees single delivery in the meantime.)
+    const latestPerUser = new Map<string, (typeof subscriptions)[number]>();
+    for (const sub of subscriptions) {
+      const existing = latestPerUser.get(sub.userId);
+      if (!existing || sub.id > existing.id) latestPerUser.set(sub.userId, sub);
+    }
+    const dedupedSubscriptions = [...latestPerUser.values()];
+
     const label = TYPE_LABELS[alertType] ?? alertType;
     const payload = JSON.stringify({
       title: `AERO-SENTINEL — ${label}`,
@@ -82,7 +97,7 @@ export async function sendPushForAlert(
 
     // Send to all subscriptions in parallel
     const results = await Promise.allSettled(
-      subscriptions.map(async (sub) => {
+      dedupedSubscriptions.map(async (sub) => {
         try {
           await (webPush as any).sendNotification(
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
