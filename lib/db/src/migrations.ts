@@ -110,4 +110,47 @@ export const MIGRATIONS: Array<{ name: string; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_push_sub_user_id ON push_subscriptions (user_id);
     `,
   },
+  {
+    // ── The bug this fixes ──────────────────────────────────────────────────
+    // Migration 000 created the watchlist table with `icao TEXT NOT NULL
+    // UNIQUE`, which Postgres auto-named `watchlist_icao_key`. Migration 002
+    // (multi-user support) tried to drop it with
+    // `DROP CONSTRAINT IF EXISTS watchlist_icao_unique` — the WRONG name — so
+    // the global UNIQUE(icao) constraint silently survived in every production
+    // database. Its effect: because both POST /watchlist and PUT
+    // /watchlist/sync insert with `ON CONFLICT DO NOTHING` (no target),
+    // adding an airport that ANY OTHER device already watches hits the global
+    // icao conflict and is silently skipped. So the first device to watch an
+    // airport "owns" it, and every other user's watchlist ends up largely
+    // empty on the server — which makes GET /alerts (it filters by the
+    // server-side watchlist table) return nothing, so alerts only ever reach
+    // the client through the /watchlist/sync initial-alerts snapshot (which
+    // queries by the request's icaos, bypassing the table) — i.e. only on a
+    // page load/refresh, never through the 30s poll. The in-memory dev
+    // fallback dedupes on (icao,userId), so this never reproduced locally.
+    //
+    // Drop any single-column UNIQUE constraint on watchlist.icao, whatever its
+    // actual name, leaving only the correct UNIQUE(user_id, icao). Idempotent.
+    name: "008_fix_watchlist_icao_unique",
+    sql: `
+      DO $$
+      DECLARE con_name text;
+      BEGIN
+        FOR con_name IN
+          SELECT c.conname
+          FROM pg_constraint c
+          JOIN pg_class t ON t.oid = c.conrelid
+          WHERE t.relname = 'watchlist'
+            AND c.contype = 'u'
+            AND (
+              SELECT array_agg(a.attname ORDER BY a.attnum)
+              FROM unnest(c.conkey) AS k(attnum)
+              JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+            ) = ARRAY['icao']
+        LOOP
+          EXECUTE format('ALTER TABLE watchlist DROP CONSTRAINT %I', con_name);
+        END LOOP;
+      END $$;
+    `,
+  },
 ];
