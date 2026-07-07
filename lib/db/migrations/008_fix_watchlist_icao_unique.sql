@@ -23,10 +23,10 @@ BEGIN
     WHERE t.relname = 'watchlist'
       AND c.contype = 'u'
       AND (
-        SELECT array_agg(a.attname ORDER BY a.attnum)
+        SELECT array_agg(a.attname::text ORDER BY a.attnum)
         FROM unnest(c.conkey) AS k(attnum)
         JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
-      ) = ARRAY['icao']
+      ) = ARRAY['icao']::text[]
   LOOP
     EXECUTE format('ALTER TABLE watchlist DROP CONSTRAINT %I', con_name);
   END LOOP;
