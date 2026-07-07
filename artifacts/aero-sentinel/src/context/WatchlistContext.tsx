@@ -135,8 +135,21 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     }, 500);
   }, []);
 
-  // On mount: push this browser's list to backend as source of truth
+  // On mount: push this browser's list to backend as source of truth.
+  // Guard: a browser that has NEVER stored a watchlist (localStorage key absent,
+  // e.g. a fresh profile/incognito/kiosk window before first use) must not PUT
+  // an empty list — that would wipe the device's server-side watchlist and the
+  // monitor would stop alerting until the next non-empty sync. An explicit
+  // "user cleared everything" state is stored as "[]" and still syncs.
   useEffect(() => {
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(LS_KEY); } catch { /* ignore */ }
+    if (stored === null) {
+      console.log("[WATCHLIST] no stored watchlist yet — skipping mount sync (won't wipe server list)");
+      setInitialAlertsReady(true);
+      window.dispatchEvent(new CustomEvent("watchlist-synced"));
+      return;
+    }
     syncToBackend(loadLocal()).then((alerts) => {
       console.log(`[WATCHLIST] syncToBackend resolved: ${alerts.length} initialAlerts, setting state...`);
       if (alerts.length > 0) {

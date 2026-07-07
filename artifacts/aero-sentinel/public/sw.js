@@ -1,5 +1,5 @@
-const CACHE_NAME = 'aerosentinel-v19';
-const ASSET_CACHE = 'caches-v19';
+const CACHE_NAME = 'aerosentinel-v20';
+const ASSET_CACHE = 'caches-v20';
 const MAX_CACHE_ENTRIES = 100;
 
 self.addEventListener('install', e => {
@@ -41,6 +41,13 @@ self.addEventListener('fetch', e => {
 
   const url = e.request.url;
 
+  // Cross-origin requests (analytics beacons, ad scripts, Railway API, fonts…)
+  // → don't intercept at all. Intercepting them made the SW the one responsible
+  // for producing a Response; when CSP blocked the underlying fetch (e.g. the
+  // cloudflareinsights beacon) the handler resolved with undefined and threw
+  // "Failed to convert value to 'Response'", leaving the request dead.
+  if (!url.startsWith(self.location.origin)) return;
+
   // API requests → network-only
   if (url.includes('/api/')) {
     e.respondWith(fetch(e.request));
@@ -79,7 +86,10 @@ self.addEventListener('fetch', e => {
           trimCache(ASSET_CACHE, MAX_CACHE_ENTRIES);
         }
         return networkResponse;
-      }).catch(() => cachedResponse);
+      // respondWith must always resolve to a Response — resolving with
+      // undefined (no cache + failed network) throws a TypeError instead of
+      // surfacing a normal network error to the page
+      }).catch(() => cachedResponse || Response.error());
 
       // Return cached immediately if available, otherwise wait for network
       return cachedResponse || fetchPromise;

@@ -280,8 +280,8 @@ export default function Alerts() {
   const { theme, toggleTheme } = useThemeContext();
 
   const { data: allAlerts, isLoading } = useListAlerts(
-    { limit: 100, since_hours: 6 } as any,
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), staleTime: 0, refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, placeholderData: loadCachedAlerts() as any } }
+    { limit: 200, since_hours: 6 } as any,
+    { query: { queryKey: getListAlertsQueryKey({ limit: 200, since_hours: 6 } as any), staleTime: 0, refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, placeholderData: loadCachedAlerts() as any } }
   );
 
   // Keep the last-known list around for the next hard reload's placeholderData
@@ -321,11 +321,16 @@ export default function Alerts() {
     let mergeBranch = "empty";
 
     if (apiList.length > 0) {
-      // API data is available — use it as source of truth
-      // Merge in initial alerts that don't exist in API yet (negative IDs = live-detected, not in DB)
+      // API data is available — use it as source of truth, but the sync snapshot
+      // (initialAlerts) can legitimately contain alerts the /alerts poll doesn't:
+      // positive-ID DB rows outside the poll's current response AND negative-ID
+      // live-detected ones. Dedupe positive IDs by id, negative (synthetic) ones
+      // by icao+type — dropping all positive-ID initials here was why cards only
+      // appeared after a full page refresh (initials-only branch).
+      const apiIds = new Set(apiList.map((a) => a.id));
       const apiKeys = new Set(apiList.map((a) => `${a.icao}-${a.type}`));
       const extraInitials = initialAlerts
-        .filter((ia) => ia.id < 0 && !apiKeys.has(`${ia.icao}-${ia.type}`))
+        .filter((ia) => (ia.id < 0 ? !apiKeys.has(`${ia.icao}-${ia.type}`) : !apiIds.has(ia.id)))
         .map((ia) => ({ ...ia, id: ia.id, detectedAt: ia.detectedAt }));
       list = [...apiList, ...extraInitials] as typeof apiList;
       mergeBranch = "api+initials";

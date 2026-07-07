@@ -14,7 +14,10 @@ declare global {
 
 const router = Router();
 
-const MAX_WATCHLIST_SIZE = 100;
+// 100 silently truncated real users' pasted lists (~210 airports observed in
+// production) — the monitor batches 50 ICAOs/request so 300 is still only 6
+// upstream calls per scan
+const MAX_WATCHLIST_SIZE = 300;
 
 router.get("/watchlist", async (req, res) => {
   const userId = getDeviceId(req);

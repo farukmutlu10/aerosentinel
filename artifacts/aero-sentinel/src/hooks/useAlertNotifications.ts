@@ -176,8 +176,8 @@ export function useAlertNotifications() {
   // timer'larını ~60sn'ye throttle eder ama bu, "sekme odakta değilken hiç
   // güncellenmiyor" durumundan çok daha iyidir.
   const { data: allAlerts, error: recentError, isLoading, fetchStatus, status } = useListAlerts(
-    { limit: 100, since_hours: 6 } as any,
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), staleTime: 0, refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, refetchOnReconnect: true, refetchOnMount: true, retry: 3 } }
+    { limit: 200, since_hours: 6 } as any,
+    { query: { queryKey: getListAlertsQueryKey({ limit: 200, since_hours: 6 } as any), staleTime: 0, refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, refetchOnReconnect: true, refetchOnMount: true, retry: 3 } }
   );
 
   // ─── DIAGNOSTIC refs: track allAlerts reference between renders ───────────
