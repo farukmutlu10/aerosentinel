@@ -79,18 +79,23 @@ function saveSeenIds(keys: Set<string>) {
 }
 
 // ─── Notification helpers — SW önce, native fallback ───────────────────────
+// Failures here previously only logged via the DEV-gated log() — a report
+// of "sound played but no browser popup appeared" had zero trace to diagnose
+// from in production. Always-log (logError) on every failure/skip path so a
+// future occurrence is actually diagnosable instead of a silent no-op.
 async function showSWNotification(title: string, options: NotificationOptions): Promise<boolean> {
   try {
-    if (!("serviceWorker" in navigator)) return false;
+    if (!("serviceWorker" in navigator)) { logError("⚠️ SW notification atlandı: serviceWorker desteklenmiyor"); return false; }
     const registration = await navigator.serviceWorker.ready;
-    if (!registration || Notification.permission !== "granted") return false;
+    if (!registration) { logError("⚠️ SW notification atlandı: registration yok"); return false; }
+    if (Notification.permission !== "granted") { logError(`⚠️ SW notification atlandı: permission=${Notification.permission}`); return false; }
     await registration.showNotification(title, { ...options, icon: options.icon || `${self.location.origin}/alert-icon.png?v=7` });
     return true;
-  } catch (err) { log("⚠️ SW notification hatası:", err); return false; }
+  } catch (err) { logError("⚠️ SW notification hatası:", err); return false; }
 }
 
 function showNativeNotification(title: string, options: NotificationOptions): Notification | null {
-  try { return new Notification(title, options); } catch (err) { log("⚠️ Native notification hatası:", err); return null; }
+  try { return new Notification(title, options); } catch (err) { logError("⚠️ Native notification hatası:", err); return null; }
 }
 
 // SW önce dene (Windows'ta daha güvenilir), native fallback
@@ -349,6 +354,8 @@ export function useAlertNotifications() {
             n.onclose = () => clearTimeout(timer);
           }
         });
+      } else {
+        logError(`⚠️ Browser bildirimi atlandı: hasPermission=${hasPermission} consentGiven=${consentGiven}`);
       }
 
       setPendingToasts(prev => [...prev, {
@@ -374,6 +381,8 @@ export function useAlertNotifications() {
             n.onclose = () => clearTimeout(timer);
           }
         });
+      } else {
+        logError(`⚠️ Browser bildirimi (toplu) atlandı: hasPermission=${hasPermission} consentGiven=${consentGiven}`);
       }
 
       // alertId: 0 is a sentinel — never a real DB id (serial starts at 1) or a

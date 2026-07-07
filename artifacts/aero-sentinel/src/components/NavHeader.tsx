@@ -159,18 +159,32 @@ export function NavHeader({ monitorStatus, theme, onToggleTheme }: Props) {
 
   const localAckedSet = useMemo(() => new Set(localAcked), [localAcked]);
 
+  // Same { limit: 200, since_hours: 6 } params (and therefore the same React
+  // Query cache key) as useAlertNotifications.ts and Alerts.tsx. This used to
+  // be { limit: 100 } with its own key and refetchInterval: Infinity — a
+  // THIRD independent fetch of the same endpoint that only ever updated on
+  // mount/window-focus, never in step with the other two. Result: the sound
+  // could fire (from the shared-key instance updating) while this badge
+  // stayed on stale/empty data until something else happened to trigger its
+  // own refetch. Sharing the key means one poll, one cache entry, and every
+  // consumer (badge, toast/sound, alerts list) re-renders from the same
+  // update at the same time.
   const { data: allAlerts } = useListAlerts(
-    { limit: 100, since_hours: 6 } as any,
-    { query: { queryKey: getListAlertsQueryKey({ limit: 100, since_hours: 6 } as any), refetchInterval: Infinity, refetchIntervalInBackground: true } }
+    { limit: 200, since_hours: 6 } as any,
+    { query: { queryKey: getListAlertsQueryKey({ limit: 200, since_hours: 6 } as any), staleTime: 0, refetchInterval: 30_000, refetchIntervalInBackground: true } }
   );
 
-  // Merge API alerts with initialAlerts (same logic as Alerts.tsx)
+  // Merge API alerts with initialAlerts (same logic as Alerts.tsx — positive
+  // DB ids deduped by id, negative synthetic (live-detected) ones by
+  // icao+type; dropping positive-id initials here was the same bug fixed in
+  // Alerts.tsx's merge, just affecting the badge count instead of the list).
   const mergedAlerts = useMemo(() => {
     const apiList = allAlerts ?? [];
     if (apiList.length > 0 && initialAlerts.length > 0) {
+      const apiIds = new Set(apiList.map((a) => a.id));
       const apiKeys = new Set(apiList.map((a) => `${a.icao}-${a.type}`));
       const extraInitials = initialAlerts
-        .filter((ia) => ia.id < 0 && !apiKeys.has(`${ia.icao}-${ia.type}`))
+        .filter((ia) => (ia.id < 0 ? !apiKeys.has(`${ia.icao}-${ia.type}`) : !apiIds.has(ia.id)))
         .map((ia) => ({ ...ia } as typeof apiList[number]));
       return [...apiList, ...extraInitials];
     }
