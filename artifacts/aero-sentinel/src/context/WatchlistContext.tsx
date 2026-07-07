@@ -115,6 +115,7 @@ interface WatchlistContextValue {
   watchedIcaos: string[];
   effectiveIcaos: string[];
   addIcao: (icao: string) => void;
+  addIcaos: (icaos: string[]) => void;
   removeIcao: (icao: string) => void;
   clearWatchlist: () => void;
   isWatching: (icao: string) => boolean;
@@ -233,6 +234,27 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     scheduleSync();
   }, [broadcastUpdate, scheduleSync]);
 
+  // Bulk add (paste of many ICAOs at once). addIcao() fires one POST
+  // /api/watchlist + one "watchlist-airport-added" event PER call — fine for a
+  // single click, but pasting ~200 airports turned into ~200 simultaneous POSTs
+  // plus ~200 query invalidations, alone exceeding the API's 200 req/min limit
+  // within seconds. That flood 429'd the alert polling too, and one of those
+  // 429 bodies (parsed as JSON without a res.ok check) got treated as weather
+  // data downstream, crashing the whole page on a `.map()` of a non-array.
+  // This path updates local state once and lets the existing debounced
+  // scheduleSync() push the whole list in a SINGLE PUT /watchlist/sync.
+  const addIcaos = useCallback((raws: string[]) => {
+    const icaos = [...new Set(raws.map(normalizeIcao).filter((c) => c.length === 4))];
+    if (icaos.length === 0) return;
+    setWatchedIcaos((prev) => {
+      const merged = [...new Set([...prev, ...icaos])];
+      if (merged.length === prev.length) return prev;
+      broadcastUpdate(merged);
+      return merged;
+    });
+    scheduleSync();
+  }, [broadcastUpdate, scheduleSync]);
+
   const removeIcao = useCallback((icao: string) => {
     const up = icao.toUpperCase();
     setWatchedIcaos((prev) => {
@@ -263,6 +285,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       watchedIcaos,
       effectiveIcaos,
       addIcao,
+      addIcaos,
       removeIcao,
       clearWatchlist,
       isWatching,

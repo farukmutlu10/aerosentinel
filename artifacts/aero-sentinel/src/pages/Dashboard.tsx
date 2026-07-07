@@ -46,12 +46,24 @@ interface WeatherItem { icao: string; rawTaf: string | null; rawMetar: string | 
 
 const WEATHER_KEY = (key: string) => ["watchlist", "weather", key];
 
+// A 429/5xx response body still parses as valid JSON — just not an array
+// ({"error": "..."}). Without checking res.ok, that object was handed to
+// React Query as "successful" data, and Dashboard's weatherData.map() below
+// crashed the whole page (visible ErrorBoundary "Something went wrong") the
+// moment the rate limit was hit, e.g. right after pasting a large watchlist.
+async function fetchWeatherJson(url: string): Promise<WeatherItem[]> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
 export function useWatchlistWeather(icaos: string[]) {
   const key = icaos.join(",");
   const queryClient = useQueryClient();
   const query = useQuery<WeatherItem[]>({
     queryKey: WEATHER_KEY(key),
-    queryFn: () => fetch(`/api/watchlist/weather?icaos=${key}`).then((r) => r.json()),
+    queryFn: () => fetchWeatherJson(`/api/watchlist/weather?icaos=${key}`),
     enabled: icaos.length > 0,
     refetchInterval: 60_000,
     refetchIntervalInBackground: true,
@@ -61,7 +73,7 @@ export function useWatchlistWeather(icaos: string[]) {
   const refresh = () => queryClient.invalidateQueries({ queryKey: WEATHER_KEY(key) });
   const forceRefresh = () => queryClient.fetchQuery<WeatherItem[]>({
     queryKey: WEATHER_KEY(key),
-    queryFn: () => fetch(`/api/watchlist/weather?icaos=${key}&force=true`).then((r) => r.json()),
+    queryFn: () => fetchWeatherJson(`/api/watchlist/weather?icaos=${key}&force=true`),
     staleTime: 0,
   });
   return { ...query, refresh, forceRefresh };
@@ -103,7 +115,7 @@ export default function Dashboard() {
   const { title, description, jsonLd } = pageMeta.dashboard;
 
   const { theme, toggleTheme } = useThemeContext();
-  const { effectiveIcaos, watchedIcaos, addIcao, removeIcao, clearWatchlist, hasFilter } = useWatchlist();
+  const { effectiveIcaos, watchedIcaos, addIcao, addIcaos, removeIcao, clearWatchlist, hasFilter } = useWatchlist();
   const [selectedTz] = useSelectedTimezone();
   const isIstanbul = selectedTz === "Europe/Istanbul";
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -151,18 +163,24 @@ export default function Dashboard() {
   const handleWlAdd = () => {
     const codes = wlInput.split(/[,\s]+/).filter(Boolean);
     const skipped: string[] = [];
+    const toAdd: string[] = [];
     codes.forEach((c) => {
       const raw = c.trim().toUpperCase();
       if (raw.length === 4) {
-        addIcao(raw);
+        toAdd.push(raw);
       } else if (raw.length === 3) {
         const resolved = iataToIcao(raw);
-        if (resolved) addIcao(resolved);
+        if (resolved) toAdd.push(resolved);
         else skipped.push(c);
       } else if (raw.length > 0) {
         skipped.push(c);
       }
     });
+    // addIcaos() batches the whole paste into one sync instead of firing a
+    // separate request per airport — see WatchlistContext for why that
+    // mattered (a large paste alone exceeded the API rate limit).
+    if (toAdd.length === 1) addIcao(toAdd[0]);
+    else if (toAdd.length > 1) addIcaos(toAdd);
     setWlInput(skipped.length > 0 ? skipped.join(",") : "");
     wlInputRef.current?.focus();
   };
