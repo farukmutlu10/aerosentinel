@@ -111,6 +111,12 @@ self.addEventListener('push', e => {
       tag: data.tag,
       data: data.data,
       requireInteraction: false,
+      silent: false,
+      vibrate: [200, 100, 200, 100, 200],
+      actions: [
+        { action: 'view', title: 'View' },
+        { action: 'dismiss', title: 'Dismiss' },
+      ],
     })
   );
 });
@@ -118,6 +124,7 @@ self.addEventListener('push', e => {
 // ─── Notification tıklama handler'ı — navigate to /alerts ─────────────────────
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  if (e.action === 'dismiss') return;
   const targetUrl = e.notification.data?.url || '/alerts';
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {

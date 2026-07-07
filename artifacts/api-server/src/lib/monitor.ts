@@ -227,7 +227,7 @@ async function insertAlertIfNew(
   icao: string,
   rawText: string,
   previousRawText: string | null,
-): Promise<void> {
+): Promise<number | null> {
   const recentDup = await db.select({ id: alertsTable.id }).from(alertsTable)
     .where(and(
       eq(alertsTable.icao, icao),
@@ -237,14 +237,24 @@ async function insertAlertIfNew(
     )).limit(1);
   if (recentDup.length > 0) {
     logger.info({ icao, alertType }, "[monitor] Skipping duplicate alert (recent alert exists)");
-    return;
+    return null;
   }
   try {
-    await db.insert(alertsTable).values({ type: alertType, icao, rawText, previousRawText });
-    logger.info({ icao, alertType }, "[monitor] Alert inserted");
-    void sendPushForAlert(alertType, icao, rawText, 0);
+    // .returning() so sendPushForAlert gets the real row id instead of the
+    // hardcoded 0 it used to receive — that made every push notification's
+    // dedup tag for a given icao+type collide (aero-alert-ICAO-0 for all of
+    // them, letting one overwrite another) and made notification-click
+    // routing unable to target the specific alert.
+    const inserted = await db.insert(alertsTable)
+      .values({ type: alertType, icao, rawText, previousRawText })
+      .returning({ id: alertsTable.id });
+    const alertId = inserted[0]?.id ?? 0;
+    logger.info({ icao, alertType, alertId }, "[monitor] Alert inserted");
+    void sendPushForAlert(alertType, icao, rawText, alertId);
+    return alertId;
   } catch (err) {
     logger.error({ err, icao, alertType }, "[monitor] Failed to insert alert");
+    return null;
   }
 }
 

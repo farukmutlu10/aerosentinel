@@ -40,6 +40,19 @@ function emitTones(ctx: AudioContext) {
   playTone(600, 0.2, t + 0.15, 0.25, "sine");
 }
 
+// Best-effort tactile fallback for when AudioContext can't produce sound
+// (suspended, no prior user gesture). Some Android browsers still allow
+// navigator.vibrate() without a fresh gesture; many recent ones restrict it
+// the same as autoplay, so this may silently no-op — that's fine, it costs
+// nothing to try and never blocks the audio path.
+function tryVibrate(pattern: number[] = [200, 100, 200, 100, 200]) {
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate(pattern);
+    }
+  } catch { /* ignore — unsupported or restricted */ }
+}
+
 // ─── AudioContext unlock — sayfa yüklendiğinde hemen çağrılır ────────────────
 function setupAudioUnlock() {
   if (_audioUnlocked || typeof window === "undefined") return;
@@ -80,6 +93,7 @@ export function playAlertSound() {
     const ctx = getCtx();
     if (ctx.state === "running") {
       emitTones(ctx);
+      tryVibrate(); // extra tactile cue even when audio works — useful when device volume is low
       return;
     }
     // Suspended (veya closed) — resume dene, ama SADECE gerçekten "running"
@@ -88,6 +102,7 @@ export function playAlertSound() {
     // schedule edilir ama hiçbir ses üretilmez — sessiz başarısızlık, hiç
     // log da yok. Şimdi başarısız/hâlâ-suspended durumunda beep bir sonraki
     // user gesture'a kadar kuyruğa alınıyor ve durum açıkça loglanıyor.
+    tryVibrate(); // try immediately — some browsers allow vibrate without a gesture even when audio is blocked
     ctx.resume()
       .then(() => {
         if (ctx.state === "running") {

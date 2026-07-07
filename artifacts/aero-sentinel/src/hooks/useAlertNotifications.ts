@@ -181,14 +181,24 @@ export function useAlertNotifications() {
   // ─── Background tab throttling compensation ────────────────────────────────
   // Chrome throttles JS timers (including setInterval/setTimeout) to once per
   // minute when a tab is in the background. This means refetchInterval: 30_000
-  // actually fires ~every 60s when the tab is hidden. To compensate, listen for
-  // visibilitychange and immediately invalidate queries when the user returns to
-  // the tab, so any missed polls are instantly caught up.
+  // actually fires ~every 60s when the tab is hidden — and the SAME throttling
+  // applies to fetchWithTimeout/customFetch's own abort setTimeout, so a fetch
+  // stalled while backgrounded (see custom-fetch.ts) might not even get
+  // aborted at the intended 20s; it could take up to a throttled ~60s+. Plain
+  // invalidateQueries() doesn't help in that window — TanStack Query dedupes
+  // by query key and won't start a new fetch while the old one is still
+  // "in flight," it just marks the query stale for whenever that fetch
+  // settles. cancelQueries() first forces that in-flight fetch's AbortSignal
+  // to fire immediately (customFetch composes it into the request), so the
+  // moment the user returns to the tab, recovery is immediate instead of
+  // bounded by however long the (possibly throttled) timeout takes to fire.
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        log("Tab visible — invalidating queries to compensate for background throttling");
-        queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
+        log("Tab visible — cancelling any stuck in-flight fetch and refetching");
+        queryClient.cancelQueries({ queryKey: getListAlertsQueryKey() }).then(() => {
+          queryClient.invalidateQueries({ queryKey: getListAlertsQueryKey() });
+        });
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
