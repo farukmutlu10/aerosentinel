@@ -284,10 +284,17 @@ export default function Alerts() {
     { query: { queryKey: getListAlertsQueryKey({ limit: 200, since_hours: 6 } as any), staleTime: 0, refetchInterval: 30_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, placeholderData: loadCachedAlerts() as any } }
   );
 
-  // Keep the last-known list around for the next hard reload's placeholderData
-  useEffect(() => {
-    if (allAlerts && allAlerts.length > 0) saveCachedAlerts(allAlerts);
-  }, [allAlerts]);
+  // One-time read of the last-known list — used below as a fallback merge
+  // source so a reload never shows an empty list while api/initials data is
+  // still in flight, only whatever's genuinely new once it arrives.
+  const cachedAlertsRef = useRef<typeof allAlerts>(undefined);
+  if (cachedAlertsRef.current === undefined) {
+    cachedAlertsRef.current = loadCachedAlerts() as typeof allAlerts;
+  }
+  // Snapshot of the merged (post-dedup, pre-UI-filter) list, written inside
+  // the alerts useMemo below and persisted here so a later reload's cache
+  // isn't skewed by whatever type/ack filters happened to be active now.
+  const lastMergedRef = useRef<NonNullable<typeof allAlerts>>([]);
 
   // Invalidate alerts when watchlist syncs or an airport is added
   useEffect(() => {
@@ -338,6 +345,14 @@ export default function Alerts() {
       // No API data yet — show initial alerts immediately
       list = initialAlerts.map((ia) => ({ ...ia })) as typeof apiList;
       mergeBranch = "initials-only";
+    } else if (cachedAlertsRef.current && cachedAlertsRef.current.length > 0) {
+      // Neither source has resolved yet (fresh reload, still awaiting the
+      // /alerts poll AND the watchlist/sync round-trip). Show last session's
+      // list instead of an empty screen — this is exactly what was on screen
+      // before the reload, so nothing "disappears"; it just gets replaced by
+      // real data (superset or equal, never a strict subset) once it lands.
+      list = cachedAlertsRef.current;
+      mergeBranch = "cache-fallback";
     } else {
       list = apiList;
       mergeBranch = "api-empty";
@@ -357,6 +372,9 @@ export default function Alerts() {
       return false;
     });
     const postDedup = list.length;
+    // Snapshot before UI filters (type/ack/watch) so the next reload's cache
+    // reflects the full merged set regardless of today's filter selection.
+    lastMergedRef.current = list;
     list = list.filter((a) => activeTypesSet.has(a.type));
     const postType = list.length;
     if (hideAcknowledged) list = list.filter((a) => !isAcked(a));
@@ -375,6 +393,13 @@ export default function Alerts() {
     else sorted.sort((a, b) => a.icao.localeCompare(b.icao));
     return sorted;
   }, [allAlerts, initialAlerts, initialAlertsReady, activeTypesArr, hideAcknowledged, localAcked, isWatching, sortMode]);
+
+  // Persist the merged (pre-UI-filter) list for the next reload's cache
+  // fallback — lastMergedRef is written synchronously inside the memo above,
+  // so by the time this effect runs (after commit) it reflects this render.
+  useEffect(() => {
+    if (lastMergedRef.current.length > 0) saveCachedAlerts(lastMergedRef.current);
+  }, [alerts]);
 
   const handleAckAll = () => {
     setAckingAll(true);

@@ -6,10 +6,15 @@ import { useWatchlist } from "@/context/WatchlistContext";
 import { useAlertSnooze } from "@/hooks/useAlertSnooze";
 import { getCookiePreferences } from "@/components/CookieConsent";
 
-// ─── V4 key: bump when seenIds persistence logic changes ─────────────────────
+// ─── V5 key: bump when seenIds persistence logic changes ─────────────────────
 // V3→V4: Fixed over-persistence bug where watchlist-filtered alerts were added
 // to seenIds, permanently suppressing notifications after watchlist changes.
-const SEEN_KEY = "aero-notif-seen-ids-v4";
+// V4→V5: Switched from numeric DB id to a content key (icao|type|rawText).
+// A live-detected alert (negative synthetic id) and its later DB-persisted
+// counterpart (positive id, same report) are the SAME real-world event, but
+// numeric-id dedup treated them as two — notifying (and playing the sound)
+// twice for one weather change once the backend caught up.
+const SEEN_KEY = "aero-notif-seen-ids-v5";
 
 const TYPE_LABELS: Record<string, string> = {
   TAF_AMD: "TAF Revision (AMD)",
@@ -44,22 +49,31 @@ const logError = (...args: unknown[]) => console.error(LOG, new Date().toISOStri
 
 // ─── Persisted seen-alert tracker ───────────────────────────────────────────
 
-function loadSeenIds(): Set<number> {
-  // Clean up old v3 key (migration from v3→v4 seenIds logic)
+// Content-based identity for a report: a live-detected sighting (negative
+// synthetic id) and its later DB-persisted counterpart (positive id) share
+// this key, so they're recognized as the same real-world event exactly once,
+// regardless of which id happens to reach this hook first.
+function alertKey(a: { icao: string; type: string; rawText: string }): string {
+  return `${a.icao}|${a.type}|${a.rawText.slice(0, 200)}`;
+}
+
+function loadSeenIds(): Set<string> {
+  // Clean up old numeric-id-based keys (v3/v4 — incompatible format)
   try { localStorage.removeItem("aero-notif-seen-ids-v3"); } catch { /* ignore */ }
+  try { localStorage.removeItem("aero-notif-seen-ids-v4"); } catch { /* ignore */ }
   try {
     const raw = localStorage.getItem(SEEN_KEY);
     if (!raw) return new Set();
     const arr = JSON.parse(raw);
-    if (Array.isArray(arr)) return new Set(arr.filter((n) => typeof n === "number"));
+    if (Array.isArray(arr)) return new Set(arr.filter((s) => typeof s === "string"));
     return new Set();
   } catch { return new Set(); }
 }
 
-function saveSeenIds(ids: Set<number>) {
+function saveSeenIds(keys: Set<string>) {
   try {
-    // En fazla son 500 ID'yi sakla
-    const arr = [...ids].sort((a, b) => b - a).slice(0, 500);
+    // En fazla son 500 anahtarı sakla
+    const arr = [...keys].slice(-500);
     localStorage.setItem(SEEN_KEY, JSON.stringify(arr));
   } catch { /* ignore */ }
 }
@@ -115,7 +129,7 @@ export function useAlertNotifications() {
     alertType: string;
     isSummary?: boolean;
   }>>([]);
-  const seenIds = useRef<Set<number>>(loadSeenIds());
+  const seenIds = useRef<Set<string>>(loadSeenIds());
   const queryClient = useQueryClient();
   const effectiveIcaosRef = useRef(effectiveIcaos);
   // Keep ref in sync with latest effectiveIcaos
@@ -130,9 +144,9 @@ export function useAlertNotifications() {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === SEEN_KEY && e.newValue) {
         try {
-          const arr = JSON.parse(e.newValue) as number[];
+          const arr = JSON.parse(e.newValue) as string[];
           if (Array.isArray(arr)) {
-            seenIds.current = new Set(arr.filter((n) => typeof n === "number"));
+            seenIds.current = new Set(arr.filter((s) => typeof s === "string"));
             log(`Cross-tab sync: seenIds güncellendi (${seenIds.current.size} entries)`);
           }
         } catch { /* ignore parse errors */ }
@@ -275,7 +289,7 @@ export function useAlertNotifications() {
     const newAlerts: typeof combinedAlerts = [];
     for (const alert of combinedAlerts) {
       // Already seen → skip silently (don't add again)
-      if (seenIds.current.has(alert.id)) { skippedSeen++; continue; }
+      if (seenIds.current.has(alertKey(alert))) { skippedSeen++; continue; }
 
       // Watchlist filter — do NOT add to seenIds (watchlist may change later)
       if (watchlistSet.size > 0 && !watchlistSet.has(alert.icao.toUpperCase())) {
@@ -294,7 +308,7 @@ export function useAlertNotifications() {
       // right after adding a new airport: with batching in place, "there could
       // be a lot of these" is no longer a reason to notify silently — a big
       // first-load batch just collapses into one summary notification instead.
-      seenIds.current.add(alert.id);
+      seenIds.current.add(alertKey(alert));
       newAlerts.push(alert);
     }
 
