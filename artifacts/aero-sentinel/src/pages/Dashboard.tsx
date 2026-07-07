@@ -237,18 +237,29 @@ export default function Dashboard() {
   // useRunways() so it's a cache hit by the time cards render — the badge
   // used to visibly pop in a beat after the rest of the card because its
   // fetch couldn't start until the card (gated on weatherData) existed yet.
+  // ONE batched request for the whole list, then seed each ["runways", icao]
+  // cache entry. The previous one-request-per-ICAO version was a self-DoS on
+  // large watchlists: 210 airports = 210 GETs on every fresh session, which
+  // alone exceeded the API's 200 req/min rate limit and 429'd the alert
+  // polling + watchlist sync for the rest of the minute.
   const runwayPrefetchQueryClient = useQueryClient();
   useEffect(() => {
-    for (const icao of effectiveIcaos) {
-      runwayPrefetchQueryClient.prefetchQuery({
-        queryKey: ["runways", icao],
-        queryFn: () =>
-          fetch(`/api/airports/${icao}/runways`)
-            .then((r) => r.json())
-            .then((data) => data.runways),
-        staleTime: Infinity,
+    if (effectiveIcaos.length === 0) return;
+    const missing = effectiveIcaos.filter(
+      (icao) => runwayPrefetchQueryClient.getQueryData(["runways", icao]) === undefined,
+    );
+    if (missing.length === 0) return;
+    fetch(`/api/airports/runways?icaos=${missing.join(",")}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data: { runways?: Record<string, unknown[]> }) => {
+        for (const icao of missing) {
+          runwayPrefetchQueryClient.setQueryData(["runways", icao], data.runways?.[icao] ?? []);
+        }
+      })
+      .catch(() => {
+        // Prefetch is best-effort — each card's own useRunways() still fetches
+        // per-ICAO on demand if the batch failed.
       });
-    }
   }, [effectiveIcaos, runwayPrefetchQueryClient]);
 
   const handleRefresh = async () => {

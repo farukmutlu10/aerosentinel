@@ -63,6 +63,12 @@ async function syncToBackend(icaos: string[]): Promise<InitialAlert[]> {
         headers,
         body: bodyStr,
       });
+      // A 429/5xx body parses as JSON just fine, so without this check a
+      // rate-limited sync used to "succeed" with zero initialAlerts and no
+      // retry — the watchlist then silently never reached the backend.
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
       const data = await res.json();
       const alerts = Array.isArray(data?.initialAlerts) ? data.initialAlerts : [];
       console.log(`[WATCHLIST DIAG] server response: ok=${data?.ok} initialAlerts=${alerts.length} icaos=${Array.isArray(data?.icaos) ? data.icaos.length : "?"}`);
@@ -70,7 +76,12 @@ async function syncToBackend(icaos: string[]): Promise<InitialAlert[]> {
     } catch (err) {
       console.error(`[WATCHLIST DIAG] syncToBackend FAILED (attempt ${attempt}/${MAX_RETRIES}):`, err);
       if (attempt < MAX_RETRIES) {
-        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+        // 429 = rate-limit window exhausted; retrying in 1-2s lands inside the
+        // SAME 60s window and fails again. Wait long enough to cross into the
+        // next window instead.
+        const isRateLimited = err instanceof Error && err.message.includes("429");
+        const delayMs = isRateLimited ? 20_000 : 1000 * Math.pow(2, attempt - 1);
+        await new Promise(r => setTimeout(r, delayMs));
       }
     }
   }

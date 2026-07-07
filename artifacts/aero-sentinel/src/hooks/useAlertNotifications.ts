@@ -22,8 +22,16 @@ const TYPE_LABELS: Record<string, string> = {
 
 const AUTO_CLOSE_MS = 30_000;
 const LOG = "[AeroNotif]";
+// Production'da poll/notify teşhisleri tamamen görünmezdi (DEV-gated), bu
+// yüzden canlıdaki her bildirim arızası kör tahminle ayıklanıyordu. Konsolda
+// `localStorage.setItem("aero-debug","1")` + sayfa yenileme ile production'da
+// da aynı loglar açılır (modül yüklenirken bir kez okunur).
+const debugEnabled = (() => {
+  if (import.meta.env.DEV) return true;
+  try { return localStorage.getItem("aero-debug") === "1"; } catch { return false; }
+})();
 const log = (...args: unknown[]) => {
-  if (import.meta.env.DEV) console.log(LOG, new Date().toISOString(), ...args);
+  if (debugEnabled) console.log(LOG, new Date().toISOString(), ...args);
 };
 // Errors on this path fail silently by design (a broken notification must
 // never crash the app), which also means production gave us zero signal when
@@ -184,7 +192,10 @@ export function useAlertNotifications() {
   const prevAlertsRef = useRef<typeof allAlerts>(undefined);
   const pollCountRef = useRef(0);
 
-  useEffect(() => { if (recentError) log("⚠️ API HATASI:", recentError.message || recentError); }, [recentError]);
+  // Always-log (not DEV-gated): a 429/5xx on the alert poll is exactly the
+  // failure mode that was invisible in production while alerts "randomly"
+  // stopped arriving.
+  useEffect(() => { if (recentError) logError("⚠️ API HATASI (alert poll):", recentError.message || recentError); }, [recentError]);
 
   // ─── DIAGNOSTIC: Track allAlerts reference changes ─────────────────────────
   // This block runs on every render (not inside useEffect) so we can detect

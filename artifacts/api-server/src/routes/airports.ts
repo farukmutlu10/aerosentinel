@@ -68,11 +68,33 @@ router.get("/airports/:icao/metar", async (req, res) => {
   return res.json({ icao, rawMetar });
 });
 
+// Batch lookup — a large watchlist must be a single request, not one per ICAO.
+// The per-ICAO route below used to be called once per airport by the Dashboard
+// prefetch; with a 210-airport watchlist that alone blew through the whole
+// 200 req/min rate-limit window and 429'd the alerts/sync polling for the rest
+// of the minute. Runway data is a static dataset, so it's also long-cacheable.
+// NOTE: registered before /airports/:icao/runways cannot shadow it because the
+// path segment "runways" here is literal ("/airports/runways").
+router.get("/airports/runways", (req, res) => {
+  const raw = ((req.query.icaos as string) ?? "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+  if (raw.length === 0) {
+    return res.status(400).json({ error: "icaos query param required (comma-separated)" });
+  }
+  const icaos = [...new Set(raw.filter((s) => /^[A-Z0-9]{3,5}$/.test(s)))].slice(0, 300);
+  const runways: Record<string, unknown> = {};
+  for (const icao of icaos) {
+    runways[icao] = getRunways(icao);
+  }
+  res.set("Cache-Control", "public, max-age=86400");
+  return res.json({ runways });
+});
+
 router.get("/airports/:icao/runways", (req, res) => {
   const icao = req.params.icao?.toUpperCase();
   if (!icao || !/^[A-Z0-9]{3,5}$/.test(icao)) {
     return res.status(400).json({ error: "Invalid ICAO code" });
   }
+  res.set("Cache-Control", "public, max-age=86400");
   return res.json({ icao, runways: getRunways(icao) });
 });
 

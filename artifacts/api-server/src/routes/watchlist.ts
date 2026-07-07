@@ -266,7 +266,9 @@ router.put("/watchlist/sync", async (req, res) => {
           sql`${alertsTable.detectedAt} >= ${sixHoursAgo}`,
         ))
         .orderBy(desc(alertsTable.detectedAt))
-        .limit(100);
+        // matches the frontend's poll limit (limit=200) — at 100 a busy
+        // 200+ airport watchlist truncated the initial snapshot
+        .limit(200);
 
       initialAlerts = dbAlerts.map((a) => ({
         ...a,

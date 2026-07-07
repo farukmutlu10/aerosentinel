@@ -12,6 +12,12 @@ import { configureVapid } from "./lib/push.js";
 
 const app: Express = express();
 
+// Railway terminates TLS at a single proxy hop in front of the app. Without
+// this, req.ip is the proxy's address for EVERY client, so the per-IP rate
+// limiter below lumps all users into one shared 200 req/min bucket — one
+// user's burst 429s everyone else's alert polling.
+app.set("trust proxy", 1);
+
 // ── Security & production middleware ──────────────────────────
 
 // Compression (gzip)
