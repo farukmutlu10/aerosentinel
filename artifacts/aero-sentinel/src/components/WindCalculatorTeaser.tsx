@@ -433,30 +433,37 @@ function WindCompass({
 /** Bold, fully-filled chevron arrow — tail near the compass edge (where the wind is FROM), head near the center. */
 function WindArrow({ dirDeg, center, radius }: { dirDeg: number; center: number; radius: number }) {
   const rad = ((dirDeg - 90) * Math.PI) / 180;
-  const fwd = { x: -Math.cos(rad), y: -Math.sin(rad) }; // tail -> head direction
-  const out = { x: Math.cos(rad), y: Math.sin(rad) };   // head -> tail direction
-  const perp = { x: -fwd.y, y: fwd.x };
+  const out = { x: Math.cos(rad), y: Math.sin(rad) };   // tip -> tail direction (points where the wind is FROM)
+  const perp = { x: -out.y, y: out.x };
 
-  const headPoint = { x: center + out.x * radius * 0.12, y: center + out.y * radius * 0.12 };
-  const tailPoint = { x: center + out.x * (radius - 6), y: center + out.y * (radius - 6) };
-  const headBase = { x: headPoint.x + out.x * 26, y: headPoint.y + out.y * 26 };
+  // Paper-airplane / dart silhouette, tip at center: a swept-wing outer dart
+  // plus a smaller offset inner facet on top for a layered, folded look.
+  const at = (dist: number, side: number) => ({
+    x: center + out.x * dist * radius + perp.x * side * radius,
+    y: center + out.y * dist * radius + perp.y * side * radius,
+  });
+  const poly = (pts: Array<{ x: number; y: number }>) => pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
 
-  const pt = (base: { x: number; y: number }, along: { x: number; y: number }, dist: number, side: 1 | -1) =>
-    ({ x: base.x + along.x * dist * side, y: base.y + along.y * dist * side });
-
-  const points = [
-    headPoint,
-    pt(headBase, perp, 15, 1),
-    pt(headBase, perp, 6, 1),
-    pt(tailPoint, perp, 6, 1),
-    pt(tailPoint, perp, 6, -1),
-    pt(headBase, perp, 6, -1),
-    pt(headBase, perp, 15, -1),
-  ].map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const outerPoints = poly([
+    at(1.0, 0),       // tail
+    at(0.11, -0.09),  // right notch
+    at(0.19, -0.19),  // right wingtip
+    at(0, 0),         // tip (center)
+    at(0.19, 0.19),   // left wingtip
+    at(0.11, 0.09),   // left notch
+  ]);
+  const innerPoints = poly([
+    at(0.62, 0.03),   // inner tail
+    at(0.05, -0.01),  // inner notch
+    at(0, 0),         // tip
+    at(0.13, 0.13),   // inner wing
+    at(0.17, 0.06),   // inner wing
+  ]);
 
   return (
     <g>
-      <polygon points={points} fill="hsl(var(--primary))" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinejoin="round" />
+      <polygon points={outerPoints} fill="hsl(var(--primary))" strokeLinejoin="round" />
+      <polygon points={innerPoints} fill="hsl(var(--primary-foreground) / 0.18)" strokeLinejoin="round" />
       <circle cx={center} cy={center} r="4" fill="hsl(var(--primary))" />
     </g>
   );
@@ -476,6 +483,7 @@ function RunwayBar({
   return (
     <g>
       <line x1={barPa.x} y1={barPa.y} x2={barPb.x} y2={barPb.y} stroke="hsl(var(--muted-foreground) / 0.55)" strokeWidth="14" strokeLinecap="round" />
+      <line x1={barPa.x} y1={barPa.y} x2={barPb.x} y2={barPb.y} stroke="hsl(var(--primary) / 0.18)" strokeWidth="14" strokeLinecap="round" />
       <line x1={barPa.x} y1={barPa.y} x2={barPb.x} y2={barPb.y} stroke="hsl(var(--background))" strokeWidth="2.5" strokeDasharray="7 6" strokeLinecap="round" />
       <RunwayEndBadge x={labelPa.x} y={labelPa.y} text={a.ident} />
       <RunwayEndBadge x={labelPb.x} y={labelPb.y} text={b.ident} />
@@ -487,7 +495,7 @@ function RunwayEndBadge({ x, y, text }: { x: number; y: number; text: string }) 
   const r = Math.max(15, text.length * 4.5 + 8);
   return (
     <g>
-      <circle cx={x} cy={y} r={r} fill="hsl(var(--primary))" stroke="hsl(var(--background))" strokeWidth="2" />
+      <circle cx={x} cy={y} r={r} fill="hsl(var(--primary))" />
       <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize="13" fontWeight="800" fill="hsl(var(--primary-foreground))">{text}</text>
     </g>
   );
