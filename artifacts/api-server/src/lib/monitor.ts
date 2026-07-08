@@ -162,6 +162,39 @@ async function fetchJson(url: string): Promise<unknown[]> {
   return [];
 }
 
+/**
+ * aviationweather.gov's TAF/METAR endpoints return a JSON error body
+ * ({"status":"error","error":"Error processing data"}, not an array) when a
+ * single malformed report exists for ONE station in the queried batch —
+ * confirmed live by isolating ids one at a time (e.g. LFPG's TAF currently
+ * triggers this for any batch it's part of). fetchJson's 3 retries just hit
+ * the same deterministic error again and give up empty, which silently
+ * starved every OTHER airport sharing that batch of TAF/METAR updates on
+ * every future scan too, since cachedIcaos batches the same 50 ids together
+ * each cycle. Bisects the id list with fast, single-attempt sub-requests to
+ * isolate the poisoned station down to its own singleton batch, so its
+ * healthy batch-mates keep getting scanned. isTopLevel keeps the very first
+ * attempt on the patient, retrying fetchJson (genuine transient errors still
+ * get 3 tries) — only the isolation step below that uses the fast path.
+ */
+async function fetchBatchIsolatingPoison(
+  urlFor: (ids: string) => string,
+  icaoIds: string[],
+  isTopLevel = true,
+): Promise<unknown[]> {
+  if (icaoIds.length === 0) return [];
+  const data = isTopLevel
+    ? await fetchJson(urlFor(icaoIds.join(",")))
+    : await fetchJsonFast(urlFor(icaoIds.join(",")));
+  if (data.length > 0 || icaoIds.length === 1) return data;
+  const mid = Math.ceil(icaoIds.length / 2);
+  const [left, right] = await Promise.all([
+    fetchBatchIsolatingPoison(urlFor, icaoIds.slice(0, mid), false),
+    fetchBatchIsolatingPoison(urlFor, icaoIds.slice(mid), false),
+  ]);
+  return [...left, ...right];
+}
+
 export async function refreshIcaoCache(): Promise<string[]> {
   // Only include watchlist entries added within the last 30 days
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -271,7 +304,10 @@ async function scanTaf(ids: string) {
 
   const allData: unknown[] = [];
   for (const batchIds of batches) {
-    const data = await fetchJson(`${BASE_URL}/taf?ids=${batchIds}&format=json`);
+    const data = await fetchBatchIsolatingPoison(
+      (ids) => `${BASE_URL}/taf?ids=${ids}&format=json`,
+      batchIds.split(","),
+    );
     allData.push(...data);
   }
 
@@ -394,7 +430,10 @@ async function scanMetar(ids: string) {
 
   const allData: unknown[] = [];
   for (const batchIds of batches) {
-    const data = await fetchJson(`${BASE_URL}/metar?ids=${batchIds}&format=json&hours=2`);
+    const data = await fetchBatchIsolatingPoison(
+      (ids) => `${BASE_URL}/metar?ids=${ids}&format=json&hours=2`,
+      batchIds.split(","),
+    );
     allData.push(...data);
   }
 
