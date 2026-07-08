@@ -1134,7 +1134,7 @@ function WeatherCard({ icao, rawTaf, rawMetar, parsed, view }: {
             {icao}
             <IataBadge icao={icao} />
             <RunwayBadge icao={icao} />
-            <WindCalculatorTeaser icao={icao} />
+            <WindCalculatorTeaser icao={icao} rawMetar={rawMetar} rawTaf={rawTaf} />
           </span>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
             {!rawMetar && !rawTaf && (

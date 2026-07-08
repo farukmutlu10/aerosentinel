@@ -90,7 +90,7 @@ export default function AirportDetail({ icao }: Props) {
                 {icao}
                 <IataBadge icao={icao} size="sm" />
                 <RunwayBadge icao={icao} />
-                <WindCalculatorTeaser icao={icao} />
+                <WindCalculatorTeaser icao={icao} rawMetar={metar?.rawMetar ?? null} rawTaf={taf?.rawTaf ?? null} />
               </h2>
               {parsedMetar && (
                 <span className="text-sm font-mono font-bold px-2.5 py-1 rounded border"

@@ -5,15 +5,18 @@
 
 export interface WindReport {
   id: string;
-  /** e.g. "METAR", "TAF başlangıç", "TAF BECMG", "TAF TEMPO", "TAF FM" */
+  /** e.g. "METAR", "TAF start", "TAF BECMG", "TAF TEMPO", "TAF FM" */
   label: string;
-  /** e.g. "(042050Z)", "(0412Z)", "(01:18–01:21)" — already parenthesized-free, caller wraps it */
+  /** Verbatim as it appears in the raw report, e.g. "082050Z", "0816/0819" */
   timeLabel: string | null;
   dirDeg: number | null; // null when VRB
   isVariable: boolean;
   isCalm: boolean;
+  /** Sustained speed, as reported */
   speedKt: number;
   gustKt: number | null;
+  /** Effective speed used for all wind math — gust takes priority over sustained when present */
+  calcSpeedKt: number;
   raw: string;
   /** max(speedKt, gustKt ?? 0) — used to pick the "most severe" default */
   severityKt: number;
@@ -44,6 +47,7 @@ function parseWindToken(text: string): Omit<WindReport, "id" | "label" | "timeLa
     isCalm,
     speedKt,
     gustKt,
+    calcSpeedKt: gustKt ?? speedKt,
     raw,
     severityKt: Math.max(speedKt, gustKt ?? 0),
   };
@@ -52,8 +56,9 @@ function parseWindToken(text: string): Omit<WindReport, "id" | "label" | "timeLa
 function extractMetarReport(rawMetar: string): WindReport | null {
   const wind = parseWindToken(rawMetar);
   if (!wind) return null;
-  const timeMatch = rawMetar.match(/\b\d{2}(\d{2})(\d{2})Z\b/);
-  const timeLabel = timeMatch ? `${timeMatch[1]}:${timeMatch[2]}Z` : null;
+  // Verbatim as printed in the report, e.g. "082050Z"
+  const timeMatch = rawMetar.match(/\b\d{6}Z\b/);
+  const timeLabel = timeMatch ? timeMatch[0] : null;
   return { id: "metar", label: "METAR", timeLabel, ...wind };
 }
 
@@ -76,13 +81,10 @@ function splitTafGroups(rawTaf: string): string[] {
   return merged;
 }
 
-function formatDdhhPoint(ddhh: string): string {
-  return `${ddhh}Z`;
-}
-
-function formatDdhhRange(startDdhh: string, endDdhh: string): string {
-  const fmt = (s: string) => `${s.slice(0, 2)}:${s.slice(2, 4)}`;
-  return `${fmt(startDdhh)}–${fmt(endDdhh)}`;
+/** Verbatim ddhh/ddhh period as printed in the TAF, e.g. "0816/0819" */
+function rawPeriod(group: string): string | null {
+  const m = group.match(/\b\d{4}\/\d{4}\b/);
+  return m ? m[0] : null;
 }
 
 function extractTafReports(rawTaf: string): WindReport[] {
@@ -96,26 +98,22 @@ function extractTafReports(rawTaf: string): WindReport[] {
     let timeLabel: string | null = null;
 
     if (idx === 0) {
-      label = "TAF başlangıç";
-      const periodMatch = group.match(/\b(\d{2})(\d{2})\/(\d{2})(\d{2})\b/);
-      if (periodMatch) timeLabel = formatDdhhPoint(periodMatch[1] + periodMatch[2]);
+      label = "TAF start";
+      timeLabel = rawPeriod(group);
     } else if (/^PROB\d{2}\s+TEMPO\b/.test(group)) {
       const probNum = group.match(/^PROB(\d{2})/)?.[1] ?? "";
       label = `TAF PROB${probNum} TEMPO`;
-      const periodMatch = group.match(/\b(\d{2})(\d{2})\/(\d{2})(\d{2})\b/);
-      if (periodMatch) timeLabel = formatDdhhRange(periodMatch[1] + periodMatch[2], periodMatch[3] + periodMatch[4]);
+      timeLabel = rawPeriod(group);
     } else if (/^BECMG\b/.test(group)) {
       label = "TAF BECMG";
-      const periodMatch = group.match(/\b(\d{2})(\d{2})\/(\d{2})(\d{2})\b/);
-      if (periodMatch) timeLabel = formatDdhhRange(periodMatch[1] + periodMatch[2], periodMatch[3] + periodMatch[4]);
+      timeLabel = rawPeriod(group);
     } else if (/^TEMPO\b/.test(group)) {
       label = "TAF TEMPO";
-      const periodMatch = group.match(/\b(\d{2})(\d{2})\/(\d{2})(\d{2})\b/);
-      if (periodMatch) timeLabel = formatDdhhRange(periodMatch[1] + periodMatch[2], periodMatch[3] + periodMatch[4]);
+      timeLabel = rawPeriod(group);
     } else if (/^FM\d{4,6}\b/.test(group)) {
       label = "TAF FM";
       const fmMatch = group.match(/^FM(\d{4,6})/);
-      if (fmMatch) timeLabel = formatDdhhPoint(fmMatch[1].slice(0, 4));
+      timeLabel = fmMatch ? fmMatch[1] : null;
     } else {
       label = "TAF";
     }
@@ -165,4 +163,33 @@ export function calcRunwayWind(windDirDeg: number, windSpeedKt: number, runwayHe
   const crosswindKt = Math.round(Math.abs(crosswindRaw) * 10) / 10;
   const crosswindSide = Math.abs(crosswindRaw) < 0.05 ? null : crosswindRaw > 0 ? "R" : "L";
   return { headwindKt, crosswindKt, crosswindSide };
+}
+
+// ── Severity thresholds ─────────────────────────────────────────────────────
+// Shared by runway-card coloring and the trigger-button indicator so both
+// reflect the exact same rules.
+
+export type Severity = "none" | "orange" | "red";
+
+export function headwindSeverity(headwindKt: number): Severity {
+  if (headwindKt >= 50) return "red";
+  if (headwindKt >= 35) return "orange";
+  return "none";
+}
+
+export function tailwindSeverity(tailwindKt: number): Severity {
+  if (tailwindKt >= 15) return "red";
+  if (tailwindKt >= 7) return "orange";
+  return "none";
+}
+
+export function crosswindSeverity(crosswindKt: number): Severity {
+  if (crosswindKt >= 25) return "red";
+  if (crosswindKt >= 17) return "orange";
+  return "none";
+}
+
+/** Whole-card-red condition — a hard limit regardless of the moderate thresholds above. */
+export function isExtreme(headwindKt: number, tailwindKt: number, crosswindKt: number): boolean {
+  return tailwindKt >= 15 || crosswindKt >= 30 || headwindKt >= 50;
 }

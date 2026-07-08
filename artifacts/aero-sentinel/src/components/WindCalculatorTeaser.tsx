@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Wind, ChevronDown } from "lucide-react";
+import { Wind, ChevronDown, RotateCcw } from "lucide-react";
 import { useRunways } from "@/hooks/useRunways";
 import {
   useGetAirportTaf, getGetAirportTafQueryKey,
@@ -8,13 +8,22 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   extractAllWindReports, pickDefaultReport, calcRunwayWind,
-  type WindReport,
+  headwindSeverity, tailwindSeverity, crosswindSeverity, isExtreme,
+  type WindReport, type Severity,
 } from "@/lib/windCalc";
 import { cn } from "@/lib/utils";
 
 interface WindCalculatorTeaserProps {
   /** 4-letter ICAO airport code, e.g. "LTFM" */
   icao: string;
+  /**
+   * Current raw METAR/TAF, when the caller already has them in memory
+   * (Dashboard, AirportDetail). Passing these avoids a redundant fetch and
+   * lets the trigger button reflect wind severity before the panel is even
+   * opened. When omitted, the panel fetches them lazily on open instead.
+   */
+  rawMetar?: string | null;
+  rawTaf?: string | null;
 }
 
 /** Runway-end wind computed from the active WindReport, one per usable direction. */
@@ -27,61 +36,116 @@ interface RunwayEnd {
   crosswindSide: "L" | "R" | null;
 }
 
+function endLevel(end: RunwayEnd): "none" | Severity | "extreme" {
+  const tailwindKt = end.headwindKt < 0 ? Math.abs(end.headwindKt) : 0;
+  const headwindKt = end.headwindKt > 0 ? end.headwindKt : 0;
+  if (isExtreme(headwindKt, tailwindKt, end.crosswindKt)) return "extreme";
+  const sevs = [headwindSeverity(headwindKt), tailwindSeverity(tailwindKt), crosswindSeverity(end.crosswindKt)];
+  if (sevs.includes("red")) return "red";
+  if (sevs.includes("orange")) return "orange";
+  return "none";
+}
+
 /**
  * Per-runway headwind/crosswind panel — opens on the wind-icon button next to
- * each airport's ICAO/IATA/runway badges. Fetches TAF/METAR only while open
- * (Dashboard cards already have the raw text in memory for watchlist airports,
- * but AirportDetail/Alerts don't always — a lazy fetch here works everywhere
- * without changing any call site).
+ * each airport's ICAO/IATA/runway badges. When rawMetar/rawTaf aren't passed
+ * in, TAF/METAR are fetched lazily while open (works everywhere without
+ * changing every call site — see AirportDetail/Alerts).
  */
-export function WindCalculatorTeaser({ icao }: WindCalculatorTeaserProps) {
+export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: rawTafProp }: WindCalculatorTeaserProps) {
   const { data: runways } = useRunways(icao);
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reportsExpanded, setReportsExpanded] = useState(false);
+  const [overrideDir, setOverrideDir] = useState<string>("");
+  const [overrideSpeed, setOverrideSpeed] = useState<string>("");
+
+  const hasExternalData = rawMetarProp !== undefined || rawTafProp !== undefined;
 
   const { data: tafData } = useGetAirportTaf(icao, {
-    query: { enabled: open, queryKey: getGetAirportTafQueryKey(icao) },
+    query: { enabled: open && !hasExternalData, queryKey: getGetAirportTafQueryKey(icao) },
   });
   const { data: metarData } = useGetAirportMetar(icao, {
-    query: { enabled: open, queryKey: getGetAirportMetarQueryKey(icao) },
+    query: { enabled: open && !hasExternalData, queryKey: getGetAirportMetarQueryKey(icao) },
   });
 
-  const reports = useMemo(
-    () => extractAllWindReports(metarData?.rawMetar ?? null, tafData?.rawTaf ?? null),
-    [metarData?.rawMetar, tafData?.rawTaf],
-  );
+  const rawMetar = hasExternalData ? (rawMetarProp ?? null) : (metarData?.rawMetar ?? null);
+  const rawTaf = hasExternalData ? (rawTafProp ?? null) : (tafData?.rawTaf ?? null);
 
+  const reports = useMemo(() => extractAllWindReports(rawMetar, rawTaf), [rawMetar, rawTaf]);
   const defaultReport = useMemo(() => pickDefaultReport(reports), [reports]);
-  const active: WindReport | null = (selectedId && reports.find((r) => r.id === selectedId)) || defaultReport;
+  const selectedReport: WindReport | null = (selectedId && reports.find((r) => r.id === selectedId)) || defaultReport;
+
+  const isOverridden = overrideDir.trim() !== "" || overrideSpeed.trim() !== "";
+  const effectiveDirDeg = overrideDir.trim() !== "" ? ((Number(overrideDir) % 360) + 360) % 360 : (selectedReport?.dirDeg ?? null);
+  const effectiveSpeedKt = overrideSpeed.trim() !== "" ? Math.max(0, Number(overrideSpeed)) : (selectedReport?.calcSpeedKt ?? null);
+  const effectiveIsVariable = overrideDir.trim() === "" && !!selectedReport?.isVariable;
+  const hasUsableWind = !effectiveIsVariable && effectiveDirDeg !== null && effectiveSpeedKt !== null && !Number.isNaN(effectiveDirDeg) && !Number.isNaN(effectiveSpeedKt);
 
   const runwayEnds: RunwayEnd[] = useMemo(() => {
-    if (!runways || !active || active.isVariable || active.dirDeg === null) return [];
+    if (!runways || !hasUsableWind || effectiveDirDeg === null || effectiveSpeedKt === null) return [];
     const ends: RunwayEnd[] = [];
     for (const r of runways) {
       if (r.leIdent && r.leHeadingDegT != null) {
-        const w = calcRunwayWind(active.dirDeg, active.speedKt, r.leHeadingDegT);
+        const w = calcRunwayWind(effectiveDirDeg, effectiveSpeedKt, r.leHeadingDegT);
         ends.push({ key: `${r.designator}-le`, ident: r.leIdent, headingDegT: r.leHeadingDegT, ...w });
       }
       if (r.heIdent && r.heHeadingDegT != null) {
-        const w = calcRunwayWind(active.dirDeg, active.speedKt, r.heHeadingDegT);
+        const w = calcRunwayWind(effectiveDirDeg, effectiveSpeedKt, r.heHeadingDegT);
         ends.push({ key: `${r.designator}-he`, ident: r.heIdent, headingDegT: r.heHeadingDegT, ...w });
       }
     }
     return ends.sort((a, b) => b.headwindKt - a.headwindKt);
-  }, [runways, active]);
+  }, [runways, hasUsableWind, effectiveDirDeg, effectiveSpeedKt]);
+
+  // Every end tied for the highest headwind is "best" — parallel runways (e.g. 24L/24R) are both recommended.
+  const bestHeadwind = runwayEnds.length > 0 ? runwayEnds[0].headwindKt : null;
+  const bestKeys = new Set(
+    bestHeadwind !== null ? runwayEnds.filter((e) => Math.abs(e.headwindKt - bestHeadwind) < 0.05).map((e) => e.key) : [],
+  );
+
+  // Trigger-button indicator reflects the worst condition among the recommended runway(s) —
+  // that's the realistic choice a pilot faces, not an unused orientation.
+  const bestLevel = useMemo(() => {
+    const bestEnds = runwayEnds.filter((e) => bestKeys.has(e.key));
+    const order: Array<"none" | Severity | "extreme"> = ["none", "orange", "red", "extreme"];
+    let worst: "none" | Severity | "extreme" = "none";
+    for (const e of bestEnds) {
+      const lvl = endLevel(e);
+      if (order.indexOf(lvl) > order.indexOf(worst)) worst = lvl;
+    }
+    return worst;
+  }, [runwayEnds, bestKeys]);
+
+  function resetOverride() {
+    setOverrideDir("");
+    setOverrideSpeed("");
+  }
 
   if (!runways || runways.length === 0) return null;
 
-  const bestKey = runwayEnds.length > 0 ? runwayEnds[0].key : null;
+  const triggerClass =
+    bestLevel === "extreme"
+      ? "border-red-500/60 bg-red-500/20 text-red-400 animate-pulse"
+      : bestLevel === "red"
+        ? "border-red-500/50 bg-red-500/10 text-red-400"
+        : bestLevel === "orange"
+          ? "border-orange-500/50 bg-orange-500/10 text-orange-400"
+          : "border-cyan-500/30 bg-cyan-500/10 text-cyan-400/90 hover:bg-cyan-500/20 hover:border-cyan-500/50";
 
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setSelectedId(null); setReportsExpanded(false); } }}>
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) { setSelectedId(null); setReportsExpanded(false); resetOverride(); }
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((o) => !o); }}
-          className="relative inline-flex items-center justify-center w-[19px] h-[19px] rounded border border-cyan-500/30 bg-cyan-500/10 text-cyan-400/90 hover:bg-cyan-500/20 hover:border-cyan-500/50 transition-colors"
+          className={cn("relative inline-flex items-center justify-center w-[19px] h-[19px] rounded border transition-colors", triggerClass)}
           title="Wind Calculator"
         >
           <Wind className="w-[11px] h-[11px]" strokeWidth={2.5} />
@@ -92,80 +156,104 @@ export function WindCalculatorTeaser({ icao }: WindCalculatorTeaserProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-          <Wind className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" strokeWidth={2.5} />
+          <Wind className="w-3.5 h-3.5 text-primary flex-shrink-0" strokeWidth={2.5} />
           <span className="text-[11px] font-bold tracking-wider">{icao} — WIND CALCULATOR</span>
         </div>
 
         <div className="px-3 py-3">
-          {reports.length === 0 ? (
-            <p className="text-xs text-muted-foreground italic py-2">Rüzgar verisi yok.</p>
-          ) : (
-            <>
-              <div className="flex gap-3 items-center">
-                <WindCompass dirDeg={active?.dirDeg ?? null} isVariable={!!active?.isVariable} runwayEnds={runwayEnds} bestKey={bestKey} />
-                <div className="flex-1 min-w-0 space-y-2">
-                  <ValueBox label="yön (°)" value={active?.isVariable ? "VRB" : active?.dirDeg != null ? String(active.dirDeg).padStart(3, "0") : "—"} />
-                  <ValueBox
-                    label="hız (kt)"
-                    value={active ? `${active.speedKt}${active.gustKt ? `G${active.gustKt}` : ""}` : "—"}
-                  />
-                </div>
+          <div className="flex gap-3 items-start">
+            <WindCompass dirDeg={effectiveDirDeg} isVariable={effectiveIsVariable} runwayEnds={runwayEnds} bestKeys={bestKeys} />
+            <div className="flex-1 min-w-0 space-y-2">
+              <div>
+                <label className="text-[9.5px] text-muted-foreground tracking-wide block mb-1">direction (°)</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={overrideDir !== "" ? overrideDir : (selectedReport && !selectedReport.isVariable && selectedReport.dirDeg != null ? String(selectedReport.dirDeg) : "")}
+                  onChange={(e) => setOverrideDir(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
+                  placeholder={selectedReport?.isVariable ? "VRB" : "e.g. 250"}
+                  className="w-full rounded border border-border bg-muted/20 px-2.5 py-1.5 text-sm font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                />
               </div>
-
-              {active?.isVariable && (
-                <p className="text-[11px] text-amber-500 mt-3 leading-snug">
-                  Rüzgar yönü değişken, pist önerisi hesaplanamıyor.
-                </p>
-              )}
-              {active?.isCalm && (
-                <p className="text-[11px] text-muted-foreground mt-3 leading-snug">
-                  Sakin rüzgar — tüm pistler uygun.
-                </p>
-              )}
-
-              {reports.length > 1 && (
+              <div>
+                <label className="text-[9.5px] text-muted-foreground tracking-wide block mb-1">speed (kt)</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={overrideSpeed !== "" ? overrideSpeed : (selectedReport ? String(selectedReport.calcSpeedKt) : "")}
+                  onChange={(e) => setOverrideSpeed(e.target.value.replace(/[^0-9.]/g, ""))}
+                  placeholder="e.g. 15"
+                  className="w-full rounded border border-border bg-muted/20 px-2.5 py-1.5 text-sm font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              {isOverridden && (
                 <button
                   type="button"
-                  onClick={() => setReportsExpanded((v) => !v)}
-                  className="mt-3 w-full flex items-center justify-between px-2.5 py-1.5 rounded border border-border bg-muted/30 hover:bg-muted/50 transition-colors text-[11px] text-muted-foreground"
+                  onClick={resetOverride}
+                  className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Rapor değerleri
-                  <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", reportsExpanded && "rotate-180")} />
+                  <RotateCcw className="w-3 h-3" /> Reset to report value
                 </button>
               )}
+            </div>
+          </div>
 
-              {(reportsExpanded || reports.length === 1) && (
-                <div className="mt-1.5 -mx-3 border-t border-border/60">
-                  {reports.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => setSelectedId(r.id)}
-                      className={cn(
-                        "w-full flex items-center justify-between px-3 py-1.5 text-[11px] border-b border-border/40 last:border-b-0 text-left transition-colors",
-                        active?.id === r.id ? "bg-primary/15 text-primary" : "hover:bg-muted/40 text-foreground",
-                      )}
-                    >
-                      <span className={active?.id === r.id ? "font-bold" : ""}>
-                        {r.label}
-                        {r.timeLabel && <span className="text-muted-foreground font-normal"> ({r.timeLabel})</span>}
-                      </span>
-                      <span className="tabular-nums flex-shrink-0 ml-2">
-                        {r.isVariable ? "VRB" : `${String(r.dirDeg).padStart(3, "0")}°`} / {r.isCalm ? "sakin" : `${r.speedKt}${r.gustKt ? `G${r.gustKt}` : ""}kt`}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
+          {reports.length === 0 && !isOverridden && (
+            <p className="text-xs text-muted-foreground italic mt-3">No wind data available — enter values above to calculate.</p>
+          )}
 
-              {runwayEnds.length > 0 && (
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {runwayEnds.map((end) => (
-                    <RunwayCard key={end.key} end={end} isBest={end.key === bestKey} />
-                  ))}
-                </div>
-              )}
-            </>
+          {effectiveIsVariable && (
+            <p className="text-[11px] text-amber-500 mt-3 leading-snug">
+              Wind direction is variable — runway recommendation unavailable.
+            </p>
+          )}
+          {hasUsableWind && effectiveSpeedKt === 0 && (
+            <p className="text-[11px] text-muted-foreground mt-3 leading-snug">
+              Calm wind — all runways suitable.
+            </p>
+          )}
+
+          {reports.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setReportsExpanded((v) => !v)}
+              className="mt-3 w-full flex items-center justify-between px-2.5 py-1.5 rounded border border-border bg-muted/30 hover:bg-muted/50 transition-colors text-[11px] text-muted-foreground"
+            >
+              Report values
+              <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", reportsExpanded && "rotate-180")} />
+            </button>
+          )}
+
+          {(reportsExpanded || reports.length === 1) && (
+            <div className="mt-1.5 -mx-3 border-t border-border/60">
+              {reports.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => { setSelectedId(r.id); resetOverride(); }}
+                  className={cn(
+                    "w-full flex items-center justify-between px-3 py-1.5 text-[11px] border-b border-border/40 last:border-b-0 text-left transition-colors",
+                    !isOverridden && selectedReport?.id === r.id ? "bg-primary/15 text-primary" : "hover:bg-muted/40 text-foreground",
+                  )}
+                >
+                  <span className={!isOverridden && selectedReport?.id === r.id ? "font-bold" : ""}>
+                    {r.label}
+                    {r.timeLabel && <span className="text-muted-foreground font-normal"> ({r.timeLabel})</span>}
+                  </span>
+                  <span className="tabular-nums flex-shrink-0 ml-2">
+                    {r.isVariable ? "VRB" : `${String(r.dirDeg).padStart(3, "0")}°`} / {r.isCalm ? "calm" : `${r.speedKt}${r.gustKt ? `G${r.gustKt}` : ""}kt`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {runwayEnds.length > 0 && (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {runwayEnds.map((end) => (
+                <RunwayCard key={end.key} end={end} isBest={bestKeys.has(end.key)} />
+              ))}
+            </div>
           )}
         </div>
       </PopoverContent>
@@ -173,47 +261,38 @@ export function WindCalculatorTeaser({ icao }: WindCalculatorTeaserProps) {
   );
 }
 
-function ValueBox({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded border border-border bg-muted/20 px-2.5 py-1.5">
-      <div className="text-[9.5px] text-muted-foreground tracking-wide">{label}</div>
-      <div className="text-sm font-bold tabular-nums">{value}</div>
-    </div>
-  );
-}
-
-function crosswindColor(kt: number): string {
-  if (kt >= 20) return "text-red-400";
-  if (kt >= 15) return "text-orange-400";
-  return "text-foreground";
-}
-
-function tailwindColor(kt: number): string {
-  if (kt >= 10) return "text-red-400";
-  if (kt >= 5) return "text-orange-400";
-  return "text-foreground";
+function severityTextClass(sev: Severity): string {
+  if (sev === "red") return "text-red-400 font-bold";
+  if (sev === "orange") return "text-orange-400 font-bold";
+  return "";
 }
 
 function RunwayCard({ end, isBest }: { end: RunwayEnd; isBest: boolean }) {
   const isTailwind = end.headwindKt < 0;
+  const tailwindKt = isTailwind ? Math.abs(end.headwindKt) : 0;
+  const headwindKt = isTailwind ? 0 : end.headwindKt;
+  const level = endLevel(end);
+
+  const cardClass =
+    level === "extreme"
+      ? "border-red-500/70 bg-red-500/20"
+      : isBest
+        ? "border-green-500/60 bg-green-500/10"
+        : "border-border bg-muted/20";
+
   return (
-    <div
-      className={cn(
-        "rounded border px-2.5 py-2 text-center",
-        isBest ? "border-primary/50 bg-primary/10" : "border-border bg-muted/20",
-      )}
-    >
+    <div className={cn("rounded border px-2.5 py-2 text-center", cardClass)}>
       <div className="text-xs font-bold tracking-wide">RWY {end.ident}</div>
-      <div className="text-[10.5px] text-muted-foreground mt-0.5">
+      <div className={cn("text-[10.5px] mt-0.5", level === "extreme" ? "text-red-300" : "text-muted-foreground")}>
         {isTailwind ? (
-          <span className={tailwindColor(Math.abs(end.headwindKt))}>tailwind {Math.abs(end.headwindKt)}kt</span>
+          <span className={level === "extreme" ? "" : severityTextClass(tailwindSeverity(tailwindKt))}>tailwind {tailwindKt}kt</span>
         ) : (
           <>
-            <span>headwind {end.headwindKt}kt</span>
+            <span className={level === "extreme" ? "" : severityTextClass(headwindSeverity(headwindKt))}>headwind {headwindKt}kt</span>
             {end.crosswindKt > 0.1 && (
               <>
                 {" · "}
-                <span className={crosswindColor(end.crosswindKt)}>crosswind {end.crosswindKt}kt</span>
+                <span className={level === "extreme" ? "" : severityTextClass(crosswindSeverity(end.crosswindKt))}>crosswind {end.crosswindKt}kt</span>
               </>
             )}
           </>
@@ -224,20 +303,20 @@ function RunwayCard({ end, isBest }: { end: RunwayEnd; isBest: boolean }) {
 }
 
 function WindCompass({
-  dirDeg, isVariable, runwayEnds, bestKey,
+  dirDeg, isVariable, runwayEnds, bestKeys,
 }: {
   dirDeg: number | null; isVariable: boolean;
-  runwayEnds: RunwayEnd[]; bestKey: string | null;
+  runwayEnds: RunwayEnd[]; bestKeys: Set<string>;
 }) {
-  const size = 84;
+  const size = 104;
   const c = size / 2;
-  const r = c - 10;
+  const r = c - 14;
 
   // Draw only the best runway pair (matched by shared designator prefix) as the
-  // thick diameter line — other runways still get their own cards below, just
-  // not rendered here, to keep the diagram legible with 3+ runways.
-  const best = runwayEnds.find((e) => e.key === bestKey);
-  const bestDesignator = best?.key.replace(/-(le|he)$/, "");
+  // runway bar — other runways still get their own cards below, just not
+  // rendered here, to keep the diagram legible with 3+ runways.
+  const bestKey = [...bestKeys][0];
+  const bestDesignator = bestKey?.replace(/-(le|he)$/, "");
   const pairEnds = bestDesignator ? runwayEnds.filter((e) => e.key.startsWith(bestDesignator)) : [];
 
   const toXY = (deg: number, radius: number) => {
@@ -247,19 +326,33 @@ function WindCompass({
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0">
-      <circle cx={c} cy={c} r={r} fill="none" stroke="hsl(var(--border))" strokeWidth="1.5" />
-      <text x={c} y={c - r - 2} textAnchor="middle" fontSize="7" fill="hsl(var(--muted-foreground))">N</text>
+      <circle cx={c} cy={c} r={r} fill="hsl(var(--muted) / 0.15)" stroke="hsl(var(--border))" strokeWidth="1.5" />
 
-      {/* Runway diameter line — drawn from the best runway's two ends */}
+      {/* Cardinal ticks */}
+      {[0, 90, 180, 270].map((deg) => {
+        const p1 = toXY(deg, r);
+        const p2 = toXY(deg, r - 5);
+        return <line key={deg} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="hsl(var(--muted-foreground))" strokeWidth="1.25" />;
+      })}
+      {[45, 135, 225, 315].map((deg) => {
+        const p1 = toXY(deg, r);
+        const p2 = toXY(deg, r - 3);
+        return <line key={deg} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="hsl(var(--muted-foreground) / 0.5)" strokeWidth="1" />;
+      })}
+      <text x={c} y={c - r + 9} textAnchor="middle" fontSize="8" fontWeight="bold" fill="hsl(var(--muted-foreground))">N</text>
+
+      {/* Runway bar with dashed centerline */}
       {pairEnds.length === 2 && (
-        <RunwayLine ends={pairEnds} radius={r} toXY={toXY} />
+        <RunwayBar ends={pairEnds} radius={r} toXY={toXY} />
       )}
 
       {isVariable ? (
-        <text x={c} y={c + 3} textAnchor="middle" fontSize="9" fontWeight="bold" fill="hsl(var(--muted-foreground))">VRB</text>
+        <text x={c} y={c + 3} textAnchor="middle" fontSize="10" fontWeight="bold" fill="hsl(var(--muted-foreground))">VRB</text>
       ) : dirDeg != null ? (
         <WindArrow dirDeg={dirDeg} center={c} radius={r} toXY={toXY} />
-      ) : null}
+      ) : (
+        <text x={c} y={c + 3} textAnchor="middle" fontSize="9" fill="hsl(var(--muted-foreground))">—</text>
+      )}
     </svg>
   );
 }
@@ -267,37 +360,48 @@ function WindCompass({
 function WindArrow({
   dirDeg, center, radius, toXY,
 }: { dirDeg: number; center: number; radius: number; toXY: (deg: number, r: number) => { x: number; y: number } }) {
-  const tail = toXY(dirDeg, radius - 4);
-  const head = toXY(dirDeg, radius * 0.15);
+  const tail = toXY(dirDeg, radius - 2);
+  const head = toXY(dirDeg, radius * 0.1);
   return (
     <g>
-      <line x1={tail.x} y1={tail.y} x2={head.x} y2={head.y} stroke="hsl(var(--wx-blue))" strokeWidth="2" strokeLinecap="round" markerEnd="url(#windArrowHead)" />
+      <line x1={tail.x} y1={tail.y} x2={head.x} y2={head.y} stroke="hsl(var(--primary))" strokeWidth="2.75" strokeLinecap="round" markerEnd="url(#windArrowHead)" />
       <defs>
-        <marker id="windArrowHead" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-          <path d="M0,0 L6,3 L0,6 Z" fill="hsl(var(--wx-blue))" />
+        <marker id="windArrowHead" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto">
+          <path d="M0,0 L7,3.5 L0,7 Z" fill="hsl(var(--primary))" />
         </marker>
       </defs>
-      <circle cx={center} cy={center} r="1.5" fill="hsl(var(--wx-blue))" />
+      <circle cx={center} cy={center} r="1.75" fill="hsl(var(--primary))" />
     </g>
   );
 }
 
-function RunwayLine({
+function RunwayBar({
   ends, radius, toXY,
 }: {
   ends: RunwayEnd[]; radius: number;
   toXY: (deg: number, r: number) => { x: number; y: number };
 }) {
   const [a, b] = ends;
-  const linePa = toXY(a.headingDegT, radius - 8);
-  const linePb = toXY(b.headingDegT, radius - 8);
-  const labelPa = toXY(a.headingDegT, radius + 6);
-  const labelPb = toXY(b.headingDegT, radius + 6);
+  const barPa = toXY(a.headingDegT, radius - 12);
+  const barPb = toXY(b.headingDegT, radius - 12);
+  const labelPa = toXY(a.headingDegT, radius + 8);
+  const labelPb = toXY(b.headingDegT, radius + 8);
   return (
     <g>
-      <line x1={linePa.x} y1={linePa.y} x2={linePb.x} y2={linePb.y} stroke="hsl(var(--muted-foreground))" strokeWidth="3" strokeLinecap="round" opacity="0.6" />
-      <text x={labelPa.x} y={labelPa.y} textAnchor="middle" dominantBaseline="middle" fontSize="6.5" fontWeight="bold" fill="hsl(var(--foreground))">{a.ident}</text>
-      <text x={labelPb.x} y={labelPb.y} textAnchor="middle" dominantBaseline="middle" fontSize="6.5" fontWeight="bold" fill="hsl(var(--foreground))">{b.ident}</text>
+      <line x1={barPa.x} y1={barPa.y} x2={barPb.x} y2={barPb.y} stroke="hsl(var(--muted-foreground) / 0.55)" strokeWidth="5" strokeLinecap="round" />
+      <line x1={barPa.x} y1={barPa.y} x2={barPb.x} y2={barPb.y} stroke="hsl(var(--background))" strokeWidth="1.25" strokeDasharray="3 2.5" strokeLinecap="round" />
+      <RunwayEndLabel x={labelPa.x} y={labelPa.y} text={a.ident} />
+      <RunwayEndLabel x={labelPb.x} y={labelPb.y} text={b.ident} />
+    </g>
+  );
+}
+
+function RunwayEndLabel({ x, y, text }: { x: number; y: number; text: string }) {
+  const w = Math.max(16, text.length * 6.5 + 6);
+  return (
+    <g>
+      <rect x={x - w / 2} y={y - 7} width={w} height={14} rx="3" fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="1" />
+      <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize="7.5" fontWeight="bold" fill="hsl(var(--foreground))">{text}</text>
     </g>
   );
 }
