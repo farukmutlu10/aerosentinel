@@ -98,7 +98,7 @@ function extractTafReports(rawTaf: string): WindReport[] {
     let timeLabel: string | null = null;
 
     if (idx === 0) {
-      label = "TAF start";
+      label = "TAF Start";
       timeLabel = rawPeriod(group);
     } else if (/^PROB\d{2}\s+TEMPO\b/.test(group)) {
       const probNum = group.match(/^PROB(\d{2})/)?.[1] ?? "";

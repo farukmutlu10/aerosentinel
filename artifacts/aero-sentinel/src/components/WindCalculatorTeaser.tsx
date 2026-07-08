@@ -94,10 +94,13 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
   const canUseMagnetic = airportMagVarDeg !== null;
 
   const isOverridden = overrideDir.trim() !== "" || overrideSpeed.trim() !== "";
-  // Manual overrides are taken at face value in whichever frame is currently selected —
-  // report-derived direction (always true north) is converted only when not overridden.
+  // The wind direction number is frame-agnostic: it stays exactly as reported
+  // (or as typed) in BOTH True and Mag modes. Only the runway headings convert
+  // between frames — matching the reference wind-component calculator, where
+  // toggling True/Mag changes the runway heading (and the resulting components)
+  // but never the entered wind direction.
   const reportDirDeg = selectedReport && !selectedReport.isVariable && selectedReport.dirDeg != null
-    ? (northRef === "magnetic" && airportMagVarDeg !== null ? trueToMagnetic(selectedReport.dirDeg, airportMagVarDeg) : selectedReport.dirDeg)
+    ? selectedReport.dirDeg
     : null;
   const effectiveDirDeg = overrideDir.trim() !== "" ? ((Number(overrideDir) % 360) + 360) % 360 : reportDirDeg;
   const effectiveSpeedKt = overrideSpeed.trim() !== "" ? Math.max(0, Number(overrideSpeed)) : (selectedReport?.calcSpeedKt ?? null);
@@ -148,10 +151,8 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
     setOverrideSpeed("");
   }
 
-  function selectNorthRef(ref: NorthReference) {
-    setNorthRef(ref);
-    resetOverride(); // avoid mixing a typed value from one frame with the other
-  }
+  // Toggling True/Mag keeps the entered wind direction and only reinterprets
+  // the runway headings, so there's nothing to reset when the frame changes.
 
   if (!runways || runways.length === 0) return null;
 
@@ -183,7 +184,8 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
         </button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[340px] sm:w-[380px] p-0 font-mono"
+        collisionPadding={12}
+        className="w-[min(380px,calc(100vw_-_1.5rem))] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-0 font-mono"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-3 py-2 border-b border-border flex items-center gap-2">
@@ -197,19 +199,19 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
             <div className="flex-1 min-w-0 space-y-2">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[9.5px] text-muted-foreground tracking-wide">direction (°)</label>
+                  <label className="text-[9.5px] text-muted-foreground tracking-wide">Direction (°)</label>
                   {canUseMagnetic && (
                     <div className="inline-flex rounded border border-border overflow-hidden text-[9px] font-bold">
                       <button
                         type="button"
-                        onClick={() => selectNorthRef("true")}
+                        onClick={() => setNorthRef("true")}
                         className={cn("px-1.5 py-0.5 transition-colors", northRef === "true" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
                       >
                         TRUE
                       </button>
                       <button
                         type="button"
-                        onClick={() => selectNorthRef("magnetic")}
+                        onClick={() => setNorthRef("magnetic")}
                         className={cn("px-1.5 py-0.5 transition-colors", northRef === "magnetic" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
                       >
                         MAG
@@ -227,7 +229,7 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
                 />
               </div>
               <div>
-                <label className="text-[9.5px] text-muted-foreground tracking-wide block mb-1">speed (kt)</label>
+                <label className="text-[9.5px] text-muted-foreground tracking-wide block mb-1">Speed (kt)</label>
                 <input
                   type="text"
                   inputMode="decimal"
@@ -243,7 +245,7 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
                   onClick={resetOverride}
                   className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  <RotateCcw className="w-3 h-3" /> Reset to report value
+                  <RotateCcw className="w-3 h-3" /> Reset to Report Value
                 </button>
               )}
             </div>
@@ -268,9 +270,9 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
             <button
               type="button"
               onClick={() => setReportsExpanded((v) => !v)}
-              className="mt-3 w-full flex items-center justify-between px-2.5 py-1.5 rounded border border-border bg-muted/30 hover:bg-muted/50 transition-colors text-[11px] text-muted-foreground"
+              className="mt-3 w-full flex items-center justify-between px-2.5 py-1.5 rounded border-2 border-primary/60 text-primary hover:bg-primary/10 transition-colors text-[11px] font-bold"
             >
-              Report values
+              Report Values
               <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", reportsExpanded && "rotate-180")} />
             </button>
           )}
@@ -292,10 +294,7 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
                     {r.timeLabel && <span className="text-muted-foreground font-normal"> ({r.timeLabel})</span>}
                   </span>
                   <span className="tabular-nums flex-shrink-0 ml-2">
-                    {r.isVariable ? "VRB" : (() => {
-                      const deg = northRef === "magnetic" && airportMagVarDeg !== null ? trueToMagnetic(r.dirDeg!, airportMagVarDeg) : r.dirDeg!;
-                      return Number.isInteger(deg) ? `${String(deg).padStart(3, "0")}°` : `${formatDeg(deg)}°`;
-                    })()} / {r.isCalm ? "calm" : `${r.speedKt}${r.gustKt ? `G${r.gustKt}` : ""}kt`}
+                    {r.isVariable ? "VRB" : `${String(r.dirDeg).padStart(3, "0")}°`} / {r.isCalm ? "Calm" : `${r.speedKt}${r.gustKt ? `G${r.gustKt}` : ""}kt`}
                   </span>
                 </button>
               ))}
@@ -305,7 +304,7 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
           {runwayEnds.length > 0 && (
             <div className="mt-3 grid grid-cols-2 gap-2">
               {runwayEnds.map((end) => (
-                <RunwayCard key={end.key} end={end} isBest={bestKeys.has(end.key)} />
+                <RunwayCard key={end.key} end={end} />
               ))}
             </div>
           )}
@@ -321,34 +320,32 @@ function severityTextClass(sev: Severity): string {
   return "";
 }
 
-function RunwayCard({ end, isBest }: { end: RunwayEnd; isBest: boolean }) {
+function RunwayCard({ end }: { end: RunwayEnd }) {
   const isTailwind = end.headwindKt < 0;
   const tailwindKt = isTailwind ? Math.abs(end.headwindKt) : 0;
   const headwindKt = isTailwind ? 0 : end.headwindKt;
   const level = endLevel(end);
+  const isBad = level === "red" || level === "extreme";
 
-  const cardClass =
-    level === "extreme"
-      ? "border-red-500/70 bg-red-500/20"
-      : isBest
-        ? "border-green-500/60 bg-green-500/10"
-        : "border-border bg-muted/20";
-
+  // Outline-only cards: a single thick green (usable) or red (exceeds a limit)
+  // border with a transparent interior, so the border colour never competes
+  // with the per-value severity colours of the text inside.
   return (
-    <div className={cn("rounded border px-2.5 py-2 text-center", cardClass)}>
-      <div className="text-xs font-bold tracking-wide">RWY {end.ident}</div>
-      <div className={cn("text-[10.5px] mt-0.5", level === "extreme" ? "text-red-300" : "text-muted-foreground")}>
+    <div className={cn(
+      "rounded px-2.5 py-2 text-center border-2 bg-transparent",
+      isBad ? "border-red-500" : "border-green-500",
+    )}>
+      <div className="text-xs font-bold tracking-wide text-primary">RWY {end.ident}</div>
+      <div className="text-[10.5px] mt-0.5 text-muted-foreground">
         {isTailwind ? (
-          <span className={level === "extreme" ? "" : severityTextClass(tailwindSeverity(tailwindKt))}>tailwind {tailwindKt}kt</span>
+          <span className={severityTextClass(tailwindSeverity(tailwindKt))}>Tailwind {tailwindKt}kt</span>
         ) : (
+          <span className={severityTextClass(headwindSeverity(headwindKt))}>Headwind {headwindKt}kt</span>
+        )}
+        {end.crosswindKt > 0.1 && (
           <>
-            <span className={level === "extreme" ? "" : severityTextClass(headwindSeverity(headwindKt))}>headwind {headwindKt}kt</span>
-            {end.crosswindKt > 0.1 && (
-              <>
-                {" · "}
-                <span className={level === "extreme" ? "" : severityTextClass(crosswindSeverity(end.crosswindKt))}>crosswind {end.crosswindKt}kt</span>
-              </>
-            )}
+            {" · "}
+            <span className={severityTextClass(crosswindSeverity(end.crosswindKt))}>Crosswind {end.crosswindKt}kt</span>
           </>
         )}
       </div>
