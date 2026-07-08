@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
-import { Wind, ChevronDown, RotateCcw } from "lucide-react";
+import { Wind, ChevronDown, RotateCcw, X } from "lucide-react";
 import { useRunways } from "@/hooks/useRunways";
 import {
   useGetAirportTaf, getGetAirportTafQueryKey,
   useGetAirportMetar, getGetAirportMetarQueryKey,
 } from "@workspace/api-client-react";
-import { Dialog, DialogContent, DialogTrigger, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import {
   extractAllWindReports, pickDefaultReport, calcRunwayWind, trueToMagnetic,
   headwindSeverity, tailwindSeverity, crosswindSeverity, isExtreme,
@@ -109,23 +109,27 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
 
   const runwayEnds: RunwayEnd[] = useMemo(() => {
     if (!runways || !hasUsableWind || effectiveDirDeg === null || effectiveSpeedKt === null) return [];
-    const headingFor = (trueDeg: number, magVarDeg: number | null) =>
-      northRef === "magnetic" && magVarDeg != null ? trueToMagnetic(trueDeg, magVarDeg) : trueDeg;
+    // Every runway must convert through the SAME airport-level declination — using
+    // each runway's own individually-surveyed magVarDeg here caused parallel/tied
+    // runways to drift apart by hundredths of a degree between True and Mag,
+    // which could flip which one "wins" the headwind tie-break inconsistently.
+    const headingFor = (trueDeg: number) =>
+      northRef === "magnetic" && airportMagVarDeg != null ? trueToMagnetic(trueDeg, airportMagVarDeg) : trueDeg;
     const ends: RunwayEnd[] = [];
     for (const r of runways) {
       if (r.leIdent && r.leHeadingDegT != null) {
-        const heading = headingFor(r.leHeadingDegT, r.magVarDeg);
+        const heading = headingFor(r.leHeadingDegT);
         const w = calcRunwayWind(effectiveDirDeg, effectiveSpeedKt, heading);
         ends.push({ key: `${r.designator}-le`, ident: r.leIdent, headingDegT: heading, ...w });
       }
       if (r.heIdent && r.heHeadingDegT != null) {
-        const heading = headingFor(r.heHeadingDegT, r.magVarDeg);
+        const heading = headingFor(r.heHeadingDegT);
         const w = calcRunwayWind(effectiveDirDeg, effectiveSpeedKt, heading);
         ends.push({ key: `${r.designator}-he`, ident: r.heIdent, headingDegT: heading, ...w });
       }
     }
     return ends.sort((a, b) => b.headwindKt - a.headwindKt);
-  }, [runways, hasUsableWind, effectiveDirDeg, effectiveSpeedKt, northRef]);
+  }, [runways, hasUsableWind, effectiveDirDeg, effectiveSpeedKt, northRef, airportMagVarDeg]);
 
   // Every end tied for the highest headwind is "best" — parallel runways (e.g. 24L/24R) are both recommended.
   const bestHeadwind = runwayEnds.length > 0 ? runwayEnds[0].headwindKt : null;
@@ -179,6 +183,12 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
     : null;
 
   return (
+    // React bubbles portaled events through the *React* tree, not the DOM tree — so a
+    // click on the dialog's full-screen overlay (dismissing it) would otherwise bubble
+    // straight up into the card's <Link>, triggering navigation. This wrapper (laid out
+    // via display:contents, so it doesn't affect the surrounding badge row) intercepts
+    // that bubbling before it reaches the Link.
+    <span className="contents" onClick={(e) => e.stopPropagation()}>
     <Dialog
       open={open}
       onOpenChange={(o) => {
@@ -199,21 +209,26 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
       </DialogTrigger>
       <DialogContent
         onClick={(e) => e.stopPropagation()}
+        showCloseButton={false}
         className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-[420px] max-h-[85vh] overflow-y-auto p-0 gap-0 font-mono rounded-lg"
       >
-        <DialogTitle asChild>
-          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-            <Wind className="w-3.5 h-3.5 text-primary flex-shrink-0" strokeWidth={2.5} />
+        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+          <Wind className="w-3.5 h-3.5 text-primary flex-shrink-0" strokeWidth={2.5} />
+          <DialogTitle asChild>
             <span className="text-[11px] font-bold tracking-wider">{icao} — WIND CALCULATOR</span>
-          </div>
-        </DialogTitle>
+          </DialogTitle>
+          <DialogClose className="ml-auto flex items-center justify-center rounded-sm opacity-70 hover:opacity-100 transition-opacity focus:outline-none">
+            <X className="w-4 h-4" />
+            <span className="sr-only">Close</span>
+          </DialogClose>
+        </div>
 
         <div className="px-4 py-3">
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
             <WindCompass dirDeg={effectiveDirDeg} isVariable={effectiveIsVariable} runwayEnds={runwayEnds} bestKeys={bestKeys} />
-            <div className="w-full sm:flex-1 sm:min-w-0 space-y-2">
+            <div className="w-full sm:flex-1 sm:min-w-0 space-y-2 text-center">
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex flex-col items-center gap-1 mb-1">
                   <label className="text-[9.5px] text-muted-foreground tracking-wide">Direction (°)</label>
                   {canUseMagnetic && (
                     <div className="inline-flex rounded border border-border overflow-hidden text-[9px] font-bold">
@@ -240,7 +255,7 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
                   value={overrideDir !== "" ? overrideDir : (reportDirDeg !== null ? formatDeg(reportDirDeg) : "")}
                   onChange={(e) => setOverrideDir(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
                   placeholder={selectedReport?.isVariable ? "VRB" : "e.g. 250"}
-                  className="w-full rounded border border-border bg-muted/20 px-2.5 py-1.5 text-sm font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded border border-border bg-muted/20 px-2.5 py-1.5 text-sm font-bold tabular-nums text-center focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
               <div>
@@ -251,14 +266,14 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
                   value={overrideSpeed !== "" ? overrideSpeed : (selectedReport ? String(selectedReport.calcSpeedKt) : "")}
                   onChange={(e) => setOverrideSpeed(e.target.value.replace(/[^0-9.]/g, ""))}
                   placeholder="e.g. 15"
-                  className="w-full rounded border border-border bg-muted/20 px-2.5 py-1.5 text-sm font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded border border-border bg-muted/20 px-2.5 py-1.5 text-sm font-bold tabular-nums text-center focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
               {isOverridden && (
                 <button
                   type="button"
                   onClick={resetOverride}
-                  className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors mx-auto"
                 >
                   <RotateCcw className="w-3 h-3" /> Reset to Report Value
                 </button>
@@ -324,13 +339,14 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
           {runwayEnds.length > 0 && (
             <div className="mt-3 grid grid-cols-2 gap-2">
               {runwayEnds.map((end) => (
-                <RunwayCard key={end.key} end={end} />
+                <RunwayCard key={end.key} end={end} isBest={bestKeys.has(end.key)} />
               ))}
             </div>
           )}
         </div>
       </DialogContent>
     </Dialog>
+    </span>
   );
 }
 
@@ -340,21 +356,24 @@ function severityTextClass(sev: Severity): string {
   return "";
 }
 
-function RunwayCard({ end }: { end: RunwayEnd }) {
+function RunwayCard({ end, isBest }: { end: RunwayEnd; isBest: boolean }) {
   const isTailwind = end.headwindKt < 0;
   const tailwindKt = isTailwind ? Math.abs(end.headwindKt) : 0;
   const headwindKt = isTailwind ? 0 : end.headwindKt;
   const level = endLevel(end);
-  const isBad = level === "red" || level === "extreme";
 
-  // A single thick green (usable) or red (exceeds a limit) border, with a
-  // very light matching fill (~10%) so the card reads as colored at a glance
-  // without the fill competing with the per-value severity text colors.
+  // Border colour: a tailwind runway is always red — it's a downwind runway
+  // regardless of how mild — same for headwind runways that breach a red/
+  // extreme limit. Otherwise, only the single (tied-)best headwind runway(s)
+  // get green; everything else is a neutral outline.
+  const cardClass = isTailwind || level === "red" || level === "extreme"
+    ? "border-red-500 bg-red-500/10"
+    : isBest
+      ? "border-green-500 bg-green-500/10"
+      : "border-border bg-muted/20";
+
   return (
-    <div className={cn(
-      "rounded px-2.5 py-2 text-center border-2",
-      isBad ? "border-red-500 bg-red-500/10" : "border-green-500 bg-green-500/10",
-    )}>
+    <div className={cn("rounded px-2.5 py-2 text-center border-2", cardClass)}>
       <div className="text-xs font-bold tracking-wide text-primary">RWY {end.ident}</div>
       <div className="text-[10.5px] mt-0.5 text-muted-foreground">
         {isTailwind ? (
@@ -445,26 +464,25 @@ function WindArrow({ dirDeg, center, radius }: { dirDeg: number; center: number;
   const poly = (pts: Array<{ x: number; y: number }>) => pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
 
   const outerPoints = poly([
-    at(1.0, 0),       // tail
-    at(0.11, -0.09),  // right notch
-    at(0.19, -0.19),  // right wingtip
-    at(0, 0),         // tip (center)
-    at(0.19, 0.19),   // left wingtip
-    at(0.11, 0.09),   // left notch
+    at(1.0, 0),        // tail
+    at(0.09, -0.055),  // right notch
+    at(0.15, -0.12),   // right wingtip
+    at(0, 0),          // tip (center)
+    at(0.15, 0.12),    // left wingtip
+    at(0.09, 0.055),   // left notch
   ]);
   const innerPoints = poly([
-    at(0.62, 0.03),   // inner tail
-    at(0.05, -0.01),  // inner notch
-    at(0, 0),         // tip
-    at(0.13, 0.13),   // inner wing
-    at(0.17, 0.06),   // inner wing
+    at(0.62, 0.02),    // inner tail
+    at(0.05, -0.007),  // inner notch
+    at(0, 0),          // tip
+    at(0.1, 0.09),     // inner wing
+    at(0.13, 0.04),    // inner wing
   ]);
 
   return (
     <g>
       <polygon points={outerPoints} fill="hsl(var(--primary))" strokeLinejoin="round" />
       <polygon points={innerPoints} fill="hsl(var(--primary-foreground) / 0.18)" strokeLinejoin="round" />
-      <circle cx={center} cy={center} r="4" fill="hsl(var(--primary))" />
     </g>
   );
 }

@@ -81,7 +81,7 @@ export default function AirportDetail({ icao }: Props) {
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 pt-8 pb-24 sm:pb-8 space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="@container min-w-0">
+          <div className="flex-1 @container min-w-0">
             <Link href="/" className="text-xs text-muted-foreground hover:text-foreground font-mono transition-colors">
               &larr; MONITOR
             </Link>
