@@ -7,6 +7,7 @@ import {
 } from "@workspace/api-client-react";
 import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { BetaBadge } from "@/components/BetaBadge";
 import {
   extractAllWindReports, pickDefaultReport, calcRunwayWind, trueToMagnetic, designatorHeadingDeg,
   headwindSeverity, tailwindSeverity, crosswindSeverity, isExtreme,
@@ -223,8 +224,9 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
         <div className="px-4 py-3 border-b border-border flex items-center gap-2 flex-shrink-0">
           <Wind className="w-3.5 h-3.5 text-primary flex-shrink-0" strokeWidth={2.5} />
           <DialogTitle asChild>
-            <span className="text-[11px] font-bold tracking-wider">{icao} — WIND CALCULATOR</span>
+            <span className="text-[11px] font-bold tracking-wider">{icao} WIND CALCULATOR</span>
           </DialogTitle>
+          <BetaBadge />
           <DialogClose className="ml-auto flex items-center justify-center rounded-sm opacity-70 hover:opacity-100 transition-opacity focus:outline-none">
             <X className="w-4 h-4" />
             <span className="sr-only">Close</span>
