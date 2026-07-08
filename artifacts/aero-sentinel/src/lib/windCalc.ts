@@ -174,6 +174,18 @@ export function trueToMagnetic(trueDeg: number, magVarDeg: number): number {
   return normalizeDeg(trueDeg - magVarDeg);
 }
 
+/**
+ * The heading implied purely by a runway's own name, ignoring survey/declination
+ * data entirely — e.g. "28L" -> 280°, "05" -> 050°, "36" -> 360° (== 0°). Runway
+ * designators are always the nearest-10° magnetic heading by ICAO convention, so
+ * this is the "as-named" heading a pilot would assume from the number alone.
+ */
+export function designatorHeadingDeg(ident: string): number {
+  const m = ident.match(/^(\d{1,2})/);
+  if (!m) return 0;
+  return normalizeDeg(parseInt(m[1], 10) * 10);
+}
+
 // ── Severity thresholds ─────────────────────────────────────────────────────
 // Shared by runway-card coloring and the trigger-button indicator so both
 // reflect the exact same rules.
@@ -181,20 +193,20 @@ export function trueToMagnetic(trueDeg: number, magVarDeg: number): number {
 export type Severity = "none" | "orange" | "red";
 
 export function headwindSeverity(headwindKt: number): Severity {
-  if (headwindKt >= 50) return "red";
-  if (headwindKt >= 35) return "orange";
+  if (headwindKt >= 45) return "red";
+  if (headwindKt >= 40) return "orange";
   return "none";
 }
 
 export function tailwindSeverity(tailwindKt: number): Severity {
-  if (tailwindKt >= 15) return "red";
-  if (tailwindKt >= 7) return "orange";
+  if (tailwindKt >= 13) return "red";
+  if (tailwindKt >= 10) return "orange";
   return "none";
 }
 
 export function crosswindSeverity(crosswindKt: number): Severity {
   if (crosswindKt >= 25) return "red";
-  if (crosswindKt >= 17) return "orange";
+  if (crosswindKt >= 20) return "orange";
   return "none";
 }
 

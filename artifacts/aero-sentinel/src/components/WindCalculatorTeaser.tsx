@@ -8,13 +8,14 @@ import {
 import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
-  extractAllWindReports, pickDefaultReport, calcRunwayWind, trueToMagnetic,
+  extractAllWindReports, pickDefaultReport, calcRunwayWind, trueToMagnetic, designatorHeadingDeg,
   headwindSeverity, tailwindSeverity, crosswindSeverity, isExtreme,
   type WindReport, type Severity,
 } from "@/lib/windCalc";
 import { cn } from "@/lib/utils";
 
-type NorthReference = "true" | "magnetic";
+// Order matches the toggle's left-to-right layout: by-runway-name, true, magnetic.
+type NorthReference = "designator" | "true" | "magnetic";
 
 function formatDeg(deg: number): string {
   return Number.isInteger(deg) ? String(deg) : deg.toFixed(1);
@@ -114,17 +115,23 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
     // each runway's own individually-surveyed magVarDeg here caused parallel/tied
     // runways to drift apart by hundredths of a degree between True and Mag,
     // which could flip which one "wins" the headwind tie-break inconsistently.
-    const headingFor = (trueDeg: number) =>
-      northRef === "magnetic" && airportMagVarDeg != null ? trueToMagnetic(trueDeg, airportMagVarDeg) : trueDeg;
+    // "designator" mode ignores survey data entirely and uses the heading implied
+    // by the runway's own name (e.g. "28L" -> 280°), so it needs the ident, not
+    // the true heading.
+    const headingFor = (trueDeg: number, ident: string) => {
+      if (northRef === "designator") return designatorHeadingDeg(ident);
+      if (northRef === "magnetic" && airportMagVarDeg != null) return trueToMagnetic(trueDeg, airportMagVarDeg);
+      return trueDeg;
+    };
     const ends: RunwayEnd[] = [];
     for (const r of runways) {
       if (r.leIdent && r.leHeadingDegT != null) {
-        const heading = headingFor(r.leHeadingDegT);
+        const heading = headingFor(r.leHeadingDegT, r.leIdent);
         const w = calcRunwayWind(effectiveDirDeg, effectiveSpeedKt, heading);
         ends.push({ key: `${r.designator}-le`, ident: r.leIdent, headingDegT: heading, ...w });
       }
       if (r.heIdent && r.heHeadingDegT != null) {
-        const heading = headingFor(r.heHeadingDegT);
+        const heading = headingFor(r.heHeadingDegT, r.heIdent);
         const w = calcRunwayWind(effectiveDirDeg, effectiveSpeedKt, heading);
         ends.push({ key: `${r.designator}-he`, ident: r.heIdent, headingDegT: heading, ...w });
       }
@@ -231,24 +238,32 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
               <div>
                 <div className="flex flex-col items-center gap-1 mb-1">
                   <label className="text-[9.5px] text-muted-foreground tracking-wide">Direction (°)</label>
-                  {canUseMagnetic && (
-                    <div className="inline-flex rounded border border-border overflow-hidden text-[9px] font-bold">
-                      <button
-                        type="button"
-                        onClick={() => setNorthRef("true")}
-                        className={cn("px-1.5 py-0.5 transition-colors", northRef === "true" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
-                      >
-                        TRUE
-                      </button>
+                  <div className="inline-flex rounded border border-border overflow-hidden text-[9px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setNorthRef("designator")}
+                      title="Heading implied by each runway's own name (e.g. 28L = 280°) — ignores survey/declination data"
+                      className={cn("px-1.5 py-0.5 transition-colors", northRef === "designator" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                    >
+                      RWY
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNorthRef("true")}
+                      className={cn("px-1.5 py-0.5 transition-colors border-l border-border", northRef === "true" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                    >
+                      TRUE
+                    </button>
+                    {canUseMagnetic && (
                       <button
                         type="button"
                         onClick={() => setNorthRef("magnetic")}
-                        className={cn("px-1.5 py-0.5 transition-colors", northRef === "magnetic" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                        className={cn("px-1.5 py-0.5 transition-colors border-l border-border", northRef === "magnetic" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
                       >
                         MAG
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
                 <input
                   type="text"
@@ -372,12 +387,12 @@ function WindLegendFooter() {
         <WindLegendItem
           swatchClass="border-orange-500/50 bg-orange-500/10 text-orange-400"
           label="Caution"
-          detail="Headwind ≥35kt · Tailwind ≥7kt · Crosswind ≥17kt"
+          detail="Headwind ≥40kt · Tailwind ≥10kt · Crosswind ≥20kt"
         />
         <WindLegendItem
           swatchClass="border-red-500/50 bg-red-500/10 text-red-400"
           label="Severe"
-          detail="Headwind ≥50kt · Tailwind ≥15kt · Crosswind ≥25kt · or any tailwind runway"
+          detail="Headwind ≥45kt · Tailwind ≥13kt · Crosswind ≥25kt"
         />
         <WindLegendItem
           swatchClass="border-red-500/60 bg-red-500/20 text-red-400 animate-pulse"
