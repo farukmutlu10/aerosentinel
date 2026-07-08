@@ -1,5 +1,5 @@
 #!/bin/bash
-TOKEN="oxoU_A_PwKrC1XaVvzVgZ7x681MVP_bfmgdun8Nt13X"
+TOKEN="${RAILWAY_API_TOKEN:?RAILWAY_API_TOKEN is not set (export it or source your .env before running this script)}"
 API="https://backboard.railway.app/graphql/v2"
 ENV_ID="6359edf1-820c-41c7-8a50-9e8ed3acf083"
 DB_SVC_ID="f4f20723-8b9c-42e5-8d36-01c6faa0e7e5"

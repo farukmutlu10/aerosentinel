@@ -13,7 +13,7 @@ echo "=== Pushing main to origin ==="
 git push origin main
 
 echo "=== Triggering Railway backend redeploy ==="
-TOKEN="a5fd363a-cd15-4a9d-8ec3-c3085c63a85a"
+TOKEN="${RAILWAY_API_TOKEN:?RAILWAY_API_TOKEN is not set (export it or source your .env before running this script)}"
 API="https://backboard.railway.app/graphql/v2"
 curl -s "$API" \
   -H "Content-Type: application/json" \
