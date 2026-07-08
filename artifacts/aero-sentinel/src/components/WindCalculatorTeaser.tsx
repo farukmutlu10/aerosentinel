@@ -6,6 +6,7 @@ import {
   useGetAirportMetar, getGetAirportMetarQueryKey,
 } from "@workspace/api-client-react";
 import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
   extractAllWindReports, pickDefaultReport, calcRunwayWind, trueToMagnetic,
   headwindSeverity, tailwindSeverity, crosswindSeverity, isExtreme,
@@ -210,9 +211,9 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
       <DialogContent
         onClick={(e) => e.stopPropagation()}
         showCloseButton={false}
-        className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-[420px] max-h-[85vh] overflow-y-auto p-0 gap-0 font-mono rounded-lg"
+        className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-[420px] max-h-[85vh] p-0 gap-0 font-mono rounded-lg flex flex-col overflow-hidden"
       >
-        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+        <div className="px-4 py-3 border-b border-border flex items-center gap-2 flex-shrink-0">
           <Wind className="w-3.5 h-3.5 text-primary flex-shrink-0" strokeWidth={2.5} />
           <DialogTitle asChild>
             <span className="text-[11px] font-bold tracking-wider">{icao} — WIND CALCULATOR</span>
@@ -223,7 +224,7 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
           </DialogClose>
         </div>
 
-        <div className="px-4 py-3">
+        <div className="px-4 py-3 flex-1 min-h-0 overflow-y-auto">
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
             <WindCompass dirDeg={effectiveDirDeg} isVariable={effectiveIsVariable} runwayEnds={runwayEnds} bestKeys={bestKeys} />
             <div className="w-full sm:flex-1 sm:min-w-0 space-y-2 text-center">
@@ -344,6 +345,8 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
             </div>
           )}
         </div>
+
+        <WindLegendFooter />
       </DialogContent>
     </Dialog>
     </span>
@@ -354,6 +357,54 @@ function severityTextClass(sev: Severity): string {
   if (sev === "red") return "text-red-400 font-bold";
   if (sev === "orange") return "text-orange-400 font-bold";
   return "";
+}
+
+/** Pinned legend explaining the trigger-button/icon colors — always visible, independent of the body's own scroll. */
+function WindLegendFooter() {
+  return (
+    <div className="px-4 py-2 border-t border-border flex-shrink-0">
+      <div className="flex items-center justify-center gap-3 flex-wrap">
+        <WindLegendItem
+          swatchClass="border-green-500/30 bg-green-500/10 text-green-400/90"
+          label="Safe"
+          detail="Below every caution threshold, or this is the best headwind runway available."
+        />
+        <WindLegendItem
+          swatchClass="border-orange-500/50 bg-orange-500/10 text-orange-400"
+          label="Caution"
+          detail="Headwind ≥35kt · Tailwind ≥7kt · Crosswind ≥17kt"
+        />
+        <WindLegendItem
+          swatchClass="border-red-500/50 bg-red-500/10 text-red-400"
+          label="Severe"
+          detail="Headwind ≥50kt · Tailwind ≥15kt · Crosswind ≥25kt · or any tailwind runway"
+        />
+        <WindLegendItem
+          swatchClass="border-red-500/60 bg-red-500/20 text-red-400 animate-pulse"
+          label="Extreme"
+          detail="Tailwind ≥15kt · Crosswind ≥30kt · Headwind ≥50kt (on the best runway)"
+        />
+      </div>
+    </div>
+  );
+}
+
+function WindLegendItem({ swatchClass, label, detail }: { swatchClass: string; label: string; detail: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="inline-flex items-center gap-1 cursor-default">
+          <span className={cn("relative inline-flex items-center justify-center w-[15px] h-[15px] rounded border", swatchClass)}>
+            <Wind className="w-[9px] h-[9px]" strokeWidth={2.5} />
+          </span>
+          <span className="text-[9.5px] text-muted-foreground">{label}</span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent className="text-[10px] font-mono max-w-[220px] text-center">
+        {detail}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 function RunwayCard({ end, isBest }: { end: RunwayEnd; isBest: boolean }) {
