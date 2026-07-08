@@ -651,12 +651,17 @@ export async function fetchWeatherForIcao(
     const metarEntry = (metarData as Array<{ rawOb?: string; metarType?: string }>)[0];
     // fetchJsonFast is single-attempt/no-retry, so a transient timeout or a
     // 429 from aviationweather.gov shows up here as an empty result — falling
-    // back to the previous display-cache entry (instead of nulling it out)
-    // stops the "Awaiting TAF data..." flash a card would otherwise take on
-    // every hiccup, only to self-heal on the next successful poll.
+    // back to the previous display-cache entry, and then to the monitor's own
+    // last-scanned value (sonGorulenTaf/Metar, even if past WEATHER_CACHE_MAX_AGE),
+    // stops the "Awaiting TAF data..." flash a card would otherwise take on every
+    // hiccup. With ~600 airports on the shared watchlist, a full scan cycle can
+    // run past the freshness window on its own, so displayCache alone isn't a
+    // reliable fallback for an airport this endpoint has never live-fetched before —
+    // sonGorulenTaf/Metar is populated by the scan for every actively-monitored
+    // airport regardless of how stale its timestamp is.
     const prevEntry = displayCache[icao];
-    const rawTaf   = tafEntry?.rawTAF ?? prevEntry?.rawTaf ?? null;
-    const rawMetar = metarEntry?.rawOb  ?? prevEntry?.rawMetar ?? null;
+    const rawTaf   = tafEntry?.rawTAF ?? prevEntry?.rawTaf ?? sonGorulenTaf[icao] ?? null;
+    const rawMetar = metarEntry?.rawOb  ?? prevEntry?.rawMetar ?? sonGorulenMetar[icao] ?? null;
     const tafType  = tafEntry?.tafType ?? null;
     const metarType = metarEntry?.metarType ?? null;
 
@@ -666,7 +671,12 @@ export async function fetchWeatherForIcao(
     return { rawTaf, rawMetar, tafType, metarType };
   } catch {
     const prevEntry = displayCache[icao];
-    return { rawTaf: prevEntry?.rawTaf ?? null, rawMetar: prevEntry?.rawMetar ?? null, tafType: null, metarType: null };
+    return {
+      rawTaf: prevEntry?.rawTaf ?? sonGorulenTaf[icao] ?? null,
+      rawMetar: prevEntry?.rawMetar ?? sonGorulenMetar[icao] ?? null,
+      tafType: null,
+      metarType: null,
+    };
   }
 }
 
@@ -741,10 +751,13 @@ export async function fetchWeatherForIcaos(
   for (const icao of needsFetch) {
     // Same fallback as fetchWeatherForIcao: a batch that came back empty
     // (single-attempt fetchJsonFast hit a timeout/429) shouldn't null out
-    // whatever this ICAO's display cache already had.
+    // whatever this ICAO's display cache already had — and if this endpoint
+    // has never live-fetched this ICAO before, fall back further to the
+    // monitor's own last-scanned value (stale timestamp is fine, the raw
+    // text itself doesn't expire).
     const prevEntry = displayCache[icao];
-    const rawTaf = tafByIcao[icao] ?? prevEntry?.rawTaf ?? null;
-    const rawMetar = metarByIcao[icao] ?? prevEntry?.rawMetar ?? null;
+    const rawTaf = tafByIcao[icao] ?? prevEntry?.rawTaf ?? sonGorulenTaf[icao] ?? null;
+    const rawMetar = metarByIcao[icao] ?? prevEntry?.rawMetar ?? sonGorulenMetar[icao] ?? null;
     displayCache[icao] = { rawTaf, rawMetar, ts: Date.now() };
     result[icao] = { rawTaf, rawMetar };
   }
