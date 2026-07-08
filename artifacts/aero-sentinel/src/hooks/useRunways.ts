@@ -8,6 +8,8 @@ export interface Runway {
   heHeadingDegT: number | null;
   lengthFt: number | null;
   surface: string | null;
+  /** Magnetic variation at this runway (degrees, positive = East) — from the WMM, computed at data-generation time. */
+  magVarDeg: number | null;
 }
 
 /**

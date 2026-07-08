@@ -7,11 +7,17 @@ import {
 } from "@workspace/api-client-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  extractAllWindReports, pickDefaultReport, calcRunwayWind,
+  extractAllWindReports, pickDefaultReport, calcRunwayWind, trueToMagnetic,
   headwindSeverity, tailwindSeverity, crosswindSeverity, isExtreme,
   type WindReport, type Severity,
 } from "@/lib/windCalc";
 import { cn } from "@/lib/utils";
+
+type NorthReference = "true" | "magnetic";
+
+function formatDeg(deg: number): string {
+  return Number.isInteger(deg) ? String(deg) : deg.toFixed(1);
+}
 
 interface WindCalculatorTeaserProps {
   /** 4-letter ICAO airport code, e.g. "LTFM" */
@@ -59,6 +65,7 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
   const [reportsExpanded, setReportsExpanded] = useState(false);
   const [overrideDir, setOverrideDir] = useState<string>("");
   const [overrideSpeed, setOverrideSpeed] = useState<string>("");
+  const [northRef, setNorthRef] = useState<NorthReference>("true");
 
   const hasExternalData = rawMetarProp !== undefined || rawTafProp !== undefined;
 
@@ -76,27 +83,46 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
   const defaultReport = useMemo(() => pickDefaultReport(reports), [reports]);
   const selectedReport: WindReport | null = (selectedId && reports.find((r) => r.id === selectedId)) || defaultReport;
 
+  // Airport-level magnetic variation — averaged across its runways (their footprint
+  // is small enough that this is effectively exact) — used to convert the *wind*
+  // direction, which METAR/TAF always report relative to true north.
+  const airportMagVarDeg = useMemo(() => {
+    const vals = (runways ?? []).map((r) => r.magVarDeg).filter((v): v is number => v != null);
+    if (vals.length === 0) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  }, [runways]);
+  const canUseMagnetic = airportMagVarDeg !== null;
+
   const isOverridden = overrideDir.trim() !== "" || overrideSpeed.trim() !== "";
-  const effectiveDirDeg = overrideDir.trim() !== "" ? ((Number(overrideDir) % 360) + 360) % 360 : (selectedReport?.dirDeg ?? null);
+  // Manual overrides are taken at face value in whichever frame is currently selected —
+  // report-derived direction (always true north) is converted only when not overridden.
+  const reportDirDeg = selectedReport && !selectedReport.isVariable && selectedReport.dirDeg != null
+    ? (northRef === "magnetic" && airportMagVarDeg !== null ? trueToMagnetic(selectedReport.dirDeg, airportMagVarDeg) : selectedReport.dirDeg)
+    : null;
+  const effectiveDirDeg = overrideDir.trim() !== "" ? ((Number(overrideDir) % 360) + 360) % 360 : reportDirDeg;
   const effectiveSpeedKt = overrideSpeed.trim() !== "" ? Math.max(0, Number(overrideSpeed)) : (selectedReport?.calcSpeedKt ?? null);
   const effectiveIsVariable = overrideDir.trim() === "" && !!selectedReport?.isVariable;
   const hasUsableWind = !effectiveIsVariable && effectiveDirDeg !== null && effectiveSpeedKt !== null && !Number.isNaN(effectiveDirDeg) && !Number.isNaN(effectiveSpeedKt);
 
   const runwayEnds: RunwayEnd[] = useMemo(() => {
     if (!runways || !hasUsableWind || effectiveDirDeg === null || effectiveSpeedKt === null) return [];
+    const headingFor = (trueDeg: number, magVarDeg: number | null) =>
+      northRef === "magnetic" && magVarDeg != null ? trueToMagnetic(trueDeg, magVarDeg) : trueDeg;
     const ends: RunwayEnd[] = [];
     for (const r of runways) {
       if (r.leIdent && r.leHeadingDegT != null) {
-        const w = calcRunwayWind(effectiveDirDeg, effectiveSpeedKt, r.leHeadingDegT);
-        ends.push({ key: `${r.designator}-le`, ident: r.leIdent, headingDegT: r.leHeadingDegT, ...w });
+        const heading = headingFor(r.leHeadingDegT, r.magVarDeg);
+        const w = calcRunwayWind(effectiveDirDeg, effectiveSpeedKt, heading);
+        ends.push({ key: `${r.designator}-le`, ident: r.leIdent, headingDegT: heading, ...w });
       }
       if (r.heIdent && r.heHeadingDegT != null) {
-        const w = calcRunwayWind(effectiveDirDeg, effectiveSpeedKt, r.heHeadingDegT);
-        ends.push({ key: `${r.designator}-he`, ident: r.heIdent, headingDegT: r.heHeadingDegT, ...w });
+        const heading = headingFor(r.heHeadingDegT, r.magVarDeg);
+        const w = calcRunwayWind(effectiveDirDeg, effectiveSpeedKt, heading);
+        ends.push({ key: `${r.designator}-he`, ident: r.heIdent, headingDegT: heading, ...w });
       }
     }
     return ends.sort((a, b) => b.headwindKt - a.headwindKt);
-  }, [runways, hasUsableWind, effectiveDirDeg, effectiveSpeedKt]);
+  }, [runways, hasUsableWind, effectiveDirDeg, effectiveSpeedKt, northRef]);
 
   // Every end tied for the highest headwind is "best" — parallel runways (e.g. 24L/24R) are both recommended.
   const bestHeadwind = runwayEnds.length > 0 ? runwayEnds[0].headwindKt : null;
@@ -120,6 +146,11 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
   function resetOverride() {
     setOverrideDir("");
     setOverrideSpeed("");
+  }
+
+  function selectNorthRef(ref: NorthReference) {
+    setNorthRef(ref);
+    resetOverride(); // avoid mixing a typed value from one frame with the other
   }
 
   if (!runways || runways.length === 0) return null;
@@ -165,11 +196,31 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
             <WindCompass dirDeg={effectiveDirDeg} isVariable={effectiveIsVariable} runwayEnds={runwayEnds} bestKeys={bestKeys} />
             <div className="flex-1 min-w-0 space-y-2">
               <div>
-                <label className="text-[9.5px] text-muted-foreground tracking-wide block mb-1">direction (°)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[9.5px] text-muted-foreground tracking-wide">direction (°)</label>
+                  {canUseMagnetic && (
+                    <div className="inline-flex rounded border border-border overflow-hidden text-[9px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => selectNorthRef("true")}
+                        className={cn("px-1.5 py-0.5 transition-colors", northRef === "true" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                      >
+                        TRUE
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => selectNorthRef("magnetic")}
+                        className={cn("px-1.5 py-0.5 transition-colors", northRef === "magnetic" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                      >
+                        MAG
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <input
                   type="text"
                   inputMode="numeric"
-                  value={overrideDir !== "" ? overrideDir : (selectedReport && !selectedReport.isVariable && selectedReport.dirDeg != null ? String(selectedReport.dirDeg) : "")}
+                  value={overrideDir !== "" ? overrideDir : (reportDirDeg !== null ? formatDeg(reportDirDeg) : "")}
                   onChange={(e) => setOverrideDir(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
                   placeholder={selectedReport?.isVariable ? "VRB" : "e.g. 250"}
                   className="w-full rounded border border-border bg-muted/20 px-2.5 py-1.5 text-sm font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
@@ -241,7 +292,10 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
                     {r.timeLabel && <span className="text-muted-foreground font-normal"> ({r.timeLabel})</span>}
                   </span>
                   <span className="tabular-nums flex-shrink-0 ml-2">
-                    {r.isVariable ? "VRB" : `${String(r.dirDeg).padStart(3, "0")}°`} / {r.isCalm ? "calm" : `${r.speedKt}${r.gustKt ? `G${r.gustKt}` : ""}kt`}
+                    {r.isVariable ? "VRB" : (() => {
+                      const deg = northRef === "magnetic" && airportMagVarDeg !== null ? trueToMagnetic(r.dirDeg!, airportMagVarDeg) : r.dirDeg!;
+                      return Number.isInteger(deg) ? `${String(deg).padStart(3, "0")}°` : `${formatDeg(deg)}°`;
+                    })()} / {r.isCalm ? "calm" : `${r.speedKt}${r.gustKt ? `G${r.gustKt}` : ""}kt`}
                   </span>
                 </button>
               ))}

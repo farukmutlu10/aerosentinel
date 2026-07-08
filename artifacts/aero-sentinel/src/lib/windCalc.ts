@@ -165,6 +165,15 @@ export function calcRunwayWind(windDirDeg: number, windSpeedKt: number, runwayHe
   return { headwindKt, crosswindKt, crosswindSide };
 }
 
+export function normalizeDeg(deg: number): number {
+  return ((deg % 360) + 360) % 360;
+}
+
+/** True heading/direction -> magnetic, given the local magnetic variation (positive = East). */
+export function trueToMagnetic(trueDeg: number, magVarDeg: number): number {
+  return normalizeDeg(trueDeg - magVarDeg);
+}
+
 // ── Severity thresholds ─────────────────────────────────────────────────────
 // Shared by runway-card coloring and the trigger-button indicator so both
 // reflect the exact same rules.
