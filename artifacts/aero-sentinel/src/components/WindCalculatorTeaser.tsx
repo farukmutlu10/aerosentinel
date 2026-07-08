@@ -209,9 +209,9 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
         </DialogTitle>
 
         <div className="px-4 py-3">
-          <div className="flex gap-3 items-start">
+          <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
             <WindCompass dirDeg={effectiveDirDeg} isVariable={effectiveIsVariable} runwayEnds={runwayEnds} bestKeys={bestKeys} />
-            <div className="flex-1 min-w-0 space-y-2">
+            <div className="w-full sm:flex-1 sm:min-w-0 space-y-2">
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-[9.5px] text-muted-foreground tracking-wide">Direction (°)</label>
@@ -379,9 +379,11 @@ function WindCompass({
   dirDeg: number | null; isVariable: boolean;
   runwayEnds: RunwayEnd[]; bestKeys: Set<string>;
 }) {
-  const size = 104;
+  // "Bold Flat" design — 2x the original 104px diagram: a chunky filled
+  // chevron wind arrow and runway ends as solid gold circular badges.
+  const size = 208;
   const c = size / 2;
-  const r = c - 14;
+  const r = c - 28;
 
   // Draw only the best runway pair (matched by shared designator prefix) as the
   // runway bar — other runways still get their own cards below, just not
@@ -397,20 +399,20 @@ function WindCompass({
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0">
-      <circle cx={c} cy={c} r={r} fill="hsl(var(--muted) / 0.15)" stroke="hsl(var(--border))" strokeWidth="1.5" />
+      <circle cx={c} cy={c} r={r} fill="hsl(var(--muted) / 0.15)" stroke="hsl(var(--border))" strokeWidth="2" />
 
       {/* Cardinal ticks */}
       {[0, 90, 180, 270].map((deg) => {
         const p1 = toXY(deg, r);
-        const p2 = toXY(deg, r - 5);
-        return <line key={deg} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="hsl(var(--muted-foreground))" strokeWidth="1.25" />;
+        const p2 = toXY(deg, r - 10);
+        return <line key={deg} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="hsl(var(--muted-foreground))" strokeWidth="2.5" />;
       })}
       {[45, 135, 225, 315].map((deg) => {
         const p1 = toXY(deg, r);
-        const p2 = toXY(deg, r - 3);
-        return <line key={deg} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="hsl(var(--muted-foreground) / 0.5)" strokeWidth="1" />;
+        const p2 = toXY(deg, r - 6);
+        return <line key={deg} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="hsl(var(--muted-foreground) / 0.5)" strokeWidth="2" />;
       })}
-      <text x={c} y={c - r + 9} textAnchor="middle" fontSize="8" fontWeight="bold" fill="hsl(var(--muted-foreground))">N</text>
+      <text x={c} y={c - r + 18} textAnchor="middle" fontSize="16" fontWeight="800" fill="hsl(var(--muted-foreground))">N</text>
 
       {/* Runway bar with dashed centerline */}
       {pairEnds.length === 2 && (
@@ -418,30 +420,44 @@ function WindCompass({
       )}
 
       {isVariable ? (
-        <text x={c} y={c + 3} textAnchor="middle" fontSize="10" fontWeight="bold" fill="hsl(var(--muted-foreground))">VRB</text>
+        <text x={c} y={c + 6} textAnchor="middle" fontSize="20" fontWeight="800" fill="hsl(var(--muted-foreground))">VRB</text>
       ) : dirDeg != null ? (
-        <WindArrow dirDeg={dirDeg} center={c} radius={r} toXY={toXY} />
+        <WindArrow dirDeg={dirDeg} center={c} radius={r} />
       ) : (
-        <text x={c} y={c + 3} textAnchor="middle" fontSize="9" fill="hsl(var(--muted-foreground))">—</text>
+        <text x={c} y={c + 6} textAnchor="middle" fontSize="18" fill="hsl(var(--muted-foreground))">—</text>
       )}
     </svg>
   );
 }
 
-function WindArrow({
-  dirDeg, center, radius, toXY,
-}: { dirDeg: number; center: number; radius: number; toXY: (deg: number, r: number) => { x: number; y: number } }) {
-  const tail = toXY(dirDeg, radius - 2);
-  const head = toXY(dirDeg, radius * 0.1);
+/** Bold, fully-filled chevron arrow — tail near the compass edge (where the wind is FROM), head near the center. */
+function WindArrow({ dirDeg, center, radius }: { dirDeg: number; center: number; radius: number }) {
+  const rad = ((dirDeg - 90) * Math.PI) / 180;
+  const fwd = { x: -Math.cos(rad), y: -Math.sin(rad) }; // tail -> head direction
+  const out = { x: Math.cos(rad), y: Math.sin(rad) };   // head -> tail direction
+  const perp = { x: -fwd.y, y: fwd.x };
+
+  const headPoint = { x: center + out.x * radius * 0.12, y: center + out.y * radius * 0.12 };
+  const tailPoint = { x: center + out.x * (radius - 6), y: center + out.y * (radius - 6) };
+  const headBase = { x: headPoint.x + out.x * 26, y: headPoint.y + out.y * 26 };
+
+  const pt = (base: { x: number; y: number }, along: { x: number; y: number }, dist: number, side: 1 | -1) =>
+    ({ x: base.x + along.x * dist * side, y: base.y + along.y * dist * side });
+
+  const points = [
+    headPoint,
+    pt(headBase, perp, 15, 1),
+    pt(headBase, perp, 6, 1),
+    pt(tailPoint, perp, 6, 1),
+    pt(tailPoint, perp, 6, -1),
+    pt(headBase, perp, 6, -1),
+    pt(headBase, perp, 15, -1),
+  ].map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+
   return (
     <g>
-      <line x1={tail.x} y1={tail.y} x2={head.x} y2={head.y} stroke="hsl(var(--primary))" strokeWidth="2.75" strokeLinecap="round" markerEnd="url(#windArrowHead)" />
-      <defs>
-        <marker id="windArrowHead" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto">
-          <path d="M0,0 L7,3.5 L0,7 Z" fill="hsl(var(--primary))" />
-        </marker>
-      </defs>
-      <circle cx={center} cy={center} r="1.75" fill="hsl(var(--primary))" />
+      <polygon points={points} fill="hsl(var(--primary))" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinejoin="round" />
+      <circle cx={center} cy={center} r="4" fill="hsl(var(--primary))" />
     </g>
   );
 }
@@ -453,26 +469,26 @@ function RunwayBar({
   toXY: (deg: number, r: number) => { x: number; y: number };
 }) {
   const [a, b] = ends;
-  const barPa = toXY(a.headingDegT, radius - 12);
-  const barPb = toXY(b.headingDegT, radius - 12);
-  const labelPa = toXY(a.headingDegT, radius + 8);
-  const labelPb = toXY(b.headingDegT, radius + 8);
+  const barPa = toXY(a.headingDegT, radius - 24);
+  const barPb = toXY(b.headingDegT, radius - 24);
+  const labelPa = toXY(a.headingDegT, radius - 2);
+  const labelPb = toXY(b.headingDegT, radius - 2);
   return (
     <g>
-      <line x1={barPa.x} y1={barPa.y} x2={barPb.x} y2={barPb.y} stroke="hsl(var(--muted-foreground) / 0.55)" strokeWidth="5" strokeLinecap="round" />
-      <line x1={barPa.x} y1={barPa.y} x2={barPb.x} y2={barPb.y} stroke="hsl(var(--background))" strokeWidth="1.25" strokeDasharray="3 2.5" strokeLinecap="round" />
-      <RunwayEndLabel x={labelPa.x} y={labelPa.y} text={a.ident} />
-      <RunwayEndLabel x={labelPb.x} y={labelPb.y} text={b.ident} />
+      <line x1={barPa.x} y1={barPa.y} x2={barPb.x} y2={barPb.y} stroke="hsl(var(--muted-foreground) / 0.55)" strokeWidth="14" strokeLinecap="round" />
+      <line x1={barPa.x} y1={barPa.y} x2={barPb.x} y2={barPb.y} stroke="hsl(var(--background))" strokeWidth="2.5" strokeDasharray="7 6" strokeLinecap="round" />
+      <RunwayEndBadge x={labelPa.x} y={labelPa.y} text={a.ident} />
+      <RunwayEndBadge x={labelPb.x} y={labelPb.y} text={b.ident} />
     </g>
   );
 }
 
-function RunwayEndLabel({ x, y, text }: { x: number; y: number; text: string }) {
-  const w = Math.max(16, text.length * 6.5 + 6);
+function RunwayEndBadge({ x, y, text }: { x: number; y: number; text: string }) {
+  const r = Math.max(15, text.length * 4.5 + 8);
   return (
     <g>
-      <rect x={x - w / 2} y={y - 7} width={w} height={14} rx="3" fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="1" />
-      <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize="7.5" fontWeight="bold" fill="hsl(var(--foreground))">{text}</text>
+      <circle cx={x} cy={y} r={r} fill="hsl(var(--primary))" stroke="hsl(var(--background))" strokeWidth="2" />
+      <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize="13" fontWeight="800" fill="hsl(var(--primary-foreground))">{text}</text>
     </g>
   );
 }
