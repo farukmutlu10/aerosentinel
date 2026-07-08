@@ -649,8 +649,14 @@ export async function fetchWeatherForIcao(
     ]);
     const tafEntry = (tafData as Array<{ rawTAF?: string; tafType?: string }>)[0];
     const metarEntry = (metarData as Array<{ rawOb?: string; metarType?: string }>)[0];
-    const rawTaf   = tafEntry?.rawTAF ?? null;
-    const rawMetar = metarEntry?.rawOb  ?? null;
+    // fetchJsonFast is single-attempt/no-retry, so a transient timeout or a
+    // 429 from aviationweather.gov shows up here as an empty result — falling
+    // back to the previous display-cache entry (instead of nulling it out)
+    // stops the "Awaiting TAF data..." flash a card would otherwise take on
+    // every hiccup, only to self-heal on the next successful poll.
+    const prevEntry = displayCache[icao];
+    const rawTaf   = tafEntry?.rawTAF ?? prevEntry?.rawTaf ?? null;
+    const rawMetar = metarEntry?.rawOb  ?? prevEntry?.rawMetar ?? null;
     const tafType  = tafEntry?.tafType ?? null;
     const metarType = metarEntry?.metarType ?? null;
 
@@ -659,7 +665,8 @@ export async function fetchWeatherForIcao(
 
     return { rawTaf, rawMetar, tafType, metarType };
   } catch {
-    return { rawTaf: null, rawMetar: null, tafType: null, metarType: null };
+    const prevEntry = displayCache[icao];
+    return { rawTaf: prevEntry?.rawTaf ?? null, rawMetar: prevEntry?.rawMetar ?? null, tafType: null, metarType: null };
   }
 }
 
@@ -732,8 +739,12 @@ export async function fetchWeatherForIcaos(
   }
 
   for (const icao of needsFetch) {
-    const rawTaf = tafByIcao[icao] ?? null;
-    const rawMetar = metarByIcao[icao] ?? null;
+    // Same fallback as fetchWeatherForIcao: a batch that came back empty
+    // (single-attempt fetchJsonFast hit a timeout/429) shouldn't null out
+    // whatever this ICAO's display cache already had.
+    const prevEntry = displayCache[icao];
+    const rawTaf = tafByIcao[icao] ?? prevEntry?.rawTaf ?? null;
+    const rawMetar = metarByIcao[icao] ?? prevEntry?.rawMetar ?? null;
     displayCache[icao] = { rawTaf, rawMetar, ts: Date.now() };
     result[icao] = { rawTaf, rawMetar };
   }
