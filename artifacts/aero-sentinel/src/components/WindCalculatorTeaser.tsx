@@ -5,7 +5,7 @@ import {
   useGetAirportTaf, getGetAirportTafQueryKey,
   useGetAirportMetar, getGetAirportMetarQueryKey,
 } from "@workspace/api-client-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogTrigger, DialogTitle } from "@/components/ui/dialog";
 import {
   extractAllWindReports, pickDefaultReport, calcRunwayWind, trueToMagnetic,
   headwindSeverity, tailwindSeverity, crosswindSeverity, isExtreme,
@@ -163,17 +163,30 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
         ? "border-red-500/50 bg-red-500/10 text-red-400"
         : bestLevel === "orange"
           ? "border-orange-500/50 bg-orange-500/10 text-orange-400"
-          : "border-cyan-500/30 bg-cyan-500/10 text-cyan-400/90 hover:bg-cyan-500/20 hover:border-cyan-500/50";
+          : "border-green-500/30 bg-green-500/10 text-green-400/90 hover:bg-green-500/20 hover:border-green-500/50";
+
+  const dotClass =
+    bestLevel === "extreme" || bestLevel === "red" ? "bg-red-400"
+      : bestLevel === "orange" ? "bg-orange-400"
+        : "bg-green-400";
+
+  // Selected report summary — shown on the collapsed "Report Values" toggle so
+  // it's clear which entry is driving the numbers without expanding the list.
+  const selectedReportSummary = selectedReport
+    ? `${selectedReport.label}${selectedReport.timeLabel ? ` (${selectedReport.timeLabel})` : ""} — ${
+        selectedReport.isVariable ? "VRB" : `${String(selectedReport.dirDeg).padStart(3, "0")}°`
+      }/${selectedReport.isCalm ? "Calm" : `${selectedReport.speedKt}${selectedReport.gustKt ? `G${selectedReport.gustKt}` : ""}kt`}`
+    : null;
 
   return (
-    <Popover
+    <Dialog
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
         if (!o) { setSelectedId(null); setReportsExpanded(false); resetOverride(); }
       }}
     >
-      <PopoverTrigger asChild>
+      <DialogTrigger asChild>
         <button
           type="button"
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((o) => !o); }}
@@ -181,19 +194,21 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
           title="Wind Calculator"
         >
           <Wind className="w-[11px] h-[11px]" strokeWidth={2.5} />
+          <span className={cn("absolute -top-[3px] -right-[3px] w-[6px] h-[6px] rounded-full animate-pulse", dotClass)} />
         </button>
-      </PopoverTrigger>
-      <PopoverContent
-        collisionPadding={12}
-        className="w-[min(380px,calc(100vw_-_1.5rem))] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-0 font-mono"
+      </DialogTrigger>
+      <DialogContent
         onClick={(e) => e.stopPropagation()}
+        className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-[420px] max-h-[85vh] overflow-y-auto p-0 gap-0 font-mono rounded-lg"
       >
-        <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-          <Wind className="w-3.5 h-3.5 text-primary flex-shrink-0" strokeWidth={2.5} />
-          <span className="text-[11px] font-bold tracking-wider">{icao} — WIND CALCULATOR</span>
-        </div>
+        <DialogTitle asChild>
+          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+            <Wind className="w-3.5 h-3.5 text-primary flex-shrink-0" strokeWidth={2.5} />
+            <span className="text-[11px] font-bold tracking-wider">{icao} — WIND CALCULATOR</span>
+          </div>
+        </DialogTitle>
 
-        <div className="px-3 py-3">
+        <div className="px-4 py-3">
           <div className="flex gap-3 items-start">
             <WindCompass dirDeg={effectiveDirDeg} isVariable={effectiveIsVariable} runwayEnds={runwayEnds} bestKeys={bestKeys} />
             <div className="flex-1 min-w-0 space-y-2">
@@ -270,10 +285,15 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
             <button
               type="button"
               onClick={() => setReportsExpanded((v) => !v)}
-              className="mt-3 w-full flex items-center justify-between px-2.5 py-1.5 rounded border-2 border-primary/60 text-primary hover:bg-primary/10 transition-colors text-[11px] font-bold"
+              className="mt-3 w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded border-2 border-primary/60 text-primary hover:bg-primary/10 transition-colors text-left"
             >
-              Report Values
-              <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", reportsExpanded && "rotate-180")} />
+              <span className="min-w-0">
+                <span className="text-[11px] font-bold">Report Values</span>
+                {!isOverridden && selectedReportSummary && !reportsExpanded && (
+                  <span className="block text-[10px] font-normal opacity-80 truncate">{selectedReportSummary}</span>
+                )}
+              </span>
+              <ChevronDown className={cn("w-3.5 h-3.5 flex-shrink-0 transition-transform", reportsExpanded && "rotate-180")} />
             </button>
           )}
 
@@ -309,8 +329,8 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
             </div>
           )}
         </div>
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -327,13 +347,13 @@ function RunwayCard({ end }: { end: RunwayEnd }) {
   const level = endLevel(end);
   const isBad = level === "red" || level === "extreme";
 
-  // Outline-only cards: a single thick green (usable) or red (exceeds a limit)
-  // border with a transparent interior, so the border colour never competes
-  // with the per-value severity colours of the text inside.
+  // A single thick green (usable) or red (exceeds a limit) border, with a
+  // very light matching fill (~10%) so the card reads as colored at a glance
+  // without the fill competing with the per-value severity text colors.
   return (
     <div className={cn(
-      "rounded px-2.5 py-2 text-center border-2 bg-transparent",
-      isBad ? "border-red-500" : "border-green-500",
+      "rounded px-2.5 py-2 text-center border-2",
+      isBad ? "border-red-500 bg-red-500/10" : "border-green-500 bg-green-500/10",
     )}>
       <div className="text-xs font-bold tracking-wide text-primary">RWY {end.ident}</div>
       <div className="text-[10.5px] mt-0.5 text-muted-foreground">
