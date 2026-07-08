@@ -225,7 +225,7 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
         </div>
 
         <div className="px-4 py-3 flex-1 min-h-0 overflow-y-auto">
-          <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
+          <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-center">
             <WindCompass dirDeg={effectiveDirDeg} isVariable={effectiveIsVariable} runwayEnds={runwayEnds} bestKeys={bestKeys} />
             <div className="w-full sm:flex-1 sm:min-w-0 space-y-2 text-center">
               <div>
@@ -301,12 +301,12 @@ export function WindCalculatorTeaser({ icao, rawMetar: rawMetarProp, rawTaf: raw
             <button
               type="button"
               onClick={() => setReportsExpanded((v) => !v)}
-              className="mt-3 w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded border-2 border-primary/60 text-primary hover:bg-primary/10 transition-colors text-left"
+              className="mt-3 w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded border-2 border-primary/60 text-primary hover:bg-primary/10 transition-colors text-left"
             >
-              <span className="min-w-0">
-                <span className="text-[11px] font-bold">Report Values</span>
+              <span className="min-w-0 flex flex-col justify-center gap-0.5">
+                <span className="text-[11px] font-bold leading-tight">Report Values</span>
                 {!isOverridden && selectedReportSummary && !reportsExpanded && (
-                  <span className="block text-[10px] font-normal opacity-80 truncate">{selectedReportSummary}</span>
+                  <span className="block text-[10px] font-normal leading-tight opacity-80 truncate">{selectedReportSummary}</span>
                 )}
               </span>
               <ChevronDown className={cn("w-3.5 h-3.5 flex-shrink-0 transition-transform", reportsExpanded && "rotate-180")} />
