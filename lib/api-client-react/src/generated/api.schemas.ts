@@ -21,15 +21,28 @@ export const AlertType = {
   LIFR: 'LIFR',
 } as const;
 
+export interface AlertAck {
+  deviceId: string;
+  /** @nullable */
+  nickname: string | null;
+  ackedAt: string;
+}
+
 export interface Alert {
   id: number;
   type: AlertType;
   icao: string;
   rawText: string;
   detectedAt: string;
+  /** Whether the REQUESTING device has acknowledged this alert. Never affected by another device's ack. */
   acknowledged: boolean;
-  /** @nullable */
+  /**
+     * When the requesting device acknowledged this alert, if it has.
+     * @nullable
+     */
   acknowledgedAt?: string | null;
+  /** Everyone relevant who has acked this alert — team members when in a team, otherwise just the requester. */
+  ackedBy: AlertAck[];
 }
 
 export interface AlertsSummary {
@@ -80,6 +93,157 @@ export interface MonitorStatus {
   monitoredAirports: number;
 }
 
+export interface CreateTeamRequest {
+  nickname?: string;
+  name?: string;
+  avatar?: string;
+}
+
+export interface JoinTeamRequest {
+  nickname?: string;
+  avatar?: string;
+}
+
+export interface UpdateTeamProfileRequest {
+  nickname?: string;
+  avatar?: string;
+}
+
+export interface AddTeamWatchlistIcaoRequest {
+  icao: string;
+}
+
+export interface AddTeamWatchlistIcaosBulkRequest {
+  icaos: string[];
+}
+
+export interface AddTeamNoteRequest {
+  body: string;
+  /** Id of an earlier note in the same team to quote. Ignored if it doesn't exist. */
+  replyToId?: number;
+}
+
+export interface PinTeamNoteRequest {
+  pinned: boolean;
+}
+
+export interface TransferTeamOwnershipRequest {
+  deviceId: string;
+}
+
+export interface RenameTeamRequest {
+  name: string;
+}
+
+export interface AddTeamNoteReactionRequest {
+  emoji: string;
+}
+
+export interface MarkTeamReadRequest {
+  lastReadNoteId: number;
+}
+
+export interface TypingIndicatorResponse {
+  nicknames: string[];
+}
+
+export interface Team {
+  code: string;
+  teamId: number;
+  /** @nullable */
+  name: string | null;
+}
+
+export type TeamMemberRole = typeof TeamMemberRole[keyof typeof TeamMemberRole];
+
+
+export const TeamMemberRole = {
+  owner: 'owner',
+  member: 'member',
+} as const;
+
+export interface TeamMember {
+  deviceId: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatar: string | null;
+  role: TeamMemberRole;
+  joinedAt: string;
+  lastSeenAt: string;
+}
+
+export interface TeamInfo {
+  code: string;
+  teamId: number;
+  /** @nullable */
+  name: string | null;
+  members: TeamMember[];
+}
+
+export interface TeamNoteReaction {
+  emoji: string;
+  deviceIds: string[];
+  count: number;
+}
+
+export interface TeamNoteQuote {
+  id: number;
+  /** @nullable */
+  nickname: string | null;
+  body: string;
+}
+
+export interface TeamNote {
+  id: number;
+  deviceId: string;
+  /** @nullable */
+  nickname: string | null;
+  body: string;
+  pinned: boolean;
+  /** @nullable */
+  replyToId: number | null;
+  replyTo: TeamNoteQuote | null;
+  reactions: TeamNoteReaction[];
+  /** deviceIds of members who have read at least up through this note (excludes the author and the requester) */
+  seenBy: string[];
+  createdAt: string;
+}
+
+export type TeamActivityItemType = typeof TeamActivityItemType[keyof typeof TeamActivityItemType];
+
+
+export const TeamActivityItemType = {
+  watchlist_add: 'watchlist_add',
+  note: 'note',
+  alert_ack: 'alert_ack',
+  member_joined: 'member_joined',
+  member_left: 'member_left',
+  member_kicked: 'member_kicked',
+  ownership_transferred: 'ownership_transferred',
+  team_renamed: 'team_renamed',
+} as const;
+
+export interface TeamActivityItem {
+  type: TeamActivityItemType;
+  /** @nullable */
+  deviceId: string | null;
+  /** @nullable */
+  nickname: string | null;
+  detail: string;
+  at: string;
+}
+
+export interface TeamLeaderboardEntry {
+  deviceId: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatar: string | null;
+  avgSeconds: number;
+  ackCount: number;
+}
+
 export type ListAlertsParams = {
 type?: ListAlertsType;
 icao?: string;
@@ -98,4 +262,10 @@ export const ListAlertsType = {
   WIND_EXTREME: 'WIND_EXTREME',
   LIFR: 'LIFR',
 } as const;
+
+export type AddTeamWatchlistIcaosBulk200 = {
+  ok: boolean;
+  added: string[];
+  icaos: string[];
+};
 

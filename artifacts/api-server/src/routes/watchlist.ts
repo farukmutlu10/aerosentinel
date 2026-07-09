@@ -4,6 +4,8 @@ import { eq, and, inArray, sql, desc } from "drizzle-orm";
 import { updateCachedIcaos, getAirports, clearDisplayCache, refreshIcaoCache, fetchWeatherForIcaos } from "../lib/monitor.js";
 import { hasLifrConditions, hasWxExtreme, hasWindExtreme } from "../lib/conditions.js";
 import { getDeviceId } from "../lib/reqContext.js";
+import { getEffectiveIcaos } from "../lib/teamContext.js";
+import { annotateAcks, type AckEntry } from "../lib/alertAcks.js";
 import { logger } from "../lib/logger.js";
 
 // Access the alerts cache declared in alerts.ts (global)
@@ -103,6 +105,7 @@ interface InitialAlert {
   detectedAt: string;
   acknowledged: boolean;
   acknowledgedAt: string | null;
+  ackedBy: AckEntry[];
 }
 
 async function detectLiveAlerts(icaos: string[]): Promise<InitialAlert[]> {
@@ -148,13 +151,13 @@ async function detectLiveAlerts(icaos: string[]): Promise<InitialAlert[]> {
     const hasAmdCor = rawTaf.includes("COR") || rawTaf.includes("AMD") || tafType === "AMD" || tafType === "COR";
     if (hasAmdCor) {
       const alertType = rawTaf.includes("COR") ? "TAF_COR" : "TAF_AMD";
-      results.push({ id: stableSyntheticId(`${icao}-${alertType}-${rawTaf}`), type: alertType, icao, rawText: rawTaf, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
+      results.push({ id: stableSyntheticId(`${icao}-${alertType}-${rawTaf}`), type: alertType, icao, rawText: rawTaf, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null, ackedBy: [] });
     } else if (hasLifrConditions(rawTaf)) {
-      results.push({ id: stableSyntheticId(`${icao}-LIFR-${rawTaf}`), type: "LIFR", icao, rawText: rawTaf, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
+      results.push({ id: stableSyntheticId(`${icao}-LIFR-${rawTaf}`), type: "LIFR", icao, rawText: rawTaf, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null, ackedBy: [] });
     } else if (hasWxExtreme(rawTaf)) {
-      results.push({ id: stableSyntheticId(`${icao}-WX_EXTREME-${rawTaf}`), type: "WX_EXTREME", icao, rawText: rawTaf, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
+      results.push({ id: stableSyntheticId(`${icao}-WX_EXTREME-${rawTaf}`), type: "WX_EXTREME", icao, rawText: rawTaf, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null, ackedBy: [] });
     } else if (hasWindExtreme(rawTaf)) {
-      results.push({ id: stableSyntheticId(`${icao}-WIND_EXTREME-${rawTaf}`), type: "WIND_EXTREME", icao, rawText: rawTaf, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
+      results.push({ id: stableSyntheticId(`${icao}-WIND_EXTREME-${rawTaf}`), type: "WIND_EXTREME", icao, rawText: rawTaf, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null, ackedBy: [] });
     }
   }
 
@@ -183,7 +186,7 @@ async function detectLiveAlerts(icaos: string[]): Promise<InitialAlert[]> {
       const isSpeci = rawMetar.startsWith("SPECI") || metarType === "SPECI";
       if (isSpeci && !hasSpeciAlready.has(rawMetar)) {
         hasSpeciAlready.add(rawMetar);
-        results.push({ id: stableSyntheticId(`${icao}-SPECI-${rawMetar}`), type: "SPECI", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
+        results.push({ id: stableSyntheticId(`${icao}-SPECI-${rawMetar}`), type: "SPECI", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null, ackedBy: [] });
       }
     }
 
@@ -193,11 +196,11 @@ async function detectLiveAlerts(icaos: string[]): Promise<InitialAlert[]> {
       const rawMetar = latest?.rawOb ?? "";
       if (rawMetar) {
         if (hasLifrConditions(rawMetar)) {
-          results.push({ id: stableSyntheticId(`${icao}-LIFR-${rawMetar}`), type: "LIFR", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
+          results.push({ id: stableSyntheticId(`${icao}-LIFR-${rawMetar}`), type: "LIFR", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null, ackedBy: [] });
         } else if (hasWxExtreme(rawMetar)) {
-          results.push({ id: stableSyntheticId(`${icao}-WX_EXTREME-${rawMetar}`), type: "WX_EXTREME", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
+          results.push({ id: stableSyntheticId(`${icao}-WX_EXTREME-${rawMetar}`), type: "WX_EXTREME", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null, ackedBy: [] });
         } else if (hasWindExtreme(rawMetar)) {
-          results.push({ id: stableSyntheticId(`${icao}-WIND_EXTREME-${rawMetar}`), type: "WIND_EXTREME", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null });
+          results.push({ id: stableSyntheticId(`${icao}-WIND_EXTREME-${rawMetar}`), type: "WIND_EXTREME", icao, rawText: rawMetar, previousRawText: null, detectedAt: now.toISOString(), acknowledged: false, acknowledgedAt: null, ackedBy: [] });
         }
       }
     }
@@ -257,8 +260,6 @@ router.put("/watchlist/sync", async (req, res) => {
           rawText: alertsTable.rawText,
           previousRawText: alertsTable.previousRawText,
           detectedAt: alertsTable.detectedAt,
-          acknowledged: alertsTable.acknowledged,
-          acknowledgedAt: alertsTable.acknowledgedAt,
         })
         .from(alertsTable)
         .where(and(
@@ -270,10 +271,13 @@ router.put("/watchlist/sync", async (req, res) => {
         // 200+ airport watchlist truncated the initial snapshot
         .limit(200);
 
-      initialAlerts = dbAlerts.map((a) => ({
+      // /watchlist/sync only ever mutates the caller's personal list (team
+      // watchlist mutations go through routes/teams.ts) — so acks are
+      // annotated with no team scope, i.e. this device's own acks only.
+      const annotated = await annotateAcks(dbAlerts, userId, null);
+      initialAlerts = annotated.map((a) => ({
         ...a,
         detectedAt: a.detectedAt.toISOString(),
-        acknowledgedAt: a.acknowledgedAt ? a.acknowledgedAt.toISOString() : null,
       }));
       logger.info(`[watchlist/sync] DB alerts: ${initialAlerts.length} found for ${icaos.length} ICAOs`);
     } catch (err) {
@@ -311,7 +315,6 @@ router.delete("/watchlist/:icao", async (req, res) => {
 });
 
 router.get("/watchlist/weather", async (req, res) => {
-  const userId = getDeviceId(req);
   const force = req.query.force === "true" || req.query.force === "1";
   const icaosParam = ((req.query.icaos as string) ?? "").trim();
   const icaos = icaosParam
@@ -319,16 +322,14 @@ router.get("/watchlist/weather", async (req, res) => {
     .map((s) => s.trim().toUpperCase())
     .filter((s) => s.length >= 2 && s.length <= 6);
 
-  // If no icaos param, fetch from this user's watchlist
+  // If no icaos param, fetch from the effective watchlist (team's shared list
+  // when in team mode, otherwise this user's own personal watchlist)
   let list: string[];
   if (icaos.length > 0) {
     list = icaos;
   } else {
-    const rows = await db
-      .select({ icao: watchlistTable.icao })
-      .from(watchlistTable)
-      .where(eq(watchlistTable.userId, userId));
-    list = rows.length > 0 ? rows.map((r) => r.icao) : ["LTFH"];
+    const { icaos: effectiveIcaos } = await getEffectiveIcaos(req);
+    list = effectiveIcaos.length > 0 ? effectiveIcaos : ["LTFH"];
   }
 
   if (force) {

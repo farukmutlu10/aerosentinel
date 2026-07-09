@@ -4,6 +4,9 @@ import { HelmetProvider } from "react-helmet-async";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WatchlistProvider } from "@/context/WatchlistContext";
+import { TeamProvider } from "@/context/TeamContext";
+import { LocalAckContext } from "@/context/LocalAckContext";
+import { useAckAlert } from "@/hooks/useAckAlert";
 import { TimezoneProvider } from "@/components/ClockDisplay";
 import { useAlertNotifications } from "@/hooks/useAlertNotifications";
 import { AlertToastContainer } from "@/components/AlertToast";
@@ -18,6 +21,7 @@ import { CookieConsent, getCookiePreferences } from "@/components/CookieConsent"
 import { AdSenseConsent } from "@/components/AdSenseConsent";
 import { BackToTop } from "@/components/BackToTop";
 import { PushNotificationPrompt } from "@/components/PushNotificationPrompt";
+import { TeamsPanel } from "@/components/TeamsPanel";
 
 // ── Route-based code splitting (React.lazy) ──────────────────────────────────
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
@@ -59,12 +63,9 @@ const ThemeContext = createContext<ThemeCtx>({
 export const useThemeContext = () => useContext(ThemeContext);
 
 // ── LocalAck context — shared per-user ACK state across all components ────────
-interface LocalAckCtx {
-  localAcked: number[];
-  setLocalAcked: (val: number[] | ((prev: number[]) => number[])) => void;
-}
-const LocalAckContext = createContext<LocalAckCtx>({ localAcked: [], setLocalAcked: () => {} });
-export const useLocalAck = () => useContext(LocalAckContext);
+// Moved to its own module (context/LocalAckContext.tsx) — re-exported here so
+// existing `import { useLocalAck } from "@/App"` call sites keep working.
+export { useLocalAck } from "@/context/LocalAckContext";
 
 // ── Test panel context — always-mounted, toggled via secret input ───────────
 interface TestPanelCtx {
@@ -81,6 +82,7 @@ function AppInner() {
   const { forceCheck, pendingToasts, dismissToast } = useAlertNotifications();
   const { theme, toggleTheme, transitioning, pendingTheme, completeTransition } = useTheme();
   const [localAcked, setLocalAcked] = usePersistedState<number[]>("as-acked-ids-v2", []);
+  const { ackOne } = useAckAlert(setLocalAcked);
   const [location] = useLocation();
   const [testPanelVisible, setTestPanelVisible] = useState(false);
 
@@ -149,7 +151,7 @@ function AppInner() {
         <AlertToastContainer
           items={pendingToasts}
           onDismiss={dismissToast}
-          onAck={(id) => setLocalAcked(prev => prev.includes(id) ? prev : [...prev, id])}
+          onAck={ackOne}
           onViewChanges={(id, type, icao) => {
             // id === 0: batch-summary toast sentinel — just go to the alerts
             // list, there's no single alert to open a diff modal for.
@@ -176,6 +178,7 @@ function AppInner() {
         <PushNotificationPrompt />
         <AdSenseConsent />
         <BackToTop />
+        <TeamsPanel />
       </LocalAckContext.Provider>
     </ThemeContext.Provider>
     </TestPanelContext.Provider>
@@ -196,9 +199,11 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <TimezoneProvider>
-            <WatchlistProvider>
-              <AppInner />
-            </WatchlistProvider>
+            <TeamProvider>
+              <WatchlistProvider>
+                <AppInner />
+              </WatchlistProvider>
+            </TeamProvider>
           </TimezoneProvider>
         </TooltipProvider>
       </QueryClientProvider>

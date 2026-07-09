@@ -7,6 +7,8 @@ import {
 } from "@workspace/api-zod";
 import { logger } from "../lib/logger";
 import { getDeviceId, devOnly } from "../lib/reqContext.js";
+import { getEffectiveIcaos } from "../lib/teamContext.js";
+import { annotateAcks, resolveAckNickname, ackAlert, ackAlertsBulk, unackedByDevice } from "../lib/alertAcks.js";
 
 const router = Router();
 
@@ -53,8 +55,12 @@ router.get("/alerts", async (req, res) => {
     return res.status(400).json({ error: "Invalid query params" });
   }
 
+  // Effective watchlist: the active team's shared list when in team mode,
+  // otherwise the requester's own personal watchlist (see teamContext.ts).
+  const { icaos: userIcaos, team } = await getEffectiveIcaos(req);
+
   // ── Cache check ──────────────────────────────────────────────────
-  const cacheKey = `alerts_${userId}_${JSON.stringify(parsed.data)}`;
+  const cacheKey = `alerts_${userId}${team ? `_team_${team.code}` : ""}_${JSON.stringify(parsed.data)}`;
   const entry = cache.get(cacheKey);
   const now = Date.now();
   if (entry && now - entry.ts < RECENT_CACHE_TTL) {
@@ -67,12 +73,6 @@ router.get("/alerts", async (req, res) => {
   const sinceHours = raw.since_hours ? Number(raw.since_hours) : 48;
   const conditions = [];
 
-  // Watchlist filter: only return alerts for user's watched airports
-  const userWatchlist = await db
-    .select({ icao: watchlistTable.icao })
-    .from(watchlistTable)
-    .where(eq(watchlistTable.userId, userId));
-  const userIcaos = userWatchlist.map((r) => r.icao);
   if (userIcaos.length === 0) {
     logger.info(`[GET /alerts] EMPTY WATCHLIST userId=${userId.slice(0, 8)}… → returning []`);
     return res.json([]);
@@ -81,13 +81,12 @@ router.get("/alerts", async (req, res) => {
 
   if (type)                       conditions.push(eq(alertsTable.type, type));
   if (icao)                       conditions.push(eq(alertsTable.icao, icao));
-  if (acknowledged !== undefined) conditions.push(eq(alertsTable.acknowledged, acknowledged));
   if (sinceHours > 0) {
     const since = new Date(Date.now() - sinceHours * 3600_000);
     conditions.push(gte(alertsTable.detectedAt, since));
   }
 
-  const alerts = await db
+  const rawAlerts = await db
     .select({
       id: alertsTable.id,
       type: alertsTable.type,
@@ -95,13 +94,18 @@ router.get("/alerts", async (req, res) => {
       rawText: alertsTable.rawText,
       previousRawText: alertsTable.previousRawText,
       detectedAt: alertsTable.detectedAt,
-      acknowledged: alertsTable.acknowledged,
-      acknowledgedAt: alertsTable.acknowledgedAt,
     })
     .from(alertsTable)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(alertsTable.detectedAt))
     .limit(limit);
+
+  // acknowledged/acknowledgedAt below reflect THIS device's own ack only —
+  // never another device's, per-device acks live in alert_acks (see
+  // lib/alertAcks.ts). The `acknowledged` query param (if present) is
+  // therefore applied after annotation, not as a DB-level filter.
+  let alerts = await annotateAcks(rawAlerts, userId, team);
+  if (acknowledged !== undefined) alerts = alerts.filter((a) => a.acknowledged === acknowledged);
 
   // ── Cache store ──────────────────────────────────────────────────
   cache.set(cacheKey, { data: alerts, ts: now });
@@ -114,9 +118,10 @@ router.get("/alerts", async (req, res) => {
 
 router.get("/alerts/summary", async (req, res) => {
   const userId = getDeviceId(req);
+  const { icaos: watchlistIcaos, team } = await getEffectiveIcaos(req);
   const forceRefresh = req.query.refresh === "1";
   const now          = Date.now();
-  const cacheKey     = `summary_${userId}`;
+  const cacheKey     = `summary_${userId}${team ? `_team_${team.code}` : ""}`;
   const entry        = cache.get(cacheKey);
 
   if (!forceRefresh && entry && now - entry.ts < SUMMARY_CACHE_TTL) {
@@ -138,9 +143,6 @@ router.get("/alerts/summary", async (req, res) => {
 
   const today = startOfTodayUtc();
 
-  const watchlistRows  = await db.select({ icao: watchlistTable.icao }).from(watchlistTable).where(eq(watchlistTable.userId, userId));
-  const watchlistIcaos = watchlistRows.map((r) => r.icao);
-
   if (watchlistIcaos.length === 0) {
     const empty = { totalAlerts: 0, unacknowledged: 0, tafRevisions: 0, speciAlerts: 0, wxExtremeAlerts: 0, windExtremeAlerts: 0, lifrAlerts: 0, airportsAffected: 0, lastScan: null };
     cache.set(cacheKey, { data: empty, ts: now });
@@ -154,7 +156,6 @@ router.get("/alerts/summary", async (req, res) => {
 
   const [agg] = await db.select({
     total:            sql<number>`COUNT(*)::int`,
-    unacknowledged:   sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.acknowledged} = false)::int`,
     tafRevisions:     sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.type} IN ('TAF_AMD', 'TAF_COR'))::int`,
     speciAlerts:      sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.type} = 'SPECI')::int`,
     wxExtremeAlerts:  sql<number>`COUNT(*) FILTER (WHERE ${alertsTable.type} = 'WX_EXTREME')::int`,
@@ -163,12 +164,18 @@ router.get("/alerts/summary", async (req, res) => {
     airportsAffected: sql<number>`COUNT(DISTINCT ${alertsTable.icao})::int`,
   }).from(alertsTable).where(and(...baseConditions));
 
+  // unacknowledged is THIS device's own count — computed separately (not via
+  // the alerts.acknowledged column, which no longer reflects per-device
+  // state) so a teammate acking something never silently lowers it for you.
+  const todaysIds = await db.select({ id: alertsTable.id }).from(alertsTable).where(and(...baseConditions));
+  const unackedIds = await unackedByDevice(todaysIds.map((r) => r.id), userId);
+
   const [lastScanRow] = await db.select({ detectedAt: alertsTable.detectedAt })
     .from(alertsTable).orderBy(desc(alertsTable.detectedAt)).limit(1);
 
   const result = {
     totalAlerts:       agg?.total ?? 0,
-    unacknowledged:    agg?.unacknowledged ?? 0,
+    unacknowledged:    unackedIds.length,
     tafRevisions:      agg?.tafRevisions ?? 0,
     speciAlerts:       agg?.speciAlerts ?? 0,
     wxExtremeAlerts:   agg?.wxExtremeAlerts ?? 0,
@@ -186,6 +193,7 @@ router.get("/alerts/summary", async (req, res) => {
 
 router.get("/alerts/recent", async (req, res) => {
   const userId = getDeviceId(req);
+  const { icaos: userIcaos, team } = await getEffectiveIcaos(req);
   const forceRefresh = req.query.refresh === "1";
   const page  = Math.max(1, parseInt(String(req.query.page  ?? "1"),  10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "10"), 10) || 10));
@@ -193,7 +201,7 @@ router.get("/alerts/recent", async (req, res) => {
 
   // Cache applies only for the default page=1&limit=10 request (notification hook)
   const canUseCache = !forceRefresh && page === 1 && limit === 10;
-  const cacheKey    = `recent_p1_l10_${userId}`;
+  const cacheKey    = `recent_p1_l10_${userId}${team ? `_team_${team.code}` : ""}`;
   const entry       = canUseCache ? cache.get(cacheKey) : undefined;
 
   if (entry && now - entry.ts < RECENT_CACHE_TTL) {
@@ -221,18 +229,11 @@ router.get("/alerts/recent", async (req, res) => {
 
   const offset = (page - 1) * limit;
 
-  // Filter to user's watchlist ICAOs
-  const userWatchlist = await db
-    .select({ icao: watchlistTable.icao })
-    .from(watchlistTable)
-    .where(eq(watchlistTable.userId, userId));
-  const userIcaos = userWatchlist.map((r) => r.icao);
-
   if (userIcaos.length === 0) {
     return res.json([]);
   }
 
-  const alerts = await db
+  const rawAlerts = await db
     .select({
       id: alertsTable.id,
       type: alertsTable.type,
@@ -240,14 +241,14 @@ router.get("/alerts/recent", async (req, res) => {
       rawText: alertsTable.rawText,
       previousRawText: alertsTable.previousRawText,
       detectedAt: alertsTable.detectedAt,
-      acknowledged: alertsTable.acknowledged,
-      acknowledgedAt: alertsTable.acknowledgedAt,
     })
     .from(alertsTable)
     .where(inArray(alertsTable.icao, userIcaos))
     .orderBy(desc(alertsTable.detectedAt))
     .limit(limit)
     .offset(offset);
+
+  const alerts = await annotateAcks(rawAlerts, userId, team);
 
   // Cache store for /alerts/recent
   if (canUseCache) {
@@ -267,17 +268,13 @@ function invalidateAckCaches() {
 
 router.patch("/alerts/acknowledge-all", async (req, res) => {
   const userId = getDeviceId(req);
-  const userWatchlist = await db
-    .select({ icao: watchlistTable.icao })
-    .from(watchlistTable)
-    .where(eq(watchlistTable.userId, userId));
-  const userIcaos = userWatchlist.map((r) => r.icao);
+  const { icaos: userIcaos, team } = await getEffectiveIcaos(req);
   if (userIcaos.length === 0) return res.json({ ok: true });
 
-  await db
-    .update(alertsTable)
-    .set({ acknowledged: true, acknowledgedAt: new Date() })
-    .where(and(eq(alertsTable.acknowledged, false), inArray(alertsTable.icao, userIcaos)));
+  const nickname = await resolveAckNickname(team, userId);
+  const idRows = await db.select({ id: alertsTable.id }).from(alertsTable).where(inArray(alertsTable.icao, userIcaos));
+  const unacked = await unackedByDevice(idRows.map((r) => r.id), userId);
+  await ackAlertsBulk(unacked, userId, nickname);
   invalidateAckCaches();
   return res.json({ ok: true });
 });
@@ -287,21 +284,21 @@ router.patch("/alerts/:id/acknowledge", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid id" });
 
   const userId = getDeviceId(req);
-  const userWatchlist = await db
-    .select({ icao: watchlistTable.icao })
-    .from(watchlistTable)
-    .where(eq(watchlistTable.userId, userId));
-  const userIcaos = userWatchlist.map((r) => r.icao);
+  const { icaos: userIcaos, team } = await getEffectiveIcaos(req);
   if (userIcaos.length === 0) return res.status(404).json({ error: "Alert not found" });
 
-  const [updated] = await db
-    .update(alertsTable)
-    .set({ acknowledged: true, acknowledgedAt: new Date() })
-    .where(and(eq(alertsTable.id, parsed.data.id), inArray(alertsTable.icao, userIcaos)))
-    .returning();
+  const [alert] = await db
+    .select({ id: alertsTable.id, type: alertsTable.type, icao: alertsTable.icao, rawText: alertsTable.rawText, previousRawText: alertsTable.previousRawText, detectedAt: alertsTable.detectedAt })
+    .from(alertsTable)
+    .where(and(eq(alertsTable.id, parsed.data.id), inArray(alertsTable.icao, userIcaos)));
 
-  if (!updated) return res.status(404).json({ error: "Alert not found" });
+  if (!alert) return res.status(404).json({ error: "Alert not found" });
+
+  const nickname = await resolveAckNickname(team, userId);
+  await ackAlert(alert.id, userId, nickname);
   invalidateAckCaches();
+
+  const [updated] = await annotateAcks([alert], userId, team);
   return res.json(updated);
 });
 

@@ -73,10 +73,9 @@ export function TafDiffModal({ open, onClose, alertId, alertType, icao }: TafDif
 
   // Lock body scroll when open
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = ""; };
-    }
+    if (!open) return;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
   }, [open]);
 
   if (!open) return null;

@@ -5,6 +5,7 @@
  * AERO-SENTINEL Aviation Weather Monitoring API
  * OpenAPI spec version: 0.1.0
  */
+import type { AlertAck } from './alertAck';
 import type { AlertType } from './alertType';
 
 export interface Alert {
@@ -13,7 +14,13 @@ export interface Alert {
   icao: string;
   rawText: string;
   detectedAt: Date;
+  /** Whether the REQUESTING device has acknowledged this alert. Never affected by another device's ack. */
   acknowledged: boolean;
-  /** @nullable */
+  /**
+     * When the requesting device acknowledged this alert, if it has.
+     * @nullable
+     */
   acknowledgedAt?: Date | null;
+  /** Everyone relevant who has acked this alert — team members when in a team, otherwise just the requester. */
+  ackedBy: AlertAck[];
 }

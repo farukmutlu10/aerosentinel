@@ -15,4 +15,5 @@ export const ListAlertsType = {
   SPECI: 'SPECI',
   WX_EXTREME: 'WX_EXTREME',
   WIND_EXTREME: 'WIND_EXTREME',
+  LIFR: 'LIFR',
 } as const;

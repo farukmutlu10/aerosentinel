@@ -153,4 +153,119 @@ export const MIGRATIONS: Array<{ name: string; sql: string }> = [
       END $$;
     `,
   },
+  {
+    name: "009_add_teams",
+    sql: `
+      CREATE TABLE IF NOT EXISTS teams (
+        id                     SERIAL       PRIMARY KEY,
+        code                   TEXT         NOT NULL UNIQUE,
+        name                   TEXT,
+        created_at             TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        created_by_device_id   TEXT         NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS team_members (
+        id            SERIAL       PRIMARY KEY,
+        team_id       INTEGER      NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        device_id     TEXT         NOT NULL,
+        nickname      TEXT,
+        avatar        TEXT,
+        joined_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        last_seen_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        UNIQUE (team_id, device_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_team_members_team_id ON team_members (team_id);
+
+      CREATE TABLE IF NOT EXISTS team_watchlist (
+        id                   SERIAL       PRIMARY KEY,
+        team_id              INTEGER      NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        icao                 TEXT         NOT NULL,
+        added_by_device_id   TEXT,
+        added_at             TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        UNIQUE (team_id, icao)
+      );
+      CREATE INDEX IF NOT EXISTS idx_team_watchlist_icao ON team_watchlist (icao);
+
+      CREATE TABLE IF NOT EXISTS team_notes (
+        id          SERIAL       PRIMARY KEY,
+        team_id     INTEGER      NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        device_id   TEXT         NOT NULL,
+        nickname    TEXT,
+        body        TEXT         NOT NULL,
+        pinned      BOOLEAN      NOT NULL DEFAULT FALSE,
+        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_team_notes_team_id ON team_notes (team_id, created_at DESC);
+
+      ALTER TABLE alerts ADD COLUMN IF NOT EXISTS acknowledged_by_device_id TEXT;
+      ALTER TABLE alerts ADD COLUMN IF NOT EXISTS acknowledged_by_nickname TEXT;
+    `,
+  },
+  {
+    name: "010_add_alert_acks",
+    sql: `
+      CREATE TABLE IF NOT EXISTS alert_acks (
+        id         SERIAL       PRIMARY KEY,
+        alert_id   INTEGER      NOT NULL REFERENCES alerts(id) ON DELETE CASCADE,
+        device_id  TEXT         NOT NULL,
+        nickname   TEXT,
+        acked_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        UNIQUE (alert_id, device_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_alert_acks_alert_id ON alert_acks (alert_id);
+      CREATE INDEX IF NOT EXISTS idx_alert_acks_device_id ON alert_acks (device_id);
+    `,
+  },
+  {
+    name: "011_team_enhancements",
+    sql: `
+      -- Roles: exactly one 'owner' per team (the creator), everyone else 'member'.
+      ALTER TABLE team_members ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'member';
+      UPDATE team_members tm
+      SET role = 'owner'
+      FROM teams t
+      WHERE tm.team_id = t.id AND tm.device_id = t.created_by_device_id AND tm.role <> 'owner';
+
+      -- Replies: a note can quote an earlier note in the same team.
+      ALTER TABLE team_notes ADD COLUMN IF NOT EXISTS reply_to_id INTEGER REFERENCES team_notes(id) ON DELETE SET NULL;
+
+      -- Reactions: multiple emoji per note, one per (note, device, emoji).
+      CREATE TABLE IF NOT EXISTS team_note_reactions (
+        id          SERIAL       PRIMARY KEY,
+        note_id     INTEGER      NOT NULL REFERENCES team_notes(id) ON DELETE CASCADE,
+        device_id   TEXT         NOT NULL,
+        emoji       TEXT         NOT NULL,
+        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        UNIQUE (note_id, device_id, emoji)
+      );
+      CREATE INDEX IF NOT EXISTS idx_team_note_reactions_note_id ON team_note_reactions (note_id);
+
+      -- Read cursor per member: "seen everything up through note id N" —
+      -- one row per (team, device) rather than one row per message, so
+      -- computing "seen by" for a message is a cheap >= comparison instead
+      -- of an ever-growing per-message read-receipt table.
+      CREATE TABLE IF NOT EXISTS team_read_cursors (
+        id                   SERIAL       PRIMARY KEY,
+        team_id              INTEGER      NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        device_id            TEXT         NOT NULL,
+        last_read_note_id    INTEGER,
+        updated_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        UNIQUE (team_id, device_id)
+      );
+
+      -- Team-level audit/system-message log: joins, leaves, kicks,
+      -- ownership transfers, renames. Powers both the Activity tab and
+      -- the chat's inline "X joined the team" system messages.
+      CREATE TABLE IF NOT EXISTS team_events (
+        id          SERIAL       PRIMARY KEY,
+        team_id     INTEGER      NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        device_id   TEXT,
+        nickname    TEXT,
+        type        TEXT         NOT NULL,
+        detail      TEXT,
+        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_team_events_team_id ON team_events (team_id, created_at DESC);
+    `,
+  },
 ];

@@ -8,7 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --experimental-strip-types --experimental-transform-types --no-warnings src/lib/conditions.test.ts"
+    "test": "node --experimental-strip-types --experimental-transform-types --no-warnings --test src/lib/*.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

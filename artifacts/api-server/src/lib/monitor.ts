@@ -1,4 +1,4 @@
-import { db, alertsTable, watchlistTable, monitorCacheTable } from "@workspace/db";
+import { db, alertsTable, watchlistTable, monitorCacheTable, teamWatchlistTable } from "@workspace/db";
 import { eq, and, sql, gte } from "drizzle-orm";
 import { sendPushForAlert } from "./push.js";
 import { hasLifrConditions, hasWxExtreme, hasWindExtreme, getActiveTafPeriod, getActiveTempos } from "./conditions.js";
@@ -200,11 +200,17 @@ export async function refreshIcaoCache(): Promise<string[]> {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const allRows = await db.select({ icao: watchlistTable.icao }).from(watchlistTable)
     .where(gte(watchlistTable.addedAt, thirtyDaysAgo));
-  if (allRows.length === 0) {
+  // Team watchlists have no age cutoff (small, deliberately-curated shared
+  // lists, not a growth-unbounded personal history) — union them in so
+  // team-only airports still get scanned even if no device's personal
+  // watchlist also includes them.
+  const teamRows = await db.select({ icao: teamWatchlistTable.icao }).from(teamWatchlistTable);
+
+  if (allRows.length === 0 && teamRows.length === 0) {
     await db.insert(watchlistTable).values({ icao: "LTFH", userId: "legacy" }).onConflictDoNothing();
     cachedIcaos = ["LTFH"];
   } else {
-    const uniqueIcaos = [...new Set(allRows.map(r => r.icao))];
+    const uniqueIcaos = [...new Set([...allRows.map(r => r.icao), ...teamRows.map(r => r.icao)])];
     cachedIcaos = uniqueIcaos;
   }
   return cachedIcaos;

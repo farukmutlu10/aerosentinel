@@ -13,6 +13,8 @@ tags:
     description: Weather alert operations
   - name: airports
     description: Airport monitoring operations
+  - name: teams
+    description: Login-free shift-team sharing (shared watchlist, presence, shift-handoff notes)
 paths:
   /healthz:
     get:
@@ -181,6 +183,599 @@ paths:
               schema:
                 $ref: "#/components/schemas/MonitorStatus"
 
+  /teams:
+    post:
+      operationId: createTeam
+      tags: [teams]
+      summary: Create a new team, returning its 4-character join code
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeamRequest"
+      responses:
+        "200":
+          description: Created team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+
+  /teams/{code}/join:
+    post:
+      operationId: joinTeam
+      tags: [teams]
+      summary: Join an existing team by its code
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinTeamRequest"
+      responses:
+        "200":
+          description: Joined team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "404":
+          description: Team not found
+
+  /teams/{code}:
+    get:
+      operationId: getTeam
+      tags: [teams]
+      summary: Get team info and member presence list
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Team info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamInfo"
+        "404":
+          description: Team not found
+
+  /teams/{code}/profile:
+    patch:
+      operationId: updateTeamProfile
+      tags: [teams]
+      summary: Update the requesting device's own nickname and/or avatar within the team
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTeamProfileRequest"
+      responses:
+        "200":
+          description: Updated
+        "400":
+          description: Nothing to update or invalid avatar
+        "404":
+          description: Team not found
+
+  /teams/{code}/members:
+    delete:
+      operationId: leaveTeam
+      tags: [teams]
+      summary: Leave a team (removes the requesting device only). An owner with other members present must transfer ownership first.
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Left team
+        "409":
+          description: Requester is the owner and other members remain — transfer ownership first
+
+  /teams/{code}/regenerate:
+    post:
+      operationId: regenerateTeamCode
+      tags: [teams]
+      summary: Rotate a team's join code (owner only), revoking access for anyone without the new code
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Regenerated team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "403":
+          description: Requester is not the owner
+        "404":
+          description: Team not found
+
+  /teams/{code}/members/{deviceId}:
+    delete:
+      operationId: kickTeamMember
+      tags: [teams]
+      summary: Remove another member from the team (owner only)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Removed
+        "400":
+          description: Cannot kick yourself — use Leave instead
+        "403":
+          description: Requester is not the owner
+        "404":
+          description: Team or member not found
+
+  /teams/{code}/transfer:
+    post:
+      operationId: transferTeamOwnership
+      tags: [teams]
+      summary: Transfer team ownership to another member (owner only)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferTeamOwnershipRequest"
+      responses:
+        "200":
+          description: Ownership transferred
+        "400":
+          description: Invalid target member
+        "403":
+          description: Requester is not the owner
+        "404":
+          description: Team or member not found
+
+  /teams/{code}/rename:
+    patch:
+      operationId: renameTeam
+      tags: [teams]
+      summary: Rename the team (owner only)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameTeamRequest"
+      responses:
+        "200":
+          description: Renamed
+        "400":
+          description: Invalid name
+        "403":
+          description: Requester is not the owner
+        "404":
+          description: Team not found
+
+  /teams/{code}/watchlist:
+    get:
+      operationId: getTeamWatchlist
+      tags: [teams]
+      summary: Get the team's shared watchlist
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Team watchlist ICAOs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        "404":
+          description: Team not found
+    post:
+      operationId: addTeamWatchlistIcao
+      tags: [teams]
+      summary: Add an airport to the team's shared watchlist
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddTeamWatchlistIcaoRequest"
+      responses:
+        "200":
+          description: Added
+        "400":
+          description: Invalid ICAO
+        "404":
+          description: Team not found
+
+  /teams/{code}/watchlist/bulk:
+    post:
+      operationId: addTeamWatchlistIcaosBulk
+      tags: [teams]
+      summary: Add multiple airports to the team's shared watchlist in one call
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddTeamWatchlistIcaosBulkRequest"
+      responses:
+        "200":
+          description: Added
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, added, icaos]
+                properties:
+                  ok:
+                    type: boolean
+                  added:
+                    type: array
+                    items:
+                      type: string
+                  icaos:
+                    type: array
+                    items:
+                      type: string
+        "400":
+          description: No valid ICAO codes provided
+        "404":
+          description: Team not found
+
+  /teams/{code}/watchlist/{icao}:
+    delete:
+      operationId: removeTeamWatchlistIcao
+      tags: [teams]
+      summary: Remove an airport from the team's shared watchlist
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: icao
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Removed
+        "404":
+          description: Team not found
+
+  /teams/{code}/notes:
+    get:
+      operationId: getTeamNotes
+      tags: [teams]
+      summary: Get the team's chat/shift-log message stream (most recent first)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Team notes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamNote"
+        "404":
+          description: Team not found
+    post:
+      operationId: addTeamNote
+      tags: [teams]
+      summary: Append a shift-handoff note to the team's log
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddTeamNoteRequest"
+      responses:
+        "200":
+          description: Note added
+        "400":
+          description: Note body is required
+        "404":
+          description: Team not found
+
+  /teams/{code}/notes/{id}:
+    patch:
+      operationId: updateTeamNote
+      tags: [teams]
+      summary: Edit a note (author only)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddTeamNoteRequest"
+      responses:
+        "200":
+          description: Updated
+        "400":
+          description: Note body is required
+        "404":
+          description: Note not found (or not the author)
+    delete:
+      operationId: deleteTeamNote
+      tags: [teams]
+      summary: Delete a note (author only)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+
+  /teams/{code}/notes/{id}/pin:
+    patch:
+      operationId: pinTeamNote
+      tags: [teams]
+      summary: Toggle a message's pinned state — any team member may pin/unpin, not just the author
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PinTeamNoteRequest"
+      responses:
+        "200":
+          description: Updated
+        "404":
+          description: Note not found
+
+  /teams/{code}/notes/{id}/reactions:
+    post:
+      operationId: addTeamNoteReaction
+      tags: [teams]
+      summary: Add (or re-affirm) an emoji reaction from the requesting device to a note
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddTeamNoteReactionRequest"
+      responses:
+        "200":
+          description: Reaction added
+        "400":
+          description: Unsupported reaction
+        "404":
+          description: Note not found
+
+  /teams/{code}/notes/{id}/reactions/{emoji}:
+    delete:
+      operationId: removeTeamNoteReaction
+      tags: [teams]
+      summary: Remove the requesting device's own reaction of the given emoji from a note
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: emoji
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reaction removed
+
+  /teams/{code}/read:
+    post:
+      operationId: markTeamRead
+      tags: [teams]
+      summary: Advance the requesting device's read cursor for the team's chat
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkTeamReadRequest"
+      responses:
+        "200":
+          description: Cursor updated
+        "400":
+          description: Invalid lastReadNoteId
+        "404":
+          description: Team not found
+
+  /teams/{code}/typing:
+    post:
+      operationId: sendTypingIndicator
+      tags: [teams]
+      summary: Ping that the requesting device is currently typing a chat message (in-memory, ~5s TTL)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Recorded
+        "404":
+          description: Team not found
+    get:
+      operationId: getTypingIndicator
+      tags: [teams]
+      summary: Get nicknames of other members currently typing (within the last ~5s)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Currently-typing nicknames
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypingIndicatorResponse"
+        "404":
+          description: Team not found
+
+  /teams/{code}/activity:
+    get:
+      operationId: getTeamActivity
+      tags: [teams]
+      summary: Get a merged, most-recent-first feed of watchlist adds, notes, and alert acknowledgements
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Activity items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamActivityItem"
+        "404":
+          description: Team not found
+
+  /teams/{code}/leaderboard:
+    get:
+      operationId: getTeamLeaderboard
+      tags: [teams]
+      summary: Weekly response-speed leaderboard — average alert-acknowledgement time per member, over a rolling 7-day window, fastest first
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Leaderboard entries, fastest average first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamLeaderboardEntry"
+        "404":
+          description: Team not found
+
 components:
   schemas:
     HealthStatus:
@@ -193,7 +788,7 @@ components:
 
     Alert:
       type: object
-      required: [id, type, icao, rawText, detectedAt, acknowledged]
+      required: [id, type, icao, rawText, detectedAt, acknowledged, ackedBy]
       properties:
         id:
           type: integer
@@ -209,8 +804,27 @@ components:
           format: date-time
         acknowledged:
           type: boolean
+          description: Whether the REQUESTING device has acknowledged this alert. Never affected by another device's ack.
         acknowledgedAt:
           type: ["string", "null"]
+          format: date-time
+          description: When the requesting device acknowledged this alert, if it has.
+        ackedBy:
+          type: array
+          description: Everyone relevant who has acked this alert — team members when in a team, otherwise just the requester.
+          items:
+            $ref: "#/components/schemas/AlertAck"
+
+    AlertAck:
+      type: object
+      required: [deviceId, nickname, ackedAt]
+      properties:
+        deviceId:
+          type: string
+        nickname:
+          type: ["string", "null"]
+        ackedAt:
+          type: string
           format: date-time
 
     AlertsSummary:
@@ -282,4 +896,235 @@ components:
           type: ["string", "null"]
           format: date-time
         monitoredAirports:
+          type: integer
+
+    CreateTeamRequest:
+      type: object
+      properties:
+        nickname:
+          type: string
+        name:
+          type: string
+        avatar:
+          type: string
+
+    JoinTeamRequest:
+      type: object
+      properties:
+        nickname:
+          type: string
+        avatar:
+          type: string
+
+    UpdateTeamProfileRequest:
+      type: object
+      properties:
+        nickname:
+          type: string
+        avatar:
+          type: string
+
+    AddTeamWatchlistIcaoRequest:
+      type: object
+      required: [icao]
+      properties:
+        icao:
+          type: string
+
+    AddTeamWatchlistIcaosBulkRequest:
+      type: object
+      required: [icaos]
+      properties:
+        icaos:
+          type: array
+          items:
+            type: string
+
+    AddTeamNoteRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+        replyToId:
+          type: integer
+          description: Id of an earlier note in the same team to quote. Ignored if it doesn't exist.
+
+    PinTeamNoteRequest:
+      type: object
+      required: [pinned]
+      properties:
+        pinned:
+          type: boolean
+
+    TransferTeamOwnershipRequest:
+      type: object
+      required: [deviceId]
+      properties:
+        deviceId:
+          type: string
+
+    RenameTeamRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    AddTeamNoteReactionRequest:
+      type: object
+      required: [emoji]
+      properties:
+        emoji:
+          type: string
+
+    MarkTeamReadRequest:
+      type: object
+      required: [lastReadNoteId]
+      properties:
+        lastReadNoteId:
+          type: integer
+
+    TypingIndicatorResponse:
+      type: object
+      required: [nicknames]
+      properties:
+        nicknames:
+          type: array
+          items:
+            type: string
+
+    Team:
+      type: object
+      required: [code, teamId, name]
+      properties:
+        code:
+          type: string
+        teamId:
+          type: integer
+        name:
+          type: ["string", "null"]
+
+    TeamMember:
+      type: object
+      required: [deviceId, nickname, avatar, role, joinedAt, lastSeenAt]
+      properties:
+        deviceId:
+          type: string
+        nickname:
+          type: ["string", "null"]
+        avatar:
+          type: ["string", "null"]
+        role:
+          type: string
+          enum: [owner, member]
+        joinedAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+
+    TeamInfo:
+      type: object
+      required: [code, teamId, name, members]
+      properties:
+        code:
+          type: string
+        teamId:
+          type: integer
+        name:
+          type: ["string", "null"]
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamMember"
+
+    TeamNoteReaction:
+      type: object
+      required: [emoji, deviceIds, count]
+      properties:
+        emoji:
+          type: string
+        deviceIds:
+          type: array
+          items:
+            type: string
+        count:
+          type: integer
+
+    TeamNoteQuote:
+      type: object
+      required: [id, nickname, body]
+      properties:
+        id:
+          type: integer
+        nickname:
+          type: ["string", "null"]
+        body:
+          type: string
+
+    TeamNote:
+      type: object
+      required: [id, deviceId, nickname, body, pinned, createdAt, replyToId, replyTo, reactions, seenBy]
+      properties:
+        id:
+          type: integer
+        deviceId:
+          type: string
+        nickname:
+          type: ["string", "null"]
+        body:
+          type: string
+        pinned:
+          type: boolean
+        replyToId:
+          type: ["integer", "null"]
+        replyTo:
+          oneOf:
+            - $ref: "#/components/schemas/TeamNoteQuote"
+            - type: "null"
+        reactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamNoteReaction"
+        seenBy:
+          type: array
+          description: deviceIds of members who have read at least up through this note (excludes the author and the requester)
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    TeamActivityItem:
+      type: object
+      required: [type, deviceId, nickname, detail, at]
+      properties:
+        type:
+          type: string
+          enum: [watchlist_add, note, alert_ack, member_joined, member_left, member_kicked, ownership_transferred, team_renamed]
+        deviceId:
+          type: ["string", "null"]
+        nickname:
+          type: ["string", "null"]
+        detail:
+          type: string
+        at:
+          type: string
+          format: date-time
+
+    TeamLeaderboardEntry:
+      type: object
+      required: [deviceId, nickname, avatar, avgSeconds, ackCount]
+      properties:
+        deviceId:
+          type: string
+        nickname:
+          type: ["string", "null"]
+        avatar:
+          type: ["string", "null"]
+        avgSeconds:
+          type: integer
+        ackCount:
           type: integer

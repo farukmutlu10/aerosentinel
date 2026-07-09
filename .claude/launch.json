@@ -13,7 +13,8 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["run", "dev"],
       "cwd": "artifacts/aero-sentinel",
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

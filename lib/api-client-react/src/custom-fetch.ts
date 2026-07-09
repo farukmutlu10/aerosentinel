@@ -7,6 +7,7 @@ export type ErrorType<T = unknown> = ApiError<T>;
 export type BodyType<T> = T;
 
 export type AuthTokenGetter = () => Promise<string | null> | string | null;
+export type TeamCodeGetter = () => string | null;
 
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
@@ -17,6 +18,7 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
+let _teamCodeGetter: TeamCodeGetter | null = null;
 
 /**
  * Set a base URL that is prepended to every relative request URL
@@ -42,6 +44,18 @@ export function setBaseUrl(url: string | null): void {
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
+}
+
+/**
+ * Register a getter that supplies the active Teams-mode join code. Before
+ * every fetch the getter is invoked; when it returns a non-null string, an
+ * `X-Team-Code` header is attached so team-scoped endpoints (alerts,
+ * watchlist/weather) resolve against the team's shared data instead of the
+ * device's personal watchlist. Pass `null` to clear the getter (e.g. on
+ * leaving a team).
+ */
+export function setTeamCodeGetter(getter: TeamCodeGetter | null): void {
+  _teamCodeGetter = getter;
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -399,6 +413,13 @@ export async function customFetch<T = unknown>(
 
   if (!headers.has("x-device-id")) {
     headers.set("x-device-id", getDeviceId());
+  }
+
+  if (_teamCodeGetter && !headers.has("x-team-code")) {
+    const teamCode = _teamCodeGetter();
+    if (teamCode) {
+      headers.set("x-team-code", teamCode);
+    }
   }
 
   const requestInfo = { method, url: resolveUrl(input) };

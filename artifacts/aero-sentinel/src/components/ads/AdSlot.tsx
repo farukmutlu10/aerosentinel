@@ -75,14 +75,14 @@ export function AdSlot({ slot, className = "", sponsor }: AdSlotProps) {
       {sponsor && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-card/80 backdrop-blur-[1px]">
           <div className="flex items-center gap-3 px-4 py-3">
-            {sponsor.logo && (
-              <img src={sponsor.logo} alt={sponsor.name} className="h-8 w-auto object-contain flex-shrink-0" />
+            {sponsor?.logo && (
+              <img src={sponsor?.logo} alt={sponsor?.name} className="h-8 w-auto object-contain flex-shrink-0" />
             )}
             <div className="flex-1 min-w-0">
               <p className="text-[9px] font-mono text-muted-foreground/50 uppercase tracking-widest mb-0.5">SPONSORED</p>
-              <p className="text-xs font-mono font-bold text-foreground truncate">{sponsor.name}</p>
-              {sponsor.description && (
-                <p className="text-[10px] font-mono text-muted-foreground/70 truncate">{sponsor.description}</p>
+              <p className="text-xs font-mono font-bold text-foreground truncate">{sponsor?.name}</p>
+              {sponsor?.description && (
+                <p className="text-[10px] font-mono text-muted-foreground/70 truncate">{sponsor?.description}</p>
               )}
             </div>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground/30 flex-shrink-0">

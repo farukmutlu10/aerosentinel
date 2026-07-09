@@ -26,6 +26,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TafDiffModal } from "@/components/TafDiffModal";
 import { useAlertSound, playAlertSound } from "@/hooks/useAlertSound";
 import { useAlertSnooze, SNOOZE_OPTIONS, type SnoozeDuration } from "@/hooks/useAlertSnooze";
+import { useAckAlert } from "@/hooks/useAckAlert";
+import { useTeam } from "@/context/TeamContext";
+import { TeamAvatarView } from "@/lib/teamAvatars";
 import { formatDistanceToNow, format } from "date-fns";
 
 type AlertType = "TAF_AMD" | "TAF_COR" | "SPECI" | "WX_EXTREME" | "WIND_EXTREME" | "LIFR";
@@ -256,10 +259,20 @@ export default function Alerts() {
 
   const activeTypesSet = resolveAlertTypes(activeTypesArr);
   const localAckedSet = useMemo(() => new Set(localAcked), [localAcked]);
-  const isAcked = useCallback((a: { id: number }) => localAckedSet.has(a.id), [localAckedSet]);
+  // `acknowledged` is THIS device's own ack only (see lib/alertAcks.ts on the
+  // backend) — a teammate acking something never flips it for you. localAcked
+  // is just an optimistic overlay so the UI updates instantly before the
+  // PATCH round-trip resolves.
+  const isAcked = useCallback((a: { id: number; acknowledged?: boolean }) => localAckedSet.has(a.id) || !!a.acknowledged, [localAckedSet]);
+  const { ackOne, ackMany } = useAckAlert();
+  const { members: teamMembers, isInTeam } = useTeam();
+  const memberAvatar = useCallback(
+    (deviceId: string | null | undefined) => (deviceId ? teamMembers.find((m) => m.deviceId === deviceId)?.avatar ?? null : null),
+    [teamMembers]
+  );
 
   const handleAck = (id: number) => {
-    setLocalAcked((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    ackOne(id);
   };
 
   const toggleType = (t: string) =>
@@ -401,10 +414,10 @@ export default function Alerts() {
     if (lastMergedRef.current.length > 0) saveCachedAlerts(lastMergedRef.current);
   }, [alerts]);
 
-  const handleAckAll = () => {
+  const handleAckAll = async () => {
     setAckingAll(true);
     const ids = alerts.filter((a) => !isAcked(a)).map((a) => a.id);
-    setLocalAcked((prev) => [...new Set([...prev, ...ids])]);
+    await ackMany(ids);
     setAckingAll(false);
   };
 
@@ -685,10 +698,28 @@ export default function Alerts() {
                     swipedIdRef.current = null; setSwipedId(null);
                   }}
                   style={{ transform: `translateX(${swipedId === alert.id ? swipeX : 0}px)`, transition: "transform 0.2s ease" }}
-                  className={`relative border rounded-lg px-3 sm:px-4 py-2.5 sm:py-4 transition-opacity ${isAcked(alert) ? "opacity-65 dark:opacity-40" : ""} ${
+                  className={`relative border rounded-lg px-3 sm:px-4 py-2.5 sm:py-4 ${
                     alert.type === "SPECI" ? "alert-speci" : alert.type === "TAF_AMD" ? "alert-taf-amd" : alert.type === "TAF_COR" ? "alert-taf-cor" : alert.type === "WX_EXTREME" ? "alert-wx-extreme" : alert.type === "WIND_EXTREME" ? "alert-wind-extreme" : alert.type === "LIFR" ? "alert-lifr" : ""
                   }`}>
 
+                {/* Who acked this — shown regardless of whether THIS device has
+                    acked, and deliberately outside the opacity-faded wrapper
+                    below so it stays fully readable even once the card fades. */}
+                {isInTeam && alert.ackedBy && alert.ackedBy.length > 0 && (
+                  <div className="flex items-center gap-1.5 mb-1.5 sm:mb-2 text-[10px] sm:text-xs font-mono text-muted-foreground">
+                    <span className="flex -space-x-1 flex-shrink-0">
+                      {alert.ackedBy.slice(0, 3).map((a) => (
+                        <TeamAvatarView key={a.deviceId} avatar={memberAvatar(a.deviceId)} size={14} />
+                      ))}
+                    </span>
+                    <span className="bg-muted px-1.5 sm:px-2 py-0.5 rounded">
+                      ACKED BY {alert.ackedBy.slice(0, 3).map((a) => a.nickname || "Unnamed pilot").join(", ")}
+                      {alert.ackedBy.length > 3 && ` +${alert.ackedBy.length - 3}`}
+                    </span>
+                  </div>
+                )}
+
+                <div className={`transition-opacity ${isAcked(alert) ? "opacity-65 dark:opacity-40" : ""}`}>
                 {/* ACK indicator — visible on swipe */}
                 {swipedId === alert.id && swipeX < -20 && !isAcked(alert) && (
                   <div className="absolute right-full top-0 bottom-0 flex items-center pr-2">
@@ -709,7 +740,11 @@ export default function Alerts() {
                         <WindCalculatorTeaser icao={alert.icao} />
                         <span className="text-[10px] sm:text-xs text-muted-foreground font-mono">{new Date(alert.detectedAt).toLocaleString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }) + " UTC"}</span>
                         <span className="text-[10px] sm:text-xs text-muted-foreground font-mono hidden sm:inline">({formatDistanceToNow(new Date(alert.detectedAt), { addSuffix: true })})</span>
-                        {isAcked(alert) && <span className="text-[10px] sm:text-xs bg-muted text-muted-foreground font-mono px-1.5 sm:px-2 py-0.5 rounded">ACK</span>}
+                        {isAcked(alert) && !(isInTeam && alert.ackedBy && alert.ackedBy.length > 0) && (
+                          <span className="inline-flex items-center gap-1 text-[10px] sm:text-xs bg-muted text-muted-foreground font-mono px-1.5 sm:px-2 py-0.5 rounded">
+                            ACK
+                          </span>
+                        )}
                         {isSnoozed(alert.icao) && <span className="text-[10px] sm:text-xs bg-purple-500/15 text-purple-400 font-mono px-1.5 sm:px-2 py-0.5 rounded border border-purple-500/30">SNOOZED</span>}
                       </div>
                       <TafText raw={alert.rawText} />
@@ -761,6 +796,7 @@ export default function Alerts() {
                       </button>
                     )}
                   </div>
+                </div>
                 </div>
               </div>
               </Fragment>

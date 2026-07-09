@@ -23,7 +23,7 @@ export const HealthCheckResponse = zod.object({
 export const listAlertsQueryLimitDefault = 50;
 
 export const ListAlertsQueryParams = zod.object({
-  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI', 'WX_EXTREME', 'WIND_EXTREME']).optional(),
+  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI', 'WX_EXTREME', 'WIND_EXTREME', 'LIFR']).optional(),
   "icao": zod.coerce.string().optional(),
   "acknowledged": zod.coerce.boolean().optional(),
   "limit": zod.coerce.number().default(listAlertsQueryLimitDefault)
@@ -31,12 +31,17 @@ export const ListAlertsQueryParams = zod.object({
 
 export const ListAlertsResponseItem = zod.object({
   "id": zod.number(),
-  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI', 'WX_EXTREME', 'WIND_EXTREME']),
+  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI', 'WX_EXTREME', 'WIND_EXTREME', 'LIFR']),
   "icao": zod.string(),
   "rawText": zod.string(),
   "detectedAt": zod.coerce.date(),
-  "acknowledged": zod.boolean(),
-  "acknowledgedAt": zod.coerce.date().nullish()
+  "acknowledged": zod.boolean().describe('Whether the REQUESTING device has acknowledged this alert. Never affected by another device\'s ack.'),
+  "acknowledgedAt": zod.coerce.date().nullish().describe('When the requesting device acknowledged this alert, if it has.'),
+  "ackedBy": zod.array(zod.object({
+  "deviceId": zod.string(),
+  "nickname": zod.string().nullable(),
+  "ackedAt": zod.coerce.date()
+})).describe('Everyone relevant who has acked this alert — team members when in a team, otherwise just the requester.')
 })
 export const ListAlertsResponse = zod.array(ListAlertsResponseItem)
 
@@ -51,6 +56,7 @@ export const GetAlertsSummaryResponse = zod.object({
   "speciAlerts": zod.number(),
   "wxExtremeAlerts": zod.number(),
   "windExtremeAlerts": zod.number(),
+  "lifrAlerts": zod.number(),
   "airportsAffected": zod.number(),
   "lastScan": zod.coerce.date().nullable()
 })
@@ -61,12 +67,17 @@ export const GetAlertsSummaryResponse = zod.object({
  */
 export const GetRecentAlertsResponseItem = zod.object({
   "id": zod.number(),
-  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI', 'WX_EXTREME', 'WIND_EXTREME']),
+  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI', 'WX_EXTREME', 'WIND_EXTREME', 'LIFR']),
   "icao": zod.string(),
   "rawText": zod.string(),
   "detectedAt": zod.coerce.date(),
-  "acknowledged": zod.boolean(),
-  "acknowledgedAt": zod.coerce.date().nullish()
+  "acknowledged": zod.boolean().describe('Whether the REQUESTING device has acknowledged this alert. Never affected by another device\'s ack.'),
+  "acknowledgedAt": zod.coerce.date().nullish().describe('When the requesting device acknowledged this alert, if it has.'),
+  "ackedBy": zod.array(zod.object({
+  "deviceId": zod.string(),
+  "nickname": zod.string().nullable(),
+  "ackedAt": zod.coerce.date()
+})).describe('Everyone relevant who has acked this alert — team members when in a team, otherwise just the requester.')
 })
 export const GetRecentAlertsResponse = zod.array(GetRecentAlertsResponseItem)
 
@@ -80,12 +91,17 @@ export const AcknowledgeAlertParams = zod.object({
 
 export const AcknowledgeAlertResponse = zod.object({
   "id": zod.number(),
-  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI', 'WX_EXTREME', 'WIND_EXTREME']),
+  "type": zod.enum(['TAF_AMD', 'TAF_COR', 'SPECI', 'WX_EXTREME', 'WIND_EXTREME', 'LIFR']),
   "icao": zod.string(),
   "rawText": zod.string(),
   "detectedAt": zod.coerce.date(),
-  "acknowledged": zod.boolean(),
-  "acknowledgedAt": zod.coerce.date().nullish()
+  "acknowledged": zod.boolean().describe('Whether the REQUESTING device has acknowledged this alert. Never affected by another device\'s ack.'),
+  "acknowledgedAt": zod.coerce.date().nullish().describe('When the requesting device acknowledged this alert, if it has.'),
+  "ackedBy": zod.array(zod.object({
+  "deviceId": zod.string(),
+  "nickname": zod.string().nullable(),
+  "ackedAt": zod.coerce.date()
+})).describe('Everyone relevant who has acked this alert — team members when in a team, otherwise just the requester.')
 })
 
 
@@ -136,5 +152,348 @@ export const GetMonitorStatusResponse = zod.object({
   "lastScan": zod.coerce.date().nullable(),
   "monitoredAirports": zod.number()
 })
+
+
+/**
+ * @summary Create a new team, returning its 4-character join code
+ */
+export const CreateTeamBody = zod.object({
+  "nickname": zod.string().optional(),
+  "name": zod.string().optional(),
+  "avatar": zod.string().optional()
+})
+
+export const CreateTeamResponse = zod.object({
+  "code": zod.string(),
+  "teamId": zod.number(),
+  "name": zod.string().nullable()
+})
+
+
+/**
+ * @summary Join an existing team by its code
+ */
+export const JoinTeamParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const JoinTeamBody = zod.object({
+  "nickname": zod.string().optional(),
+  "avatar": zod.string().optional()
+})
+
+export const JoinTeamResponse = zod.object({
+  "code": zod.string(),
+  "teamId": zod.number(),
+  "name": zod.string().nullable()
+})
+
+
+/**
+ * @summary Get team info and member presence list
+ */
+export const GetTeamParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const GetTeamResponse = zod.object({
+  "code": zod.string(),
+  "teamId": zod.number(),
+  "name": zod.string().nullable(),
+  "members": zod.array(zod.object({
+  "deviceId": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatar": zod.string().nullable(),
+  "role": zod.enum(['owner', 'member']),
+  "joinedAt": zod.coerce.date(),
+  "lastSeenAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Update the requesting device's own nickname and/or avatar within the team
+ */
+export const UpdateTeamProfileParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const UpdateTeamProfileBody = zod.object({
+  "nickname": zod.string().optional(),
+  "avatar": zod.string().optional()
+})
+
+
+/**
+ * @summary Leave a team (removes the requesting device only). An owner with other members present must transfer ownership first.
+ */
+export const LeaveTeamParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+
+/**
+ * @summary Rotate a team's join code (owner only), revoking access for anyone without the new code
+ */
+export const RegenerateTeamCodeParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const RegenerateTeamCodeResponse = zod.object({
+  "code": zod.string(),
+  "teamId": zod.number(),
+  "name": zod.string().nullable()
+})
+
+
+/**
+ * @summary Remove another member from the team (owner only)
+ */
+export const KickTeamMemberParams = zod.object({
+  "code": zod.coerce.string(),
+  "deviceId": zod.coerce.string()
+})
+
+
+/**
+ * @summary Transfer team ownership to another member (owner only)
+ */
+export const TransferTeamOwnershipParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const TransferTeamOwnershipBody = zod.object({
+  "deviceId": zod.string()
+})
+
+
+/**
+ * @summary Rename the team (owner only)
+ */
+export const RenameTeamParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const RenameTeamBody = zod.object({
+  "name": zod.string()
+})
+
+
+/**
+ * @summary Get the team's shared watchlist
+ */
+export const GetTeamWatchlistParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const GetTeamWatchlistResponseItem = zod.string()
+export const GetTeamWatchlistResponse = zod.array(GetTeamWatchlistResponseItem)
+
+
+/**
+ * @summary Add an airport to the team's shared watchlist
+ */
+export const AddTeamWatchlistIcaoParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const AddTeamWatchlistIcaoBody = zod.object({
+  "icao": zod.string()
+})
+
+
+/**
+ * @summary Add multiple airports to the team's shared watchlist in one call
+ */
+export const AddTeamWatchlistIcaosBulkParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const AddTeamWatchlistIcaosBulkBody = zod.object({
+  "icaos": zod.array(zod.string())
+})
+
+export const AddTeamWatchlistIcaosBulkResponse = zod.object({
+  "ok": zod.boolean(),
+  "added": zod.array(zod.string()),
+  "icaos": zod.array(zod.string())
+})
+
+
+/**
+ * @summary Remove an airport from the team's shared watchlist
+ */
+export const RemoveTeamWatchlistIcaoParams = zod.object({
+  "code": zod.coerce.string(),
+  "icao": zod.coerce.string()
+})
+
+
+/**
+ * @summary Get the team's chat/shift-log message stream (most recent first)
+ */
+export const GetTeamNotesParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const GetTeamNotesResponseItem = zod.object({
+  "id": zod.number(),
+  "deviceId": zod.string(),
+  "nickname": zod.string().nullable(),
+  "body": zod.string(),
+  "pinned": zod.boolean(),
+  "replyToId": zod.number().nullable(),
+  "replyTo": zod.union([zod.object({
+  "id": zod.number(),
+  "nickname": zod.string().nullable(),
+  "body": zod.string()
+}),zod.null()]),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "deviceIds": zod.array(zod.string()),
+  "count": zod.number()
+})),
+  "seenBy": zod.array(zod.string()).describe('deviceIds of members who have read at least up through this note (excludes the author and the requester)'),
+  "createdAt": zod.coerce.date()
+})
+export const GetTeamNotesResponse = zod.array(GetTeamNotesResponseItem)
+
+
+/**
+ * @summary Append a shift-handoff note to the team's log
+ */
+export const AddTeamNoteParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const AddTeamNoteBody = zod.object({
+  "body": zod.string(),
+  "replyToId": zod.number().optional().describe('Id of an earlier note in the same team to quote. Ignored if it doesn\'t exist.')
+})
+
+
+/**
+ * @summary Edit a note (author only)
+ */
+export const UpdateTeamNoteParams = zod.object({
+  "code": zod.coerce.string(),
+  "id": zod.coerce.number()
+})
+
+export const UpdateTeamNoteBody = zod.object({
+  "body": zod.string(),
+  "replyToId": zod.number().optional().describe('Id of an earlier note in the same team to quote. Ignored if it doesn\'t exist.')
+})
+
+
+/**
+ * @summary Delete a note (author only)
+ */
+export const DeleteTeamNoteParams = zod.object({
+  "code": zod.coerce.string(),
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary Toggle a message's pinned state — any team member may pin/unpin, not just the author
+ */
+export const PinTeamNoteParams = zod.object({
+  "code": zod.coerce.string(),
+  "id": zod.coerce.number()
+})
+
+export const PinTeamNoteBody = zod.object({
+  "pinned": zod.boolean()
+})
+
+
+/**
+ * @summary Add (or re-affirm) an emoji reaction from the requesting device to a note
+ */
+export const AddTeamNoteReactionParams = zod.object({
+  "code": zod.coerce.string(),
+  "id": zod.coerce.number()
+})
+
+export const AddTeamNoteReactionBody = zod.object({
+  "emoji": zod.string()
+})
+
+
+/**
+ * @summary Remove the requesting device's own reaction of the given emoji from a note
+ */
+export const RemoveTeamNoteReactionParams = zod.object({
+  "code": zod.coerce.string(),
+  "id": zod.coerce.number(),
+  "emoji": zod.coerce.string()
+})
+
+
+/**
+ * @summary Advance the requesting device's read cursor for the team's chat
+ */
+export const MarkTeamReadParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const MarkTeamReadBody = zod.object({
+  "lastReadNoteId": zod.number()
+})
+
+
+/**
+ * @summary Ping that the requesting device is currently typing a chat message (in-memory, ~5s TTL)
+ */
+export const SendTypingIndicatorParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+
+/**
+ * @summary Get nicknames of other members currently typing (within the last ~5s)
+ */
+export const GetTypingIndicatorParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const GetTypingIndicatorResponse = zod.object({
+  "nicknames": zod.array(zod.string())
+})
+
+
+/**
+ * @summary Get a merged, most-recent-first feed of watchlist adds, notes, and alert acknowledgements
+ */
+export const GetTeamActivityParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const GetTeamActivityResponseItem = zod.object({
+  "type": zod.enum(['watchlist_add', 'note', 'alert_ack', 'member_joined', 'member_left', 'member_kicked', 'ownership_transferred', 'team_renamed']),
+  "deviceId": zod.string().nullable(),
+  "nickname": zod.string().nullable(),
+  "detail": zod.string(),
+  "at": zod.coerce.date()
+})
+export const GetTeamActivityResponse = zod.array(GetTeamActivityResponseItem)
+
+
+/**
+ * @summary Weekly response-speed leaderboard — average alert-acknowledgement time per member, over a rolling 7-day window, fastest first
+ */
+export const GetTeamLeaderboardParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const GetTeamLeaderboardResponseItem = zod.object({
+  "deviceId": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatar": zod.string().nullable(),
+  "avgSeconds": zod.number(),
+  "ackCount": zod.number()
+})
+export const GetTeamLeaderboardResponse = zod.array(GetTeamLeaderboardResponseItem)
 
 

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { normalizeIcao } from "@/lib/icaoUtils";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { useTeam } from "@/context/TeamContext";
 
 const DEFAULT_ICAO = "LTFH";
 const LS_KEY = "aero-sentinel-watchlist";
@@ -32,7 +33,19 @@ function getOrCreateDeviceId(): string {
 }
 
 const deviceId = getOrCreateDeviceId();
-const headers: Record<string, string> = { "X-Device-ID": deviceId, "Content-Type": "application/json" };
+
+// Built fresh per request (not a frozen module-level constant) because the
+// active team code can change at runtime as the device joins/leaves a team —
+// this route set isn't on the generated API client (see custom-fetch.ts's
+// setTeamCodeGetter for that path), so it injects the header by hand here.
+function getHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "X-Device-ID": deviceId, "Content-Type": "application/json" };
+  try {
+    const teamCode = localStorage.getItem("aero-team-code");
+    if (teamCode) headers["X-Team-Code"] = teamCode;
+  } catch { /* ignore */ }
+  return headers;
+}
 
 // Initial alert shape returned from sync endpoint
 export interface InitialAlert {
@@ -44,6 +57,7 @@ export interface InitialAlert {
   detectedAt: string;
   acknowledged: boolean;
   acknowledgedAt: string | null;
+  ackedBy: { deviceId: string; nickname: string | null; ackedAt: string }[];
 }
 
 // On mount: replace backend list with this browser's localStorage list
@@ -65,7 +79,7 @@ async function syncToBackend(icaos: string[]): Promise<InitialAlert[]> {
       // settles — initialAlertsReady would then never become true.
       const res = await fetchWithTimeout("/api/watchlist/sync", {
         method: "PUT",
-        headers,
+        headers: getHeaders(),
         body: bodyStr,
       });
       // A 429/5xx body parses as JSON just fine, so without this check a
@@ -97,7 +111,7 @@ async function syncToBackend(icaos: string[]): Promise<InitialAlert[]> {
 function apiAdd(icao: string) {
   void fetchWithTimeout("/api/watchlist", {
     method: "POST",
-    headers,
+    headers: getHeaders(),
     body: JSON.stringify({ icao }),
   }).catch(() => {});
 }
@@ -105,14 +119,14 @@ function apiAdd(icao: string) {
 function apiRemove(icao: string) {
   void fetchWithTimeout(`/api/watchlist/${icao}`, {
     method: "DELETE",
-    headers,
+    headers: getHeaders(),
   }).catch(() => {});
 }
 
 function apiClear() {
   void fetchWithTimeout("/api/watchlist", {
     method: "DELETE",
-    headers,
+    headers: getHeaders(),
   }).catch(() => {});
 }
 
@@ -128,11 +142,14 @@ interface WatchlistContextValue {
   isLoading: false;
   initialAlerts: InitialAlert[];
   initialAlertsReady: boolean;
+  /** True while the device has an active team — reads/writes are transparently redirected to the team's shared watchlist. */
+  isTeamWatchlist: boolean;
 }
 
 const WatchlistContext = createContext<WatchlistContextValue | null>(null);
 
 export function WatchlistProvider({ children }: { children: ReactNode }) {
+  const team = useTeam();
   const [watchedIcaos, setWatchedIcaos] = useState<string[]>(loadLocal);
   const [initialAlerts, setInitialAlerts] = useState<InitialAlert[]>([]);
   const [initialAlertsReady, setInitialAlertsReady] = useState(false);
@@ -227,6 +244,12 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
   const addIcao = useCallback((raw: string) => {
     const icao = normalizeIcao(raw);
     if (icao.length !== 4) return;
+    // While in a team, edits made from anywhere (including the Dashboard)
+    // go straight to the team's shared list instead of the personal one.
+    if (team.isInTeam) {
+      void team.addWatchlistIcao(icao).catch(() => {});
+      return;
+    }
     setWatchedIcaos((prev) => {
       if (prev.includes(icao)) return prev;
       const next = [...prev, icao];
@@ -237,7 +260,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     });
     // Re-sync the full watchlist to backend after batch additions (debounced)
     scheduleSync();
-  }, [broadcastUpdate, scheduleSync]);
+  }, [broadcastUpdate, scheduleSync, team]);
 
   // Bulk add (paste of many ICAOs at once). addIcao() fires one POST
   // /api/watchlist + one "watchlist-airport-added" event PER call — fine for a
@@ -251,6 +274,10 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
   const addIcaos = useCallback((raws: string[]) => {
     const icaos = [...new Set(raws.map(normalizeIcao).filter((c) => c.length === 4))];
     if (icaos.length === 0) return;
+    if (team.isInTeam) {
+      void team.addWatchlistIcaos(icaos).catch(() => {});
+      return;
+    }
     setWatchedIcaos((prev) => {
       const merged = [...new Set([...prev, ...icaos])];
       if (merged.length === prev.length) return prev;
@@ -258,10 +285,14 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       return merged;
     });
     scheduleSync();
-  }, [broadcastUpdate, scheduleSync]);
+  }, [broadcastUpdate, scheduleSync, team]);
 
   const removeIcao = useCallback((icao: string) => {
     const up = icao.toUpperCase();
+    if (team.isInTeam) {
+      void team.removeWatchlistIcao(up).catch(() => {});
+      return;
+    }
     setWatchedIcaos((prev) => {
       const next = prev.filter((c) => c !== up);
       broadcastUpdate(next);
@@ -269,16 +300,25 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       window.dispatchEvent(new CustomEvent("watchlist-synced"));
       return next;
     });
-  }, [broadcastUpdate]);
+  }, [broadcastUpdate, team]);
 
   const clearWatchlist = useCallback(() => {
+    if (team.isInTeam) {
+      void Promise.all(team.watchlist.map((icao) => team.removeWatchlistIcao(icao))).catch(() => {});
+      return;
+    }
     setWatchedIcaos([]);
     broadcastUpdate([]);
     apiClear();
     window.dispatchEvent(new CustomEvent("watchlist-synced"));
-  }, [broadcastUpdate]);
+  }, [broadcastUpdate, team]);
 
-  const effectiveIcaos = watchedIcaos.length > 0 ? watchedIcaos : [DEFAULT_ICAO];
+  // While in a team, the shared team watchlist replaces the personal one for
+  // every read (Dashboard, Alerts, weather fetching) — the personal list in
+  // localStorage is left untouched underneath so it's back the moment the
+  // device leaves the team.
+  const displayedIcaos = team.isInTeam ? team.watchlist : watchedIcaos;
+  const effectiveIcaos = displayedIcaos.length > 0 ? displayedIcaos : [DEFAULT_ICAO];
 
   const isWatching = useCallback(
     (icao: string) => effectiveIcaos.includes(icao.toUpperCase()),
@@ -287,17 +327,18 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
 
   return (
     <WatchlistContext.Provider value={{
-      watchedIcaos,
+      watchedIcaos: displayedIcaos,
       effectiveIcaos,
       addIcao,
       addIcaos,
       removeIcao,
       clearWatchlist,
       isWatching,
-      hasFilter: watchedIcaos.length > 0,
+      hasFilter: displayedIcaos.length > 0,
       isLoading: false,
       initialAlerts,
       initialAlertsReady,
+      isTeamWatchlist: team.isInTeam,
     }}>
       {children}
     </WatchlistContext.Provider>

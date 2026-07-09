@@ -13,8 +13,10 @@ export const alertsTable = pgTable("alerts", {
   detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
   acknowledged: boolean("acknowledged").notNull().default(false),
   acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+  acknowledgedByDeviceId: text("acknowledged_by_device_id"),
+  acknowledgedByNickname: text("acknowledged_by_nickname"),
 });
 
-export const insertAlertSchema = createInsertSchema(alertsTable).omit({ id: true, detectedAt: true, acknowledged: true, acknowledgedAt: true });
+export const insertAlertSchema = createInsertSchema(alertsTable).omit({ id: true, detectedAt: true, acknowledged: true, acknowledgedAt: true, acknowledgedByDeviceId: true, acknowledgedByNickname: true });
 export type InsertAlert = z.infer<typeof insertAlertSchema>;
 export type Alert = typeof alertsTable.$inferSelect;

@@ -35,13 +35,37 @@ interface MemPushSubscriptionEntry {
   createdAt: Date;
 }
 
+interface MemTeamEntry { id: number; code: string; name: string | null; createdAt: Date; createdByDeviceId: string }
+interface MemTeamMemberEntry { id: number; teamId: number; deviceId: string; nickname: string | null; avatar: string | null; role: string; joinedAt: Date; lastSeenAt: Date }
+interface MemTeamWatchlistEntry { id: number; teamId: number; icao: string; addedByDeviceId: string | null; addedAt: Date }
+interface MemTeamNoteEntry { id: number; teamId: number; deviceId: string; nickname: string | null; body: string; pinned: boolean; replyToId: number | null; createdAt: Date }
+interface MemAlertAckEntry { id: number; alertId: number; deviceId: string; nickname: string | null; ackedAt: Date }
+interface MemTeamNoteReactionEntry { id: number; noteId: number; deviceId: string; emoji: string; createdAt: Date }
+interface MemTeamReadCursorEntry { id: number; teamId: number; deviceId: string; lastReadNoteId: number | null; updatedAt: Date }
+interface MemTeamEventEntry { id: number; teamId: number; deviceId: string | null; nickname: string | null; type: string; detail: string | null; createdAt: Date }
+
 const memStore: {
   watchlist: MemWatchlistEntry[];
   alerts: MemAlertEntry[];
   monitorCache: MemMonitorCacheEntry[];
   pushSubscriptions: MemPushSubscriptionEntry[];
-} = { watchlist: [], alerts: [], monitorCache: [], pushSubscriptions: [] };
-let memNextId = { wl: 1, alert: 1, pushSub: 1 };
+  teams: MemTeamEntry[];
+  teamMembers: MemTeamMemberEntry[];
+  teamWatchlist: MemTeamWatchlistEntry[];
+  teamNotes: MemTeamNoteEntry[];
+  alertAcks: MemAlertAckEntry[];
+  teamNoteReactions: MemTeamNoteReactionEntry[];
+  teamReadCursors: MemTeamReadCursorEntry[];
+  teamEvents: MemTeamEventEntry[];
+} = {
+  watchlist: [], alerts: [], monitorCache: [], pushSubscriptions: [],
+  teams: [], teamMembers: [], teamWatchlist: [], teamNotes: [], alertAcks: [],
+  teamNoteReactions: [], teamReadCursors: [], teamEvents: [],
+};
+let memNextId = {
+  wl: 1, alert: 1, pushSub: 1, team: 1, teamMember: 1, teamWatchlist: 1, teamNote: 1, alertAck: 1,
+  teamNoteReaction: 1, teamReadCursor: 1, teamEvent: 1,
+};
 
 /**
  * Creates a lightweight thenable query-builder surrogate for the in-memory
@@ -164,6 +188,14 @@ function memDb() {
         if (t === "watchlist")          return memQuery([...memStore.watchlist], table);
         if (t === "alerts")             return memQuery([...memStore.alerts], table);
         if (t === "push_subscriptions") return memQuery([...memStore.pushSubscriptions], table);
+        if (t === "teams")              return memQuery([...memStore.teams], table);
+        if (t === "team_members")       return memQuery([...memStore.teamMembers], table);
+        if (t === "team_watchlist")     return memQuery([...memStore.teamWatchlist], table);
+        if (t === "team_notes")         return memQuery([...memStore.teamNotes], table);
+        if (t === "alert_acks")         return memQuery([...memStore.alertAcks], table);
+        if (t === "team_note_reactions") return memQuery([...memStore.teamNoteReactions], table);
+        if (t === "team_read_cursors")  return memQuery([...memStore.teamReadCursors], table);
+        if (t === "team_events")        return memQuery([...memStore.teamEvents], table);
         return memQuery([], table);
       },
     }),
@@ -235,6 +267,108 @@ function memDb() {
                 });
               }
             }
+          } else if (t === "teams") {
+            for (const item of arr) {
+              memStore.teams.push({
+                id: memNextId.team++,
+                code: item.code,
+                name: item.name ?? null,
+                createdAt: new Date(),
+                createdByDeviceId: item.createdByDeviceId ?? "legacy",
+              });
+            }
+          } else if (t === "team_members") {
+            for (const item of arr) {
+              if (!memStore.teamMembers.find((r) => r.teamId === item.teamId && r.deviceId === item.deviceId)) {
+                memStore.teamMembers.push({
+                  id: memNextId.teamMember++,
+                  teamId: item.teamId,
+                  deviceId: item.deviceId,
+                  nickname: item.nickname ?? null,
+                  avatar: item.avatar ?? null,
+                  role: item.role ?? "member",
+                  joinedAt: new Date(),
+                  lastSeenAt: new Date(),
+                });
+              }
+            }
+          } else if (t === "team_watchlist") {
+            for (const item of arr) {
+              if (item.icao && !memStore.teamWatchlist.find((r) => r.teamId === item.teamId && r.icao === item.icao)) {
+                memStore.teamWatchlist.push({
+                  id: memNextId.teamWatchlist++,
+                  teamId: item.teamId,
+                  icao: item.icao,
+                  addedByDeviceId: item.addedByDeviceId ?? null,
+                  addedAt: new Date(),
+                });
+              }
+            }
+          } else if (t === "team_notes") {
+            for (const item of arr) {
+              memStore.teamNotes.push({
+                id: memNextId.teamNote++,
+                teamId: item.teamId,
+                deviceId: item.deviceId,
+                nickname: item.nickname ?? null,
+                body: item.body ?? "",
+                pinned: item.pinned ?? false,
+                replyToId: item.replyToId ?? null,
+                createdAt: new Date(),
+              });
+            }
+          } else if (t === "alert_acks") {
+            for (const item of arr) {
+              if (!memStore.alertAcks.find((r) => r.alertId === item.alertId && r.deviceId === item.deviceId)) {
+                memStore.alertAcks.push({
+                  id: memNextId.alertAck++,
+                  alertId: item.alertId,
+                  deviceId: item.deviceId,
+                  nickname: item.nickname ?? null,
+                  ackedAt: new Date(),
+                });
+              }
+            }
+          } else if (t === "team_note_reactions") {
+            for (const item of arr) {
+              if (!memStore.teamNoteReactions.find((r) => r.noteId === item.noteId && r.deviceId === item.deviceId && r.emoji === item.emoji)) {
+                memStore.teamNoteReactions.push({
+                  id: memNextId.teamNoteReaction++,
+                  noteId: item.noteId,
+                  deviceId: item.deviceId,
+                  emoji: item.emoji,
+                  createdAt: new Date(),
+                });
+              }
+            }
+          } else if (t === "team_events") {
+            for (const item of arr) {
+              memStore.teamEvents.push({
+                id: memNextId.teamEvent++,
+                teamId: item.teamId,
+                deviceId: item.deviceId ?? null,
+                nickname: item.nickname ?? null,
+                type: item.type,
+                detail: item.detail ?? null,
+                createdAt: new Date(),
+              });
+            }
+          } else if (t === "team_read_cursors") {
+            for (const item of arr) {
+              const existing = memStore.teamReadCursors.find((r) => r.teamId === item.teamId && r.deviceId === item.deviceId);
+              if (existing) {
+                existing.lastReadNoteId = item.lastReadNoteId ?? existing.lastReadNoteId;
+                existing.updatedAt = new Date();
+              } else {
+                memStore.teamReadCursors.push({
+                  id: memNextId.teamReadCursor++,
+                  teamId: item.teamId,
+                  deviceId: item.deviceId,
+                  lastReadNoteId: item.lastReadNoteId ?? null,
+                  updatedAt: new Date(),
+                });
+              }
+            }
           }
         };
 
@@ -253,6 +387,57 @@ function memDb() {
                     userId: item.userId ?? "legacy",
                     icao: item.icao,
                     addedAt: new Date(),
+                  });
+                }
+              }
+            } else if (t === "team_watchlist") {
+              for (const item of arr) {
+                if (item.icao && !memStore.teamWatchlist.find((r) => r.teamId === item.teamId && r.icao === item.icao)) {
+                  memStore.teamWatchlist.push({
+                    id: memNextId.teamWatchlist++,
+                    teamId: item.teamId,
+                    icao: item.icao,
+                    addedByDeviceId: item.addedByDeviceId ?? null,
+                    addedAt: new Date(),
+                  });
+                }
+              }
+            } else if (t === "team_members") {
+              for (const item of arr) {
+                if (!memStore.teamMembers.find((r) => r.teamId === item.teamId && r.deviceId === item.deviceId)) {
+                  memStore.teamMembers.push({
+                    id: memNextId.teamMember++,
+                    teamId: item.teamId,
+                    deviceId: item.deviceId,
+                    nickname: item.nickname ?? null,
+                    avatar: item.avatar ?? null,
+                    role: item.role ?? "member",
+                    joinedAt: new Date(),
+                    lastSeenAt: new Date(),
+                  });
+                }
+              }
+            } else if (t === "alert_acks") {
+              for (const item of arr) {
+                if (!memStore.alertAcks.find((r) => r.alertId === item.alertId && r.deviceId === item.deviceId)) {
+                  memStore.alertAcks.push({
+                    id: memNextId.alertAck++,
+                    alertId: item.alertId,
+                    deviceId: item.deviceId,
+                    nickname: item.nickname ?? null,
+                    ackedAt: new Date(),
+                  });
+                }
+              }
+            } else if (t === "team_note_reactions") {
+              for (const item of arr) {
+                if (!memStore.teamNoteReactions.find((r) => r.noteId === item.noteId && r.deviceId === item.deviceId && r.emoji === item.emoji)) {
+                  memStore.teamNoteReactions.push({
+                    id: memNextId.teamNoteReaction++,
+                    noteId: item.noteId,
+                    deviceId: item.deviceId,
+                    emoji: item.emoji,
+                    createdAt: new Date(),
                   });
                 }
               }
@@ -277,6 +462,22 @@ function memDb() {
                       updatedAt: new Date(),
                     });
                   }
+                }
+              }
+            } else if (t === "team_read_cursors") {
+              for (const item of arr) {
+                const existing = memStore.teamReadCursors.find((r) => r.teamId === item.teamId && r.deviceId === item.deviceId);
+                if (existing) {
+                  existing.lastReadNoteId = item.lastReadNoteId ?? existing.lastReadNoteId;
+                  existing.updatedAt = new Date();
+                } else {
+                  memStore.teamReadCursors.push({
+                    id: memNextId.teamReadCursor++,
+                    teamId: item.teamId,
+                    deviceId: item.deviceId,
+                    lastReadNoteId: item.lastReadNoteId ?? null,
+                    updatedAt: new Date(),
+                  });
                 }
               }
             }
@@ -307,6 +508,48 @@ function memDb() {
               then: (resolve: any, reject: any) => Promise.resolve(updated).then(resolve, reject),
             };
           }
+          if (t === "team_members") {
+            const constraints = collectConstraints(condition);
+            const updated: MemTeamMemberEntry[] = [];
+            for (const member of memStore.teamMembers) {
+              if (rowMatchesConstraints(member, constraints, table)) {
+                Object.assign(member, values);
+                updated.push(member);
+              }
+            }
+            return {
+              returning: () => Promise.resolve(updated),
+              then: (resolve: any, reject: any) => Promise.resolve(updated).then(resolve, reject),
+            };
+          }
+          if (t === "team_notes") {
+            const constraints = collectConstraints(condition);
+            const updated: MemTeamNoteEntry[] = [];
+            for (const note of memStore.teamNotes) {
+              if (rowMatchesConstraints(note, constraints, table)) {
+                Object.assign(note, values);
+                updated.push(note);
+              }
+            }
+            return {
+              returning: () => Promise.resolve(updated),
+              then: (resolve: any, reject: any) => Promise.resolve(updated).then(resolve, reject),
+            };
+          }
+          if (t === "teams") {
+            const constraints = collectConstraints(condition);
+            const updated: MemTeamEntry[] = [];
+            for (const team of memStore.teams) {
+              if (rowMatchesConstraints(team, constraints, table)) {
+                Object.assign(team, values);
+                updated.push(team);
+              }
+            }
+            return {
+              returning: () => Promise.resolve(updated),
+              then: (resolve: any, reject: any) => Promise.resolve(updated).then(resolve, reject),
+            };
+          }
           return {
             then: (resolve: any, reject: any) => Promise.resolve([]).then(resolve, reject),
             returning: () => Promise.resolve([]),
@@ -321,20 +564,36 @@ function memDb() {
         : t === "watchlist" ? "watchlist"
         : t === "push_subscriptions" ? "pushSubscriptions"
         : t === "monitor_cache" ? "monitorCache"
+        : t === "teams" ? "teams"
+        : t === "team_members" ? "teamMembers"
+        : t === "team_watchlist" ? "teamWatchlist"
+        : t === "team_notes" ? "teamNotes"
+        : t === "alert_acks" ? "alertAcks"
+        : t === "team_note_reactions" ? "teamNoteReactions"
+        : t === "team_read_cursors" ? "teamReadCursors"
+        : t === "team_events" ? "teamEvents"
         : undefined;
       const fn: any = () => {
         if (storeKey) (memStore as any)[storeKey] = [];
-        else { memStore.watchlist = []; memStore.alerts = []; memStore.monitorCache = []; memStore.pushSubscriptions = []; }
+        else {
+          memStore.watchlist = []; memStore.alerts = []; memStore.monitorCache = []; memStore.pushSubscriptions = [];
+          memStore.teams = []; memStore.teamMembers = []; memStore.teamWatchlist = []; memStore.teamNotes = []; memStore.alertAcks = [];
+          memStore.teamNoteReactions = []; memStore.teamReadCursors = []; memStore.teamEvents = [];
+        }
         return Promise.resolve();
       };
       fn.where = (condition: any) => {
+        let deletedRows: any[] = [];
         if (storeKey) {
           const constraints = condition ? collectConstraints(condition) : [];
-          (memStore as any)[storeKey] = (memStore as any)[storeKey].filter(
-            (row: any) => !rowMatchesConstraints(row, constraints, table),
-          );
+          const all = (memStore as any)[storeKey] as any[];
+          deletedRows = all.filter((row) => rowMatchesConstraints(row, constraints, table));
+          (memStore as any)[storeKey] = all.filter((row) => !rowMatchesConstraints(row, constraints, table));
         }
-        return Promise.resolve();
+        return {
+          returning: () => Promise.resolve(deletedRows),
+          then: (resolve: any, reject: any) => Promise.resolve(deletedRows).then(resolve, reject),
+        };
       };
       return fn;
     },

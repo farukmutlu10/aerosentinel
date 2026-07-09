@@ -53,8 +53,8 @@ app.use(cors({
     callback(null, isAllowed);
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Device-ID"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Device-ID", "X-Team-Code"],
 }));
 
 // Security headers (helmet) — CORS'tan SONRA, crossOriginResourcePolicy kapalı

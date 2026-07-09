@@ -96,6 +96,7 @@ See `.env.example` for the full list. Key ones:
 - **Components**: shadcn/ui pattern in `src/components/ui/` — uses CVA for variants
 - **State**: React state + `usePersistedState` hook (localStorage-backed) — backs the Theme, LocalAck (acknowledged-alert IDs), and watchlist state in `App.tsx` / `WatchlistContext.tsx`
 - **i18n**: Currently English only; UI strings are inline
+- **Copy style**: never use em dashes (—) in user-facing UI text (buttons, labels, placeholders, headings, error messages) — it reads as AI-generated. Use a period, comma, or a new sentence instead.
 - **SEO**: `react-helmet-async` for per-page meta tags
 - **Analytics**: Google Analytics 4 via `react-ga4`, only initialized if the user has given cookie/analytics consent (`CookieConsent` component)
 
