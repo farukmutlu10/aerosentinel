@@ -234,6 +234,10 @@ async function main() {
   // load it the same way as page components (raw TSX via Vite's SSR
   // transform) and wrap every SSR tree with it, since it's cheap and
   // some routes need it and some don't isn't worth tracking separately.
+  // WatchlistContext itself now calls useTeam() internally (team watchlist
+  // merge), so TeamProvider must wrap it too, same nesting order as App.tsx.
+  var teamMod = await vite.ssrLoadModule("/src/context/TeamContext.tsx");
+  var TeamProvider = teamMod.TeamProvider;
   var watchlistMod = await vite.ssrLoadModule("/src/context/WatchlistContext.tsx");
   var WatchlistProvider = watchlistMod.WatchlistProvider;
   var queryClient = new QueryClient();
@@ -258,9 +262,13 @@ async function main() {
           QueryClientProvider,
           { client: queryClient },
           React.createElement(
-            WatchlistProvider,
+            TeamProvider,
             null,
-            React.createElement(Router, { ssrPath: route.path }, page),
+            React.createElement(
+              WatchlistProvider,
+              null,
+              React.createElement(Router, { ssrPath: route.path }, page),
+            ),
           ),
         ),
       );
